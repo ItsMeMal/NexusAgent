@@ -36,7 +36,7 @@ elif (CODEBASE_DIR / ".env").exists():
 else:
     ENV_PATH = NEXUS_HOME / ".env"
 
-load_dotenv(ENV_PATH)
+load_dotenv(ENV_PATH, override=True)
 
 class Config:
     CODEBASE_DIR: Path = CODEBASE_DIR
@@ -65,9 +65,16 @@ class Config:
         )
     )
 
-    # API and Model
-    API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    API_BASE: str = os.getenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1")
+    # API and Model (Prioritize workspace/env configurations)
+    API_KEY: str = (
+        os.getenv("NEXUS_API_KEY")
+        or os.getenv("MALLSS_NEXUS_API_KEY")
+        or os.getenv("OPENAI_API_KEY", "")
+    )
+    API_BASE: str = (
+        os.getenv("NEXUS_API_BASE")
+        or os.getenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1")
+    )
     MODEL: str = os.getenv("NEXUS_MODEL", "anthropic/claude-3.5-sonnet")
     TEMPERATURE: float = float(os.getenv("NEXUS_TEMPERATURE", "0.7"))
     MAX_STEPS: int = int(os.getenv("NEXUS_MAX_STEPS", "25"))

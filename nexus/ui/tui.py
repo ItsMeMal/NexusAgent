@@ -27,7 +27,9 @@ def render_banner(
     skills_count: int,
     tools_count: int,
     provider_name: str = "OpenRouter",
-    animate: bool = True
+    animate: bool = True,
+    update_info: Optional[Dict[str, Any]] = None,
+    **kwargs
 ):
     """Render a cyberpunk welcome banner with interactive laser shimmer and bootloader."""
     # 1. Cyberpunk laser shimmer wave across ASCII logo
@@ -89,6 +91,9 @@ def render_banner(
     console.print(f"  [dim]Directory:[/dim] [dim white]{os.getcwd()}[/dim white]  [dim]·[/dim]  [dim]{tools_count} tools online · {skills_count} skills · SQLite+FTS5[/dim]")
     console.print("  [dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
     console.print("  [dim]Type [bold #00ffd7]/[/bold #00ffd7] for command palette · [bold #00ffd7]/models[/bold #00ffd7] to switch model · [bold #00ffd7]/provider[/bold #00ffd7] to connect router · [dim red]exit[/dim red] to quit[/dim]\n")
+
+    if update_info and update_info.get("update_available"):
+        render_update_alert(update_info)
 
 def render_tool_call(tool_name: str, arguments: Dict[str, Any]):
     """Compact, high-signal single-line tool call indicator."""

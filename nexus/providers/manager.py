@@ -318,64 +318,108 @@ class ProviderManager:
         if not target_base:
             return provider.curated_models or [ModelInfo(id="default-model", name="Default Model")]
 
-        # 1. Try querying /models on the target API base
+        # Collect candidate keys to authenticate against /models
+        candidate_keys: List[str] = []
+        if api_key and api_key != "your_api_key_here":
+            candidate_keys.append(api_key)
+        for env_var in ("MALLSS_NEXUS_API_KEY", "NEXUS_API_KEY", "OPENAI_API_KEY"):
+            val = os.getenv(env_var, "").strip()
+            if val and val != "your_api_key_here" and val not in candidate_keys:
+                candidate_keys.append(val)
+
+        # Also inspect config.ENV_PATH directly as extra fallback
         try:
-            headers = {"Accept": "application/json"}
-            if api_key and api_key != "your_api_key_here":
-                headers["Authorization"] = f"Bearer {api_key}"
-            
-            # Special header for OpenRouter
-            if "openrouter.ai" in target_base:
-                headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NexusAgent"
-
-            models_url = f"{target_base}/models"
-            async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
-                resp = await client.get(models_url, headers=headers)
-                if resp.status_code == 200:
-                    json_data = resp.json()
-                    raw_list = json_data.get("data", [])
-                    if isinstance(raw_list, list) and raw_list:
-                        live_models: List[ModelInfo] = []
-                        for m in raw_list:
-                            mid = m.get("id")
-                            if not mid:
-                                continue
-                            
-                            # Extract context window
-                            ctx_raw = (
-                                m.get("context_length")
-                                or m.get("capabilities", {}).get("contextWindow")
-                                or m.get("context_window")
-                                or m.get("max_tokens")
-                            )
-                            ctx_formatted = _format_context_size(ctx_raw)
-
-                            # Tags
-                            tag = _detect_tags(mid, m)
-
-                            # Description
-                            desc = m.get("owned_by") or m.get("object") or ""
-
-                            live_models.append(ModelInfo(
-                                id=mid,
-                                name=mid,
-                                tag=tag,
-                                context=ctx_formatted,
-                                description=str(desc)
-                            ))
-
-                        if live_models:
-                            # Prioritize active model and free/reasoning models
-                            current_model = config.MODEL.lower()
-                            def sort_key(item: ModelInfo):
-                                is_current = (item.id.lower() == current_model)
-                                is_free = "free" in item.tag.lower() or "free" in item.id.lower()
-                                return (not is_current, not is_free, item.id.lower())
-
-                            live_models.sort(key=sort_key)
-                            return live_models
+            from dotenv import dotenv_values
+            if hasattr(config, "ENV_PATH") and config.ENV_PATH.exists():
+                file_vals = dotenv_values(config.ENV_PATH)
+                for k in ("OPENAI_API_KEY", "NEXUS_API_KEY", "MALLSS_NEXUS_API_KEY"):
+                    v = (file_vals.get(k) or "").strip()
+                    if v and v != "your_api_key_here" and v not in candidate_keys:
+                        candidate_keys.append(v)
         except Exception:
             pass
+
+        if not candidate_keys:
+            candidate_keys.append("")
+
+        # 1. Try querying /models on the target API base
+        models_url = f"{target_base}/models"
+        for candidate_key in candidate_keys:
+            try:
+                headers = {"Accept": "application/json"}
+                if candidate_key:
+                    headers["Authorization"] = f"Bearer {candidate_key}"
+                
+                # Special header for OpenRouter
+                if "openrouter.ai" in target_base:
+                    headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NexusAgent"
+
+                async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+                    resp = await client.get(models_url, headers=headers)
+                    if resp.status_code in (401, 403) and candidate_key:
+                        # Try x-api-key alternative format
+                        resp = await client.get(models_url, headers={"Accept": "application/json", "x-api-key": candidate_key})
+
+                    if resp.status_code == 200:
+                        json_data = resp.json()
+                        raw_list = []
+                        if isinstance(json_data, list):
+                            raw_list = json_data
+                        elif isinstance(json_data, dict):
+                            raw_list = json_data.get("data") or json_data.get("models") or []
+                            if not isinstance(raw_list, list):
+                                raw_list = []
+
+                        if raw_list:
+                            live_models: List[ModelInfo] = []
+                            for m in raw_list:
+                                if isinstance(m, str):
+                                    mid = m
+                                    m_dict = {}
+                                elif isinstance(m, dict):
+                                    mid = m.get("id") or m.get("name") or m.get("model")
+                                    m_dict = m
+                                else:
+                                    continue
+
+                                if not mid:
+                                    continue
+
+                                # Extract context window
+                                ctx_raw = (
+                                    m_dict.get("context_length")
+                                    or m_dict.get("capabilities", {}).get("contextWindow")
+                                    or m_dict.get("context_window")
+                                    or m_dict.get("max_tokens")
+                                )
+                                ctx_formatted = _format_context_size(ctx_raw)
+
+                                # Tags
+                                tag = _detect_tags(mid, m_dict)
+
+                                # Description
+                                desc = m_dict.get("owned_by") or m_dict.get("object") or ""
+
+                                live_models.append(ModelInfo(
+                                    id=mid,
+                                    name=mid,
+                                    tag=tag,
+                                    context=ctx_formatted,
+                                    description=str(desc)
+                                ))
+
+                            if live_models:
+                                # Prioritize active model and free/reasoning models
+                                current_model = (config.MODEL or "").lower()
+                                def sort_key(item: ModelInfo):
+                                    is_current = (item.id.lower() == current_model)
+                                    is_free = "free" in item.tag.lower() or "free" in item.id.lower()
+                                    return (not is_current, not is_free, item.id.lower())
+
+                                live_models.sort(key=sort_key)
+                                return live_models
+            except Exception:
+                continue
 
         # 2. If Ollama local, try /api/tags
         if provider.is_local or "localhost:11434" in target_base:
@@ -405,9 +449,20 @@ class ProviderManager:
         if provider.curated_models:
             return provider.curated_models
 
-        return [
+        # If custom provider and no live models fetched, preserve current active model
+        fallback_models: List[ModelInfo] = []
+        if config.MODEL and config.MODEL != "default-model":
+            fallback_models.append(ModelInfo(
+                id=config.MODEL,
+                name=config.MODEL,
+                tag="Active",
+                context="Auto",
+                description="Current active model"
+            ))
+        fallback_models.append(
             ModelInfo(id="default-model", name="Default Model", tag="Custom", context="Auto")
-        ]
+        )
+        return fallback_models
 
     @staticmethod
     def update_env_file(key_values: Dict[str, str], env_path: Path):

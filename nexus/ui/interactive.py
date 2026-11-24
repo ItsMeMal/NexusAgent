@@ -176,7 +176,7 @@ async def _run_arrow_key_provider_picker(providers: List[ProviderProfile], activ
         "dim": "#64748b",
     })
 
-    app = Application(layout=layout, key_bindings=kb, style=style, full_screen=False)
+    app = Application(layout=layout, key_bindings=kb, style=style, full_screen=False, erase_when_done=True)
     await app.run_async()
     return result[0]
 
@@ -241,6 +241,12 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
     selected_idx = [0]
     result = [None]
     total_models = len(models)
+
+    # Pre-select current active model
+    for i, m in enumerate(models):
+        if m.id.lower() == (active_model or "").lower():
+            selected_idx[0] = i
+            break
 
     def get_filtered() -> List[ModelInfo]:
         q = filter_text[0].lower().strip()
@@ -364,7 +370,7 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
         "dim": "#64748b",
     })
 
-    app = Application(layout=layout, key_bindings=kb, style=style, full_screen=False)
+    app = Application(layout=layout, key_bindings=kb, style=style, full_screen=False, erase_when_done=True)
     await app.run_async()
     return result[0]
 
@@ -518,7 +524,7 @@ async def _run_arrow_key_session_picker(sessions: List[Dict[str, Any]], active_i
         "dim": "#64748b",
     })
 
-    app = Application(layout=layout, key_bindings=kb, style=style, full_screen=False)
+    app = Application(layout=layout, key_bindings=kb, style=style, full_screen=False, erase_when_done=True)
     await app.run_async()
     return result[0]
 
