@@ -13,6 +13,9 @@ from .tui import (
     render_mcp_table,
     render_plugins_table,
     render_security_card,
+    render_computer_card,
+    render_update_alert,
+    render_update_card,
     console
 )
 from .controller import AgentUIController
@@ -39,6 +42,9 @@ __all__ = [
     "render_mcp_table",
     "render_plugins_table",
     "render_security_card",
+    "render_computer_card",
+    "render_update_alert",
+    "render_update_card",
     "console",
     "AgentUIController",
     "NexusCommandCompleter",

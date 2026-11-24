@@ -27,6 +27,8 @@ SLASH_COMMANDS = [
     ("/plugins", "View loaded modular plugins from plugins/ directory", "Plugins"),
     ("/security", "View security guardrails, command sandbox & safety policy", "Security"),
     ("/computer", "Inspect GUI automation status or capture screenshot (/computer screenshot)", "Computer"),
+    ("/update", "Check for updates and upgrade Nexus Agent engine from GitHub", "System"),
+    ("/upgrade", "Alias for /update", "System"),
     ("/skills", "View loaded dynamic skills & learned procedures", "Skills"),
     ("/memory", "Inspect persistent facts stored in SQLite FTS5", "Memory"),
     ("/cron", "View scheduled background jobs and automations", "Background"),

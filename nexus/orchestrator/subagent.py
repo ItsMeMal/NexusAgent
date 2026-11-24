@@ -90,9 +90,9 @@ Rules:
             registry=scoped_registry,
             max_steps=max_steps,
             session_id=sub_id,
-            on_thought=lambda t: self.on_subagent_event("thought", t) if self.on_subagent_event else None,
-            on_tool_call=lambda name, args: self.on_subagent_event("tool_call", f"[{sub_id}] Tool {name}: {args}") if self.on_subagent_event else None,
-            on_tool_result=lambda name, res: self.on_subagent_event("tool_result", f"[{sub_id}] Result {name}: {res[:200]}") if self.on_subagent_event else None,
+            on_thought=lambda t, *a, **kw: self.on_subagent_event("thought", str(t)) if self.on_subagent_event else None,
+            on_tool_call=lambda name, args, *a, **kw: self.on_subagent_event("tool_call", f"Tool {name}: {args}") if self.on_subagent_event else None,
+            on_tool_result=lambda name, res, *a, **kw: self.on_subagent_event("tool_result", f"Result {name}: {str(res)[:200]}") if self.on_subagent_event else None,
         )
 
         # Override soul prompt for this focused task

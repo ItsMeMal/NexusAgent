@@ -292,5 +292,28 @@ def render_computer_card():
     console.print("    [dim]Supported Actions: screenshot, mouse_move, left_click, right_click, double_click, drag, type, key, hotkey, scroll, app_launch[/dim]")
     console.print("    [dim]Tip: Ask Nexus e.g. 'Take a screenshot and see what window is open' or 'Click the search bar at [500, 200]'.[/dim]\n")
 
+def render_update_alert(update_info: Dict[str, Any]):
+    """Render an eye-catching update notification card in the CLI banner."""
+    msg = update_info.get("message", "New engine release available")
+    rem_sha = update_info.get("remote_sha", "latest")
+    console.print(f"  [bold #f59e0b]⚡ UPDATE AVAILABLE:[/bold #f59e0b] [bold white]A newer version of Nexus Agent is available![/bold white]")
+    console.print(f"    [dim]Latest commit:[/dim] [bold #00ffd7]{rem_sha}[/bold #00ffd7] [dim]· \"{msg}\"[/dim]")
+    console.print(f"    [dim]Type [bold #22c55e]/update[/bold #22c55e] to upgrade engine directly from CLI.[/dim]\n")
+
+def render_update_card(update_info: Optional[Dict[str, Any]]):
+    """Render update status information."""
+    if update_info and update_info.get("update_available"):
+        rem_sha = update_info.get("remote_sha", "latest")
+        msg = update_info.get("message", "New release available")
+        console.print(f"\n  [bold #f59e0b]⚡ UPDATE AVAILABLE:[/bold #f59e0b] [bold white]A newer version of Nexus Agent is available![/bold white]")
+        console.print(f"    [dim]Current local:[/dim] [white]{update_info.get('local_sha', 'unknown')}[/white]")
+        console.print(f"    [dim]Latest remote:[/dim] [bold #00ffd7]{rem_sha}[/bold #00ffd7]")
+        console.print(f"    [dim]Commit:[/dim]        [dim]\"{msg}\"[/dim]")
+        console.print(f"    [dim]Run:[/dim]           [bold #22c55e]/update[/bold #22c55e] to install updates.\n")
+    else:
+        console.print("\n  [bold #22c55e]✔ Nexus Agent is up to date![/bold #22c55e]")
+        console.print("  [dim]You are running the latest version from GitHub main.[/dim]\n")
+
+
 
 

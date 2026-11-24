@@ -16,6 +16,7 @@ from .providers.manager import ProviderManager
 from .mcp import MCPManager
 from .plugins import PluginManager
 from .security import SecurityGuard
+from .updater import check_for_update, perform_update
 from .tools import create_default_registry
 from .core import LLMClient, NexusAgent
 from .ui import (
@@ -31,6 +32,8 @@ from .ui import (
     render_plugins_table,
     render_security_card,
     render_computer_card,
+    render_update_alert,
+    render_update_card,
     AgentUIController,
     NexusCommandCompleter,
     render_command_palette,
@@ -133,13 +136,21 @@ async def main_async():
     tools = registry.get_all()
     active_provider = ProviderManager.detect_active_provider(config.API_BASE)
 
+    # Quick cached update check
+    update_info = None
+    try:
+        update_info = await check_for_update(force=False)
+    except Exception:
+        pass
+
     render_banner(
         model_name=llm.model,
         session_id=agent.session_id,
         skills_count=len(skills),
         tools_count=len(tools),
         provider_name=active_provider.name,
-        animate=True
+        animate=True,
+        update_info=update_info
     )
 
     completer = NexusCommandCompleter()
@@ -264,16 +275,31 @@ async def main_async():
                 elif cmd in ("/cron", "/tasks"):
                     render_cron_table(cron_scheduler.list_tasks())
                     continue
+                elif cmd in ("/update", "/upgrade"):
+                    parts = text.strip().split()
+                    if len(parts) > 1 and parts[1].lower() in ("check", "status"):
+                        console.print("\n  [dim cyan]⠋ Checking GitHub for updates...[/dim cyan]")
+                        up_info = await check_for_update(force=True)
+                        render_update_card(up_info)
+                    else:
+                        await perform_update(console)
+                    continue
                 elif cmd in ("/clear", "/cls"):
                     os.system("cls" if os.name == "nt" else "clear")
                     active_provider = ProviderManager.detect_active_provider(config.API_BASE)
+                    up_info = None
+                    try:
+                        up_info = await check_for_update(force=False)
+                    except Exception:
+                        pass
                     render_banner(
                         model_name=llm.model,
                         session_id=agent.session_id,
                         skills_count=len(skills),
                         tools_count=len(tools),
                         provider_name=active_provider.name,
-                        animate=True
+                        animate=True,
+                        update_info=up_info
                     )
                     continue
                 elif cmd.startswith("/new"):
