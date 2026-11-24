@@ -1,3 +1,4 @@
+import os
 import asyncio
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -293,8 +294,8 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
         filter_display = q if q else "<type to search...>"
         filter_style = "class:filter-active" if q else "class:dim"
         return [
-            ("class:title", "Select default model:"),
-            ("class:dim", f"  (Provider: "),
+            ("class:title", f"Select model for [{provider_name}]:"),
+            ("class:dim", f"  (Router: "),
             ("class:provider", f"{provider_name}"),
             ("class:dim", f" · Filter: "),
             (filter_style, filter_display),
@@ -368,6 +369,29 @@ async def interactive_select_model(session: PromptSession, current_llm, env_path
     """Interactive model selector with live catalog and arrow-key selection."""
     provider = provider_override or ProviderManager.detect_active_provider(config.API_BASE)
 
+    # Check if provider is connected and authenticated before listing models
+    is_connected = True
+    if not provider.is_local:
+        if not config.API_KEY or config.API_KEY == "your_api_key_here":
+            is_connected = False
+
+    if not is_connected:
+        console.print(f"\n  [bold yellow]⚠ Provider Not Connected:[/bold yellow] [bold #f59e0b]{provider.name}[/bold #f59e0b]")
+        console.print(f"  [dim]Active Endpoint:[/dim] [white]{config.API_BASE}[/white]")
+        console.print("  [dim]No API key is configured for this router/provider yet.[/dim]")
+        console.print("  [dim]Please connect and authenticate your provider before browsing models.[/dim]\n")
+
+        prompt_connect = (await session.prompt_async(f"  Connect to {provider.name} now? [Y/n] ❯ ")).strip().lower()
+        if prompt_connect in ("", "y", "yes"):
+            await interactive_select_provider(session, current_llm, env_path)
+            provider = ProviderManager.detect_active_provider(config.API_BASE)
+            if not provider.is_local and (not config.API_KEY or config.API_KEY == "your_api_key_here"):
+                return
+        else:
+            console.print("  [dim]Model selection aborted. Use /provider to connect when ready.[/dim]\n")
+            return
+
+    console.print(f"\n  [bold #00ffd7]◈ Active Provider:[/bold #00ffd7] [bold #f59e0b]{provider.name}[/bold #f59e0b] [dim]({config.API_BASE})[/dim]")
     with console.status(f"[bold cyan]  Fetching live model catalog from {provider.name}...[/bold cyan]"):
         models = await ProviderManager.get_models_for_provider(provider, api_key=config.API_KEY, api_base=config.API_BASE)
 
@@ -390,9 +414,9 @@ async def interactive_select_model(session: PromptSession, current_llm, env_path
     # Persist to .env
     ProviderManager.update_env_file({"NEXUS_MODEL": selected_model_id}, env_path)
 
-    console.print(f"\n  [dim cyan]⠋ Activating model '{selected_model_id}' in runtime context...[/dim cyan]")
+    console.print(f"\n  [dim cyan]⠋ Activating model '{selected_model_id}' on {provider.name}...[/dim cyan]")
     await asyncio.sleep(0.2)
-    console.print(f"  [bold #22c55e]✔ Model switched to:[/bold #22c55e] [bold #00ffd7]{selected_model_id}[/bold #00ffd7] [dim](saved to .env)[/dim]\n")
+    console.print(f"  [bold #22c55e]✔ Model switched to:[/bold #22c55e] [bold #00ffd7]{selected_model_id}[/bold #00ffd7] [dim](Router: {provider.name} · saved to .env)[/dim]\n")
 
 async def _run_arrow_key_session_picker(sessions: List[Dict[str, Any]], active_id: str) -> Optional[str]:
     """Interactive arrow-key selector for past sessions."""
