@@ -47,6 +47,27 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 ---
 
+## ⚡ Quick One-Line Installation
+
+Install Nexus globally into your home directory (`~/.nexus`):
+
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.ps1 | iex
+```
+
+### Linux & macOS (curl)
+```bash
+curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh | bash
+```
+
+> **Home Directory Layout:**
+> - **Windows:** `C:\Users\<username>\.nexus\`
+> - **Linux:** `/home/<username>/.nexus/` (or `/root/.nexus/`)
+> - **macOS:** `/Users/<username>/.nexus/`
+
+---
+
 ## 🚀 Quick Usage
 
 ### 1. Launch Directly from Any Terminal

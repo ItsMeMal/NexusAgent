@@ -29,6 +29,8 @@ class MCPManager:
             self.workspace_dir / ".mcp.json",
             self.workspace_dir / "mcp.json",
             self.workspace_dir / "mcp_servers.json",
+            config.NEXUS_HOME / "mcp.json",
+            config.NEXUS_HOME / "mcp_servers.json",
             self.codebase_dir / ".mcp.json",
             self.codebase_dir / "mcp_servers.json"
         ]
