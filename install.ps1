@@ -67,6 +67,7 @@ New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 if (Test-Path (Join-Path $engineDir ".git")) {
     Write-Host "  [..] Updating existing Nexus engine..." -ForegroundColor Cyan
     Push-Location $engineDir
+    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md 2>$null
     git pull origin main --quiet
     Pop-Location
 } else {
@@ -75,6 +76,18 @@ if (Test-Path (Join-Path $engineDir ".git")) {
         Remove-Item -Recurse -Force $engineDir
     }
     git clone https://github.com/ItsMeMal/NexusAgent.git $engineDir --quiet
+    Push-Location $engineDir
+    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md 2>$null
+    Pop-Location
+}
+
+# Prune non-engine artifacts from runtime engine directory
+$pruneTargets = @("website", "tests", "install.sh", "install.ps1", "wrangler.toml")
+foreach ($target in $pruneTargets) {
+    $p = Join-Path $engineDir $target
+    if (Test-Path $p) {
+        Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue
+    }
 }
 Write-Host "  [OK] Nexus Engine ready at $engineDir" -ForegroundColor Green
 
