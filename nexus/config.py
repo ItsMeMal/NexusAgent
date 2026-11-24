@@ -23,19 +23,27 @@ try:
 except Exception:
     pass
 
-# Load .env with priority: 1. Workspace .env -> 2. Global ~/.nexus/.env -> 3. Codebase .env
+# Determine primary .env file with priority:
+# 1. Local workspace .env (project-specific override)
+# 2. Global ~/.nexus/.env (persistent global user config)
+# 3. Codebase .env (fallback)
 if (WORKSPACE_DIR / ".env").exists():
-    load_dotenv(WORKSPACE_DIR / ".env")
+    ENV_PATH = WORKSPACE_DIR / ".env"
 elif (NEXUS_HOME / ".env").exists():
-    load_dotenv(NEXUS_HOME / ".env")
+    ENV_PATH = NEXUS_HOME / ".env"
 elif (CODEBASE_DIR / ".env").exists():
-    load_dotenv(CODEBASE_DIR / ".env")
+    ENV_PATH = CODEBASE_DIR / ".env"
+else:
+    ENV_PATH = NEXUS_HOME / ".env"
+
+load_dotenv(ENV_PATH)
 
 class Config:
     CODEBASE_DIR: Path = CODEBASE_DIR
     WORKSPACE_DIR: Path = WORKSPACE_DIR
     ROOT_DIR: Path = WORKSPACE_DIR  # Primary working directory for tools
     NEXUS_HOME: Path = NEXUS_HOME
+    ENV_PATH: Path = ENV_PATH
 
     # Persona & Skills paths
     SOUL_PATH: Path = (

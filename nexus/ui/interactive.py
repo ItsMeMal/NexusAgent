@@ -213,6 +213,8 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
     config.API_KEY = target_key
     current_llm.api_base = target_base.rstrip("/")
     current_llm.api_key = target_key
+    os.environ["OPENAI_API_BASE"] = target_base
+    os.environ["OPENAI_API_KEY"] = target_key
 
     updates = {
         "OPENAI_API_BASE": target_base,
@@ -383,6 +385,7 @@ async def interactive_select_model(session: PromptSession, current_llm, env_path
     # Update runtime config & LLM
     config.MODEL = selected_model_id
     current_llm.model = selected_model_id
+    os.environ["NEXUS_MODEL"] = selected_model_id
 
     # Persist to .env
     ProviderManager.update_env_file({"NEXUS_MODEL": selected_model_id}, env_path)

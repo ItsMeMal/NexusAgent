@@ -58,12 +58,8 @@ async def main_async():
     parser.add_argument("-s", "--session", type=str, help="Session ID to resume or use", default=None)
     args = parser.parse_args()
 
-    # Determine .env path (workspace first, fallback to codebase root)
-    env_path = (
-        config.WORKSPACE_DIR / ".env"
-        if (config.WORKSPACE_DIR / ".env").exists()
-        else config.CODEBASE_DIR / ".env"
-    )
+    # Active configuration .env path (workspace override or global ~/.nexus/.env)
+    env_path = config.ENV_PATH
 
     # Initialize subsystems
     memory = SQLiteMemory(config.MEMORY_DB_PATH)
