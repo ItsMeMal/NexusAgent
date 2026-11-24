@@ -99,7 +99,7 @@ if (-not (Test-Path $venvPython)) {
 }
 
 # 6. Install dependencies
-Write-Host "  [..] Installing Nexus dependencies (httpx, rich, prompt_toolkit, ddgs, pydantic)..." -ForegroundColor Cyan
+Write-Host "  [..] Installing Nexus dependencies (httpx, rich, prompt_toolkit, ddgs, pydantic, pyautogui, pillow)..." -ForegroundColor Cyan
 $reqFile = Join-Path $engineDir "requirements.txt"
 & $venvPython -m pip install --quiet --upgrade pip
 & $venvPython -m pip install --quiet -r $reqFile

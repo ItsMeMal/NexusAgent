@@ -34,8 +34,9 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 ---
 
-## 🛠 Complete Autonomous Toolset (19 Tools)
+## 🛠 Complete Autonomous Toolset (20 Tools)
 
+* **Computer Use & GUI Automation**: `computer` (desktop screenshots with vision analysis, mouse click/move/drag, typing, hotkeys, scrolling, app launch)
 * **Filesystem & Code**: `read_file`, `write_file`, `patch_file`, `list_dir`, `search_files`
 * **Terminal**: `run_command` (guarded shell execution)
 * **Vision**: `view_image` (multimodal image & diagram analysis)
@@ -99,7 +100,8 @@ Type `/` in the prompt for real-time autocomplete:
 * `/models` or `/model` — Select active model via interactive arrow-key selector (`↑`/`↓`)
 * `/provider` or `/connect` — Switch or connect AI router via interactive menu
 * `/resume` — Browse and resume past conversation sessions (`↑`/`↓`)
-* `/tools` — Inspect all 19 active autonomous tools
+* `/computer` — Inspect GUI automation status, screen resolution, or capture screenshot (`/computer screenshot`)
+* `/tools` — Inspect all 20 active autonomous tools
 * `/status` — View agent system diagnostics and active telemetry
 * `/mcp` — Inspect connected Model Context Protocol (MCP) servers
 * `/plugins` — View loaded modular plugins from `plugins/`

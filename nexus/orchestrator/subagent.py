@@ -11,6 +11,7 @@ from ..tools.terminal import get_terminal_tools
 from ..tools.web import get_web_tools
 from ..tools.memory_tools import get_memory_tools
 from ..tools.skill_tools import get_skill_tools
+from ..tools.computer import get_computer_tools
 from ..config import config
 
 class SubagentManager:
@@ -37,6 +38,8 @@ class SubagentManager:
             "web": lambda: get_web_tools(),
             "memory": lambda: get_memory_tools(self.memory),
             "skills": lambda: get_skill_tools(self.skill_manager),
+            "computer": lambda: get_computer_tools(self.llm),
+            "gui": lambda: get_computer_tools(self.llm),
         }
 
         # If not specified, leaf subagent gets filesystem, terminal, and web

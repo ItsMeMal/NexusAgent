@@ -30,6 +30,7 @@ from .ui import (
     render_mcp_table,
     render_plugins_table,
     render_security_card,
+    render_computer_card,
     AgentUIController,
     NexusCommandCompleter,
     render_command_palette,
@@ -239,6 +240,20 @@ async def main_async():
                     continue
                 elif cmd in ("/security", "/safe", "/guard"):
                     render_security_card()
+                    continue
+                elif cmd in ("/computer", "/gui", "/screen"):
+                    parts = text.strip().split()
+                    subaction = parts[1].lower() if len(parts) > 1 else "status"
+                    if subaction in ("screenshot", "shot"):
+                        comp_tool = tools.get("computer")
+                        if comp_tool:
+                            console.print("\n  [dim cyan]⠋ Capturing desktop screenshot...[/dim cyan]")
+                            res = await comp_tool.execute(action="screenshot")
+                            console.print(f"  [bold #00ffd7]📸 Computer Screen:[/bold #00ffd7] {res}\n")
+                        else:
+                            console.print("\n  [red]Computer tool is not available in registry.[/red]\n")
+                    else:
+                        render_computer_card()
                     continue
                 elif cmd in ("/skills", "/skill"):
                     render_skills_table(skill_manager.load_all_skills())

@@ -273,4 +273,24 @@ def render_security_card():
     console.print(f"    [bold #22c55e]✔ Auto-Approve Mode:[/bold #22c55e]                [yellow]{'ENABLED' if auto_approve else 'DISABLED (Safe Mode)'}[/yellow]")
     console.print("    [dim]Tip: Set NEXUS_AUTO_APPROVE=true in .env only if you want fully autonomous unattended execution.[/dim]\n")
 
+def render_computer_card():
+    """Render Computer Use GUI automation status and capabilities."""
+    console.print("\n  [bold #00ffd7]🖥️ Nexus Computer Use (GUI Automation)[/bold #00ffd7]\n")
+    try:
+        import pyautogui
+        w, h = pyautogui.size()
+        x, y = pyautogui.position()
+        console.print(f"    [bold #22c55e]✔ Automation Engine:[/bold #22c55e]   [green]ONLINE[/green] [dim](PyAutoGUI v{pyautogui.__version__})[/dim]")
+        console.print(f"    [bold #22c55e]✔ Screen Resolution:[/bold #22c55e]   [white]{w}x{h}[/white]")
+        console.print(f"    [bold #22c55e]✔ Cursor Position:[/bold #22c55e]     [white]({x}, {y})[/white]")
+        console.print("    [bold #22c55e]✔ FailSafe Abort:[/bold #22c55e]      [green]ENABLED[/green] [dim](Move cursor to screen corner to abort)[/dim]")
+    except Exception as e:
+        console.print(f"    [bold yellow]! Automation Engine:[/bold yellow]   [yellow]HEADLESS / FALLBACK[/yellow] [dim]({e})[/dim]")
+
+    from ..config import config
+    console.print(f"    [bold #22c55e]✔ Screenshots Path:[/bold #22c55e]    [cyan]{config.SCREENSHOTS_DIR}[/cyan]")
+    console.print("    [dim]Supported Actions: screenshot, mouse_move, left_click, right_click, double_click, drag, type, key, hotkey, scroll, app_launch[/dim]")
+    console.print("    [dim]Tip: Ask Nexus e.g. 'Take a screenshot and see what window is open' or 'Click the search bar at [500, 200]'.[/dim]\n")
+
+
 

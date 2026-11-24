@@ -834,12 +834,13 @@
             <span>nexus · runtime active</span>
           </div>
           <div class="term-session-info">
-            <span class="t-dim">19 Tools Online</span>
+            <span class="t-dim">20 Tools Online</span>
           </div>
         </div>
 
         <div class="term-chip-bar">
           <button class="term-chip active" onclick="loadScenario('swarm', event)">Swarm Delegation</button>
+          <button class="term-chip" onclick="loadScenario('computer', event)">Computer Use (GUI)</button>
           <button class="term-chip" onclick="loadScenario('vision', event)">Local Vision OCR</button>
           <button class="term-chip" onclick="loadScenario('memory', event)">SQLite FTS5 Memory</button>
           <button class="term-chip" onclick="loadScenario('guard', event)">Sandbox Guardrail</button>
@@ -894,6 +895,18 @@
         </div>
         <div class="tech-snippet"><span class="t-cyan">view_image</span>("./assets/login-error.png")
 <span class="t-green">✔ Output:</span> Identifies Postgres ConnectionTimeout on port 5432</div>
+      </div>
+
+      <div class="tech-card">
+        <div>
+          <div class="tech-badge">Desktop Control</div>
+          <h3>Native Computer Use & GUI Automation</h3>
+          <p>
+            Autonomous desktop control via <code>computer</code>. Capture desktop screenshots with vision analysis, move cursor, click buttons, drag, scroll, type text, trigger keyboard hotkeys, and launch desktop applications.
+          </p>
+        </div>
+        <div class="tech-snippet"><span class="t-cyan">computer</span>(action="screenshot", prompt="Find search bar")
+<span class="t-green">✔ Screen:</span> Captured 1920x1080 · Found search coordinates at [460, 210]</div>
       </div>
 
       <div class="tech-card">
@@ -991,6 +1004,19 @@ Both specialist subagents concluded successfully:
 1. Token replay defense: JWT validation enforces strict jti nonce expiry.
 2. Test suite: All 14 authentication integration tests passing.`,
 
+      computer: `<span class="t-dim">╭─</span> <span class="t-prompt">nexus</span> <span class="t-dim">· [llama-3.3-70b]</span>
+<span class="t-prompt">╰─❯</span> Open GitHub trending page in browser and capture screenshot
+
+  <span class="t-amber">⚙ computer</span> <span class="t-dim">(action='app_launch', text='https://github.com/trending')</span>
+  <span class="t-green">✔ computer:</span> Launched application / URI: https://github.com/trending (0.12s)
+  <span class="t-amber">⚙ computer</span> <span class="t-dim">(action='screenshot', prompt='Locate the Today date range dropdown')</span>
+  <span class="t-green">✔ computer:</span> Screenshot saved to ~/.nexus/screenshots/screen_01.png (1920x1080)
+  <span class="t-amber">⚙ computer</span> <span class="t-dim">(action='left_click', coordinate=[460, 210])</span>
+  <span class="t-green">✔ computer:</span> Left-clicked at (460, 210) · Trending date range opened
+
+<span class="t-prompt">◈ Nexus</span>
+Desktop action completed: opened trending repositories on GitHub and interacted with the date range selector.`,
+
       vision: `<span class="t-dim">╭─</span> <span class="t-prompt">nexus</span> <span class="t-dim">· [llama-3.3-70b]</span>
 <span class="t-prompt">╰─❯</span> Inspect the error screenshot in ./crash.png and identify the root cause
 
@@ -1050,7 +1076,8 @@ I cannot execute commands that threaten the root filesystem. Specify an isolated
       { cmd: '/models', cat: 'router', desc: 'Browse and filter available models for the currently connected provider.' },
       { cmd: '/resume', cat: 'session', desc: 'Browse historical conversation sessions stored in SQLite and resume context.' },
       { cmd: '/clear', cat: 'session', desc: 'Clear current conversation context buffer and reset memory scratchpad.' },
-      { cmd: '/tools', cat: 'system', desc: 'Inspect all 19 online autonomous tools and their parameter schemas.' },
+      { cmd: '/computer', cat: 'system', desc: 'Inspect GUI automation telemetry (resolution, mouse position) or take screenshot (/computer screenshot).' },
+      { cmd: '/tools', cat: 'system', desc: 'Inspect all 20 online autonomous tools and their parameter schemas.' },
       { cmd: '/memory', cat: 'system', desc: 'Query and review long-term persistent facts stored in SQLite FTS5 index.' },
       { cmd: '/security', cat: 'system', desc: 'Inspect active sandbox policies, command interceptors, and auto-approval modes.' },
       { cmd: '/mcp', cat: 'system', desc: 'Inspect connected Model Context Protocol (MCP) server endpoints (stdio / SSE).' },

@@ -144,7 +144,7 @@ else
 fi
 
 # 6. Install dependencies
-printf "${CYAN}  [..] Installing Nexus dependencies (httpx, rich, prompt_toolkit, ddgs, pydantic)...\n${NC}"
+printf "${CYAN}  [..] Installing Nexus dependencies (httpx, rich, prompt_toolkit, ddgs, pydantic, pyautogui, pillow)...\n${NC}"
 if [ "$USE_VENV" -eq 1 ]; then
     "${VENV_PYTHON}" -m pip install --quiet --upgrade pip 2>/dev/null || true
     "${VENV_PYTHON}" -m pip install --quiet -r "${ENGINE_DIR}/requirements.txt"

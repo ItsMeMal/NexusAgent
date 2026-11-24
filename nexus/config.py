@@ -79,6 +79,12 @@ class Config:
         else CODEBASE_DIR / "nexus_memory.db"
     )
     MEMORY_DB_PATH: Path = Path(os.getenv("NEXUS_MEMORY_DB", str(_default_db)))
+    SCREENSHOTS_DIR: Path = NEXUS_HOME / "screenshots"
     AUTO_APPROVE: bool = os.getenv("NEXUS_AUTO_APPROVE", "false").lower() in ("true", "1", "yes")
+
+try:
+    Config.SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 config = Config()

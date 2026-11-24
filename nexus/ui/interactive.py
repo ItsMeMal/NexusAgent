@@ -26,6 +26,7 @@ SLASH_COMMANDS = [
     ("/mcp", "Inspect connected Model Context Protocol (MCP) servers & tools", "Tools"),
     ("/plugins", "View loaded modular plugins from plugins/ directory", "Plugins"),
     ("/security", "View security guardrails, command sandbox & safety policy", "Security"),
+    ("/computer", "Inspect GUI automation status or capture screenshot (/computer screenshot)", "Computer"),
     ("/skills", "View loaded dynamic skills & learned procedures", "Skills"),
     ("/memory", "Inspect persistent facts stored in SQLite FTS5", "Memory"),
     ("/cron", "View scheduled background jobs and automations", "Background"),

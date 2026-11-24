@@ -9,6 +9,7 @@ from .web import get_web_tools
 from .cron_tools import get_cron_tools
 from .delegate import get_orchestration_tools
 from .vision import get_vision_tools
+from .computer import get_computer_tools
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
 from ..cron import CronScheduler
@@ -58,6 +59,10 @@ def create_default_registry(
     if llm_client:
         for t in get_vision_tools(llm_client, root_dir):
             registry.register(t)
+
+    # 9. Computer Use Tools (GUI automation: screenshot, mouse, keyboard, hotkey, scroll, app_launch)
+    for t in get_computer_tools(llm_client):
+        registry.register(t)
         
     return registry
 

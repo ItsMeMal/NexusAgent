@@ -54,6 +54,12 @@ async def run_tests():
     assert "schedule_task" in tool_names, "schedule_task tool missing"
     assert "search_files" in tool_names, "search_files tool missing"
     assert "view_image" in tool_names, "view_image tool missing"
+    assert "computer" in tool_names, "computer tool missing"
+
+    # Test Computer Use tool execution
+    comp_tool = registry.get("computer")
+    comp_res = await comp_tool.execute(action="cursor_position")
+    print(f"   [OK] Computer tool telemetry: {comp_res}")
 
     print("5. Testing Subagent Scoped Registry Creation...")
     scoped = subagent_mgr.build_scoped_registry(["filesystem", "web"])
