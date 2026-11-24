@@ -180,7 +180,28 @@ cp -f "${LAUNCHER}" "${BIN_DIR}/nexuss"
 chmod +x "${BIN_DIR}/nexuss"
 printf "${GREEN}  [OK] Created CLI launcher in ${BIN_DIR}\n${NC}"
 
-# 9. Configure shell profile for PATH
+# 9. Link directly into system PATH locations so 'nexus' works INSTANTLY in any open shell
+LINKED_SYSTEM=0
+for sys_dir in /usr/local/bin /usr/bin; do
+    if [ -d "$sys_dir" ]; then
+        if [ -w "$sys_dir" ] || [ "$(id -u)" -eq 0 ]; then
+            ln -sf "${LAUNCHER}" "${sys_dir}/nexus" 2>/dev/null && \
+            ln -sf "${LAUNCHER}" "${sys_dir}/nexuss" 2>/dev/null && \
+            LINKED_SYSTEM=1
+            printf "${GREEN}  [OK] Linked 'nexus' to ${sys_dir} (Command immediately available)\n${NC}"
+            break
+        elif command -v sudo >/dev/null 2>&1; then
+            if sudo -n ln -sf "${LAUNCHER}" "${sys_dir}/nexus" 2>/dev/null; then
+                sudo ln -sf "${LAUNCHER}" "${sys_dir}/nexuss" 2>/dev/null || true
+                LINKED_SYSTEM=1
+                printf "${GREEN}  [OK] Linked 'nexus' to ${sys_dir} via sudo (Command immediately available)\n${NC}"
+                break
+            fi
+        fi
+    fi
+done
+
+# 10. Configure shell profile for permanent PATH fallback
 SHELL_CONFIGS=()
 [ -f "${HOME}/.bashrc" ] && SHELL_CONFIGS+=("${HOME}/.bashrc")
 [ -f "${HOME}/.zshrc" ] && SHELL_CONFIGS+=("${HOME}/.zshrc")
@@ -210,6 +231,5 @@ printf "${WHITE}  🚀 Getting Started:\n${NC}"
 printf "${GRAY}     1. Configure your API key:\n${NC}"
 printf "${CYAN}        nano ${GLOBAL_ENV}\n${NC}"
 printf "${GRAY}     2. Launch Nexus from any folder:\n${NC}"
-printf "${YELLOW}        export PATH=\"${BIN_DIR}:\$PATH\"\n"
-printf "        nexus\n${NC}"
+printf "${YELLOW}        nexus\n${NC}"
 echo ""

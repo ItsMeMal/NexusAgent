@@ -140,6 +140,25 @@ if ($env:Path -notlike "*$binDir*") {
     $env:Path = "$binDir;$env:Path"
 }
 
+# 10. Also link to standard pre-existing PATH directories for immediate command resolution
+$standardDirs = @(
+    (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps"),
+    (Join-Path (Split-Path (Get-Command $pythonCmd).Source) "Scripts")
+)
+
+foreach ($targetDir in $standardDirs) {
+    if (Test-Path $targetDir) {
+        try {
+            Copy-Item $launcherCmd (Join-Path $targetDir "nexus.cmd") -Force -ErrorAction SilentlyContinue
+            Copy-Item $launcherPs1 (Join-Path $targetDir "nexus.ps1") -Force -ErrorAction SilentlyContinue
+            Copy-Item (Join-Path $binDir "nexuss.cmd") (Join-Path $targetDir "nexuss.cmd") -Force -ErrorAction SilentlyContinue
+            Copy-Item (Join-Path $binDir "nexuss.ps1") (Join-Path $targetDir "nexuss.ps1") -Force -ErrorAction SilentlyContinue
+            Write-Host "  [OK] Linked 'nexus' to $targetDir (Immediate global access ready)" -ForegroundColor Green
+            break
+        } catch {}
+    }
+}
+
 Write-Host ""
 Write-Host "  ────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host "  ✨ Nexus Agent Orchestrator has been successfully installed!" -ForegroundColor Green
