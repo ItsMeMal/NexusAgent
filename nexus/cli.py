@@ -1,0 +1,308 @@
+import sys
+import os
+import asyncio
+import argparse
+from pathlib import Path
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.styles import Style
+
+from .config import config
+from .memory import SQLiteMemory
+from .skills import SkillManager
+from .cron import CronScheduler
+from .orchestrator import SubagentManager
+from .providers.manager import ProviderManager
+from .mcp import MCPManager
+from .plugins import PluginManager
+from .security import SecurityGuard
+from .tools import create_default_registry
+from .core import LLMClient, NexusAgent
+from .ui import (
+    render_banner,
+    render_memories_table,
+    render_skills_table,
+    render_cron_table,
+    render_tools_table,
+    render_status_card,
+    render_config_table,
+    render_sessions_table,
+    render_mcp_table,
+    render_plugins_table,
+    render_security_card,
+    AgentUIController,
+    NexusCommandCompleter,
+    render_command_palette,
+    interactive_select_provider,
+    interactive_select_model,
+    interactive_resume_session,
+    console
+)
+
+pt_style = Style.from_dict({
+    'box-top': '#475569',
+    'app-name': '#38bdf8 bold',
+    'dim': '#64748b',
+    'model-badge': '#22c55e bold',
+    'box-bottom': '#00ffd7 bold',
+    'completion-menu.completion': 'bg:#1e1e2e #cdd6f4',
+    'completion-menu.completion.current': 'bg:#00d7af #11111b bold',
+    'completion-menu.meta.completion': 'bg:#181825 #94a3b8',
+    'completion-menu.meta.completion.current': 'bg:#00d7af #11111b',
+})
+
+async def main_async():
+    parser = argparse.ArgumentParser(description="Nexus Agent Orchestrator - Autonomous Multi-Agent AI CLI")
+    parser.add_argument("-p", "--prompt", type=str, help="Single-shot execution prompt", default=None)
+    parser.add_argument("-m", "--model", type=str, help="Model override", default=None)
+    parser.add_argument("-s", "--session", type=str, help="Session ID to resume or use", default=None)
+    args = parser.parse_args()
+
+    # Determine .env path (workspace first, fallback to codebase root)
+    env_path = (
+        config.WORKSPACE_DIR / ".env"
+        if (config.WORKSPACE_DIR / ".env").exists()
+        else config.CODEBASE_DIR / ".env"
+    )
+
+    # Initialize subsystems
+    memory = SQLiteMemory(config.MEMORY_DB_PATH)
+    skill_manager = SkillManager(config.SKILLS_DIR)
+    cron_scheduler = CronScheduler(config.MEMORY_DB_PATH)
+    mcp_manager = MCPManager(workspace_dir=config.WORKSPACE_DIR, codebase_dir=config.CODEBASE_DIR)
+    plugin_manager = PluginManager(workspace_dir=config.WORKSPACE_DIR, codebase_dir=config.CODEBASE_DIR)
+
+    model_name = args.model or config.MODEL
+    llm = LLMClient(
+        api_key=config.API_KEY,
+        api_base=config.API_BASE,
+        model=model_name,
+        temperature=config.TEMPERATURE
+    )
+
+    # Dedicated UI controller for collision-free live streaming & spinners
+    ui_controller = AgentUIController(model_name=llm.model, console_instance=console)
+
+    # Subagent orchestrator manager
+    subagent_manager = SubagentManager(
+        llm=llm,
+        memory=memory,
+        skill_manager=skill_manager,
+        root_dir=config.ROOT_DIR,
+        on_subagent_event=ui_controller.on_subagent_event
+    )
+
+    current_session = [args.session or os.urandom(4).hex()]
+
+    # Wire all tools including Subagent Delegation & Web & Cron & Vision
+    registry = create_default_registry(
+        root_dir=config.ROOT_DIR,
+        memory=memory,
+        skill_manager=skill_manager,
+        cron_scheduler=cron_scheduler,
+        subagent_manager=subagent_manager,
+        session_id_getter=lambda: current_session[0],
+        llm_client=llm
+    )
+    mcp_manager.register_mcp_tools(registry)
+    plugin_manager.register_plugin_tools(registry)
+
+    agent = NexusAgent(
+        llm_client=llm,
+        memory=memory,
+        skill_manager=skill_manager,
+        registry=registry,
+        soul_path=config.SOUL_PATH,
+        max_steps=config.MAX_STEPS,
+        session_id=current_session[0],
+        on_thought=ui_controller.on_thought,
+        on_token=ui_controller.on_token,
+        on_tool_call=ui_controller.on_tool_call,
+        on_tool_result=ui_controller.on_tool_result
+    )
+
+    # If single-shot prompt provided
+    if args.prompt:
+        console.print(f"[bold #38bdf8]Running task:[/bold #38bdf8] {args.prompt}")
+        ui_controller.start_thinking("Executing task...")
+        try:
+            await agent.run(args.prompt)
+        finally:
+            ui_controller.finish_stream()
+        return
+
+    # Interactive REPL mode
+    skills = skill_manager.load_all_skills()
+    tools = registry.get_all()
+    active_provider = ProviderManager.detect_active_provider(config.API_BASE)
+
+    render_banner(
+        model_name=llm.model,
+        session_id=agent.session_id,
+        skills_count=len(skills),
+        tools_count=len(tools),
+        provider_name=active_provider.name,
+        animate=True
+    )
+
+    completer = NexusCommandCompleter()
+    session = PromptSession(
+        history=InMemoryHistory(),
+        completer=completer,
+        complete_while_typing=True
+    )
+
+    while True:
+        try:
+            model_short = llm.model.split("/")[-1] if "/" in llm.model else llm.model
+            prompt_fragments = [
+                ('class:box-top', '╭─ '),
+                ('class:app-name', 'nexus '),
+                ('class:dim', '· '),
+                ('class:model-badge', f'[{model_short}]'),
+                ('class:box-bottom', '\n╰─❯ '),
+            ]
+
+            user_input = await session.prompt_async(prompt_fragments, style=pt_style)
+            text = user_input.strip()
+            if not text:
+                continue
+
+            if text.lower() in ("exit", "quit", "q"):
+                console.print("\n  [dim cyan]⠋ Preserving orchestrator session & persistent memory (FTS5)...[/dim cyan]")
+                await asyncio.sleep(0.25)
+                console.print("  [bold #00ffd7]✔ Session preserved.[/bold #00ffd7] [dim]Nexus Orchestrator offline. Goodbye![/dim]\n")
+                break
+
+            # Handle slash commands & command palette
+            if text == "/" or text.lower() in ("/help", "/?", "/commands", "/command"):
+                render_command_palette()
+                continue
+
+            if text.startswith("/"):
+                cmd = text.lower().split()[0]
+                if cmd in ("/models", "/model"):
+                    await interactive_select_model(session, llm, env_path)
+                    ui_controller.update_model(llm.model)
+                    continue
+                elif cmd in ("/provider", "/providers", "/connect"):
+                    await interactive_select_provider(session, llm, env_path)
+                    ui_controller.update_model(llm.model)
+                    continue
+                elif cmd in ("/tools", "/tool"):
+                    render_tools_table(tools)
+                    continue
+                elif cmd in ("/status", "/info"):
+                    active_prov = ProviderManager.detect_active_provider(config.API_BASE)
+                    all_mems = memory.get_all_memories(limit=100)
+                    cron_tasks = cron_scheduler.list_tasks()
+                    render_status_card(
+                        model_name=llm.model,
+                        provider_name=active_prov.name,
+                        session_id=agent.session_id,
+                        tools_count=len(tools),
+                        skills_count=len(skills),
+                        mem_count=len(all_mems),
+                        cron_count=len(cron_tasks)
+                    )
+                    continue
+                elif cmd in ("/config", "/env", "/settings"):
+                    cfg_dict = {
+                        "Active Model": llm.model,
+                        "Inference API Base": config.API_BASE,
+                        "API Key": config.API_KEY,
+                        "Sampling Temperature": config.TEMPERATURE,
+                        "Max ReAct Loop Steps": config.MAX_STEPS,
+                        "Working Directory": str(config.ROOT_DIR),
+                        "SQLite Memory DB": str(config.MEMORY_DB_PATH),
+                        "Learned Skills Path": str(config.SKILLS_DIR),
+                        "Persona SOUL Path": str(config.SOUL_PATH),
+                    }
+                    render_config_table(cfg_dict)
+                    continue
+                elif cmd in ("/sessions", "/history"):
+                    sess_list = memory.list_sessions(limit=15)
+                    render_sessions_table(sess_list, agent.session_id)
+                    continue
+                elif cmd in ("/resume", "/restore"):
+                    parts = text.split()
+                    if len(parts) > 1:
+                        target_id = parts[1].strip()
+                        current_session[0] = target_id
+                        agent.session_id = target_id
+                        history = memory.get_session_history(target_id)
+                        console.print(f"\n  [bold #22c55e]✔ Resumed session:[/bold #22c55e] [bold #00ffd7]{target_id}[/bold #00ffd7] [dim]({len(history)} messages loaded)[/dim]\n")
+                    else:
+                        await interactive_resume_session(memory, current_session, agent)
+                    continue
+                elif cmd in ("/mcp", "/servers"):
+                    render_mcp_table(mcp_manager.list_servers())
+                    continue
+                elif cmd in ("/plugins", "/plugin"):
+                    render_plugins_table(plugin_manager.list_plugins())
+                    continue
+                elif cmd in ("/security", "/safe", "/guard"):
+                    render_security_card()
+                    continue
+                elif cmd in ("/skills", "/skill"):
+                    render_skills_table(skill_manager.load_all_skills())
+                    continue
+                elif cmd in ("/memory", "/mem"):
+                    render_memories_table(memory.get_all_memories(limit=25))
+                    continue
+                elif cmd in ("/cron", "/tasks"):
+                    render_cron_table(cron_scheduler.list_tasks())
+                    continue
+                elif cmd in ("/clear", "/cls"):
+                    os.system("cls" if os.name == "nt" else "clear")
+                    active_provider = ProviderManager.detect_active_provider(config.API_BASE)
+                    render_banner(
+                        model_name=llm.model,
+                        session_id=agent.session_id,
+                        skills_count=len(skills),
+                        tools_count=len(tools),
+                        provider_name=active_provider.name,
+                        animate=True
+                    )
+                    continue
+                elif cmd.startswith("/new"):
+                    new_id = os.urandom(4).hex()
+                    current_session[0] = new_id
+                    agent.session_id = new_id
+                    console.print("\n  [dim cyan]⠋ Initializing clean context session...[/dim cyan]")
+                    await asyncio.sleep(0.2)
+                    console.print(f"  [bold #22c55e]✨ Fresh session activated:[/bold #22c55e] [bold #00ffd7]{new_id}[/bold #00ffd7] [dim](memory isolated)[/dim]\n")
+                    continue
+                else:
+                    console.print(f"  [red]Unknown command:[/red] {text}. Type [bold #00ffd7]/[/bold #00ffd7] for command palette.\n")
+                    continue
+
+            # Check if API key is configured
+            if not config.API_KEY or config.API_KEY == "your_api_key_here":
+                active_prov = ProviderManager.detect_active_provider(config.API_BASE)
+                if not active_prov.is_local:
+                    console.print(
+                        f"\n  [bold yellow]Notice:[/bold yellow] No API Key set for [bold]{active_prov.name}[/bold].\n"
+                        "  Type [bold #00ffd7]/provider[/bold #00ffd7] to connect your API key, or edit [bold].env[/bold].\n"
+                    )
+
+            # Smooth ReAct execution with live streaming and zero collision
+            ui_controller.start_thinking()
+            try:
+                await agent.run(text)
+            finally:
+                ui_controller.finish_stream()
+
+        except (KeyboardInterrupt, EOFError):
+            ui_controller.stop_status()
+            console.print("\n  [yellow]Session interrupted. Goodbye![/yellow]\n")
+            break
+        except Exception as e:
+            ui_controller.stop_status()
+            console.print(f"\n  [bold red]Error:[/bold red] {str(e)}\n")
+
+def main():
+    asyncio.run(main_async())
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus-agent-cli"
+version = "0.2.0"
+description = "Universal Autonomous Multi-Agent AI Orchestrator CLI with Persistent Memory, Vision, MCP, and Dynamic Skills"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.28.0",
+    "rich>=13.7.0",
+    "prompt_toolkit>=3.0.40",
+    "pydantic>=2.7.0",
+    "python-dotenv>=1.0.0",
+    "ddgs>=9.0.0"
+]
+
+[project.scripts]
+nexus-agent = "nexus.cli:main"

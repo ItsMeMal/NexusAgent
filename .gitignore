@@ -1,0 +1,27 @@
+# Environment & API keys
+.env
+.env.*
+!.env.example
+
+# Databases & local state
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+nexus_memory.db*
+test_*.db
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Distribution & virtual environments
+dist/
+build/
+*.egg-info/
+venv/
+.venv/
+env/
