@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  ⚡ Nexus Agent Orchestrator - One-Line Linux & macOS Installer
+#  ⚡ Nexus Agent Orchestrator - Universal Linux & macOS Installer
 #  Usage: curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh | bash
 # ==============================================================================
 
@@ -37,9 +37,9 @@ printf "${GRAY}  Target OS: ${PLATFORM} · Home: ${HOME}/.nexus\n"
 printf "  ────────────────────────────────────────────────────────────\n${NC}"
 echo ""
 
-# 1. Verify Python 3.10+
+# 1. Locate suitable Python 3.10+
 PYTHON_BIN=""
-for cmd in python3 python python3.12 python3.11 python3.10; do
+for cmd in python3 python python3.13 python3.12 python3.11 python3.10; do
     if command -v "$cmd" >/dev/null 2>&1; then
         PY_VER="$($cmd -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)"
         if [ -n "$PY_VER" ]; then
@@ -59,7 +59,7 @@ if [ -z "$PYTHON_BIN" ]; then
     if [ "$PLATFORM" = "macOS" ]; then
         printf "        brew install python\n"
     else
-        printf "        sudo apt update && sudo apt install -y python3 python3-venv python3-pip git\n"
+        printf "        sudo apt update && sudo apt install -y python3 python3-venv python3-pip git curl\n"
     fi
     printf "${NC}\n"
     exit 1
@@ -74,7 +74,7 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 printf "${GREEN}  [OK] Found Git\n${NC}"
 
-# 3. Setup ~/.nexus directories
+# 3. Setup ~/.nexus home directories
 NEXUS_HOME="${HOME}/.nexus"
 ENGINE_DIR="${NEXUS_HOME}/engine"
 BIN_DIR="${NEXUS_HOME}/bin"
@@ -96,17 +96,57 @@ else
 fi
 printf "${GREEN}  [OK] Nexus Engine ready at ${ENGINE_DIR}\n${NC}"
 
-# 5. Create or verify virtual environment
+# 5. Create or verify virtual environment with auto-recovery
 VENV_PYTHON="${VENV_DIR}/bin/python"
-if [ ! -f "${VENV_PYTHON}" ]; then
+USE_VENV=0
+
+# Check if venv already exists and is healthy
+IS_HEALTHY_VENV=0
+if [ -f "${VENV_PYTHON}" ] && "${VENV_PYTHON}" -m pip --version >/dev/null 2>&1; then
+    IS_HEALTHY_VENV=1
+fi
+
+if [ "$IS_HEALTHY_VENV" -eq 0 ]; then
     printf "${CYAN}  [..] Creating isolated virtual environment...\n${NC}"
-    "$PYTHON_BIN" -m venv "${VENV_DIR}"
+    rm -rf "${VENV_DIR}"
+    
+    # Try standard venv creation
+    if ! "$PYTHON_BIN" -m venv "${VENV_DIR}" 2>/dev/null; then
+        # Debian/Ubuntu often requires python3-venv; fallback to --without-pip + bootstrap
+        "$PYTHON_BIN" -m venv --without-pip "${VENV_DIR}" 2>/dev/null || true
+    fi
+
+    # If python exists in venv, check/bootstrap pip
+    if [ -f "${VENV_PYTHON}" ]; then
+        if ! "${VENV_PYTHON}" -m pip --version >/dev/null 2>&1; then
+            printf "${CYAN}  [..] Bootstrapping pip into virtual environment...\n${NC}"
+            "${VENV_PYTHON}" -m ensurepip --default-pip 2>/dev/null || \
+            curl -fsSL https://bootstrap.pypa.io/get-pip.py 2>/dev/null | "${VENV_PYTHON}" --quiet 2>/dev/null || true
+        fi
+    fi
+fi
+
+# Determine final execution runtime (venv vs user-level fallback)
+if [ -f "${VENV_PYTHON}" ] && "${VENV_PYTHON}" -m pip --version >/dev/null 2>&1; then
+    USE_VENV=1
+    RUN_PYTHON="${VENV_PYTHON}"
+    printf "${GREEN}  [OK] Virtual environment active at ${VENV_DIR}\n${NC}"
+else
+    USE_VENV=0
+    RUN_PYTHON="$PYTHON_BIN"
+    printf "${YELLOW}  [!] Virtual environment pip unavailable. Using user-level Python packages.\n${NC}"
 fi
 
 # 6. Install dependencies
 printf "${CYAN}  [..] Installing Nexus dependencies (httpx, rich, prompt_toolkit, ddgs, pydantic)...\n${NC}"
-"${VENV_DIR}/bin/pip" install --quiet --upgrade pip
-"${VENV_DIR}/bin/pip" install --quiet -r "${ENGINE_DIR}/requirements.txt"
+if [ "$USE_VENV" -eq 1 ]; then
+    "${VENV_PYTHON}" -m pip install --quiet --upgrade pip 2>/dev/null || true
+    "${VENV_PYTHON}" -m pip install --quiet -r "${ENGINE_DIR}/requirements.txt"
+else
+    # Handles Debian/Ubuntu PEP 668 externally-managed environment
+    "$PYTHON_BIN" -m pip install --user --quiet --break-system-packages -r "${ENGINE_DIR}/requirements.txt" 2>/dev/null || \
+    "$PYTHON_BIN" -m pip install --user --quiet -r "${ENGINE_DIR}/requirements.txt"
+fi
 printf "${GREEN}  [OK] Dependencies installed successfully.\n${NC}"
 
 # 7. Setup default ~/.nexus/.env if not present
@@ -131,7 +171,7 @@ LAUNCHER="${BIN_DIR}/nexus"
 cat <<EOF > "${LAUNCHER}"
 #!/usr/bin/env bash
 export PYTHONPATH="${ENGINE_DIR}:\${PYTHONPATH}"
-exec "${VENV_DIR}/bin/python" -m nexus.cli "\$@"
+exec "${RUN_PYTHON}" -m nexus.cli "\$@"
 EOF
 chmod +x "${LAUNCHER}"
 
