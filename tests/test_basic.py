@@ -184,6 +184,89 @@ async def run_tests():
         await mcp_mgr.stop_all()
     print("   [OK] MCP stdio handshake, tools/list, tools/call, and cleanup verified.")
 
+    print("9. Testing Remote HTTP MCP Transport + Config Add/Remove...")
+    from nexus.mcp import MCPServerConfig
+
+    async def handle_remote_mcp(reader, writer):
+        req_line = await reader.readline()
+        headers = {}
+        while True:
+            hline = await reader.readline()
+            if hline in (b"\r\n", b"\n", b""):
+                break
+            k, _, v = hline.decode().partition(":")
+            headers[k.strip().lower()] = v.strip()
+        clen = int(headers.get("content-length", "0"))
+        body = await reader.readexactly(clen) if clen > 0 else b"{}"
+        rpc = json.loads(body.decode("utf-8"))
+        method = rpc.get("method")
+        mid = rpc.get("id")
+        if method == "notifications/initialized":
+            resp_bytes = b""
+            status = "202 Accepted"
+            extra_hdr = ""
+        else:
+            if method == "initialize":
+                res_obj = {"jsonrpc": "2.0", "id": mid, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}}}
+                extra_hdr = "Mcp-Session-Id: sess-abc-123\r\n"
+            elif method == "tools/list":
+                assert headers.get("mcp-session-id") == "sess-abc-123", f"Missing session header: {headers}"
+                assert headers.get("authorization") == "Bearer test-pat-xyz", f"Missing auth header: {headers}"
+                res_obj = {"jsonrpc": "2.0", "id": mid, "result": {"tools": [{"name": "repo_info", "description": "Remote repo info", "inputSchema": {"type": "object", "properties": {"repo": {"type": "string"}}}}]}}
+                extra_hdr = ""
+            elif method == "tools/call":
+                repo = rpc.get("params", {}).get("arguments", {}).get("repo", "")
+                res_obj = {"jsonrpc": "2.0", "id": mid, "result": {"content": [{"type": "text", "text": f"stars:999:{repo}"}]}}
+                extra_hdr = ""
+            else:
+                res_obj = {"jsonrpc": "2.0", "id": mid, "result": {}}
+                extra_hdr = ""
+            resp_bytes = json.dumps(res_obj).encode("utf-8")
+            status = "200 OK"
+        raw_http = (
+            f"HTTP/1.1 {status}\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(resp_bytes)}\r\n"
+            f"{extra_hdr}"
+            f"Connection: close\r\n\r\n"
+        ).encode("utf-8") + resp_bytes
+        writer.write(raw_http)
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(handle_remote_mcp, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir2:
+            tmp_p2 = Path(tmpdir2)
+            rmgr = MCPManager(workspace_dir=tmp_p2, codebase_dir=tmp_p2)
+            os.environ["NEXUS_TEST_MCP_TOKEN"] = "test-pat-xyz"
+            rcfg = MCPServerConfig(
+                name="ghremote",
+                url=f"http://127.0.0.1:{port}/mcp/",
+                headers={"Authorization": "Bearer ${NEXUS_TEST_MCP_TOKEN}"},
+                transport="http",
+            )
+            saved_file = rmgr.add_server_to_config(rcfg, scope="workspace")
+            assert saved_file.exists()
+            rstarted = await rmgr.start_all()
+            assert "ghremote" in rstarted and "repo_info" in rstarted["ghremote"], f"Remote start failed: {rstarted}, errors={rmgr._errors}"
+            rmgr.register_mcp_tools(registry)
+            rtool = registry.get("mcp_ghremote_repo_info")
+            assert rtool is not None
+            rout = await rtool.execute(repo="ItsMeMal/NexusAgent")
+            assert rout == "stars:999:ItsMeMal/NexusAgent", f"Unexpected remote output: {rout}"
+            rstatus = rmgr.get_status()
+            assert rstatus[0]["transport"] == "http" and rstatus[0]["status"] == "running"
+            removed = await rmgr.remove_server("ghremote", registry)
+            assert removed and registry.get("mcp_ghremote_repo_info") is None
+            await rmgr.stop_all()
+    finally:
+        server.close()
+        await server.wait_closed()
+        os.environ.pop("NEXUS_TEST_MCP_TOKEN", None)
+    print("   [OK] Remote HTTP MCP transport, env header expansion, session tracking, and add/remove verified.")
+
     # Cleanup
     import gc
     gc.collect()

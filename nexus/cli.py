@@ -43,6 +43,7 @@ from .ui import (
     interactive_select_model,
     interactive_resume_session,
     interactive_gateway_setup,
+    interactive_mcp_add,
     console
 )
 
@@ -309,11 +310,24 @@ async def main_async():
                     continue
                 elif cmd in ("/mcp", "/servers"):
                     parts = text.strip().split()
-                    if len(parts) > 1 and parts[1].lower() == "reload":
+                    sub = parts[1].lower() if len(parts) > 1 else ""
+                    if sub == "add":
+                        await interactive_mcp_add(session, mcp_manager, registry)
+                        tools = registry.get_all()
+                    elif sub in ("remove", "rm", "del") and len(parts) > 2:
+                        target_name = parts[2].strip()
+                        if await mcp_manager.remove_server(target_name, registry):
+                            tools = registry.get_all()
+                            console.print(f"\n  [bold #22c55e]✔ Removed MCP server '{target_name}'.[/bold #22c55e]\n")
+                        else:
+                            console.print(f"\n  [yellow]MCP server '{target_name}' not found.[/yellow]\n")
+                    elif sub == "reload":
                         console.print("\n  [dim cyan]⠋ Reloading MCP servers...[/dim cyan]")
                         await mcp_manager.reload(registry)
                         tools = registry.get_all()
-                    render_mcp_table(mcp_manager.get_status())
+                        render_mcp_table(mcp_manager.get_status())
+                    else:
+                        render_mcp_table(mcp_manager.get_status())
                     continue
                 elif cmd in ("/plugins", "/plugin"):
                     render_plugins_table(plugin_manager.list_plugins())

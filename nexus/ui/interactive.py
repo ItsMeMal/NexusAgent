@@ -23,7 +23,7 @@ SLASH_COMMANDS = [
     ("/connect", "Alias for /provider", "Provider"),
     ("/tools", "Inspect all active autonomous tools and their capabilities", "Tools"),
     ("/status", "Display agent system diagnostics and active telemetry", "Status"),
-    ("/mcp", "Inspect connected Model Context Protocol (MCP) servers & tools", "Tools"),
+    ("/mcp", "Manage MCP servers — status, /mcp add, /mcp reload, /mcp remove <name>", "Tools"),
     ("/plugins", "View loaded modular plugins from plugins/ directory", "Plugins"),
     ("/gateway", "Configure or run Telegram, Discord & WhatsApp gateways (/gateway setup|start|stop)", "Gateway"),
     ("/bot", "Alias for /gateway", "Gateway"),
@@ -739,5 +739,236 @@ async def interactive_gateway_setup(session: PromptSession, env_path: Path) -> O
         console.print("\n  [dim]No changes made.[/dim]\n")
 
     return choice
+
+
+async def _run_arrow_key_mcp_picker() -> Optional[str]:
+    """Arrow-key selector for popular MCP server presets & custom stdio/remote transports."""
+    presets = [
+        ("github-remote", "GitHub (Remote HTTP)", "Official Copilot MCP URL + Bearer PAT (no Node/Docker needed)"),
+        ("github-local", "GitHub (Local npx)", "npx @modelcontextprotocol/server-github + GitHub PAT"),
+        ("filesystem", "Filesystem (npx)", "Read/write/search files in an allowed local directory"),
+        ("playwright", "Playwright (npx)", "Browser automation & DOM inspection via Playwright MCP"),
+        ("context7", "Context7 Docs (npx)", "Up-to-date library/framework docs lookup"),
+        ("fetch", "Web Fetch (uvx)", "Fetch & convert web pages to Markdown via mcp-server-fetch"),
+        ("custom-remote", "Custom Remote (HTTP/SSE)", "Connect any remote MCP URL (Streamable HTTP or SSE)"),
+        ("custom-stdio", "Custom Local (stdio)", "Configure any local command + args + env vars"),
+    ]
+    selected_idx = [0]
+    result = [None]
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _(event):
+        if selected_idx[0] > 0:
+            selected_idx[0] -= 1
+
+    @kb.add("down")
+    def _(event):
+        if selected_idx[0] < len(presets) - 1:
+            selected_idx[0] += 1
+
+    @kb.add("enter")
+    def _(event):
+        result[0] = presets[selected_idx[0]][0]
+        event.app.exit()
+
+    @kb.add("escape")
+    @kb.add("c-c")
+    def _(event):
+        result[0] = None
+        event.app.exit()
+
+    def get_header():
+        return [
+            ("class:title", "Add Model Context Protocol (MCP) Server:"),
+            ("class:dim", "  (Stdio + Remote HTTP/SSE)\n\n"),
+        ]
+
+    def get_content():
+        lines = [
+            ("class:colhead", f"   {'Preset / Transport':<24} {'Description'}\n"),
+            ("class:dim", f"   {'─'*24} {'─'*58}\n"),
+        ]
+        for i, (pid, pname, pdesc) in enumerate(presets):
+            if i == selected_idx[0]:
+                prefix = " ❯ "
+                line_style = "class:cursor"
+            else:
+                prefix = "   "
+                line_style = ""
+            lines.append((line_style, f"{prefix}{pname:<22} {pdesc}\n"))
+
+        lines.append(("class:dim", "\n   [↑/↓ move • Enter select • Esc cancel]\n"))
+        return lines
+
+    layout = Layout(HSplit([
+        Window(FormattedTextControl(get_header), height=2),
+        Window(FormattedTextControl(get_content), height=13),
+    ]))
+
+    style = Style.from_dict({
+        "title": "bold #38bdf8",
+        "cursor": "bold #11111b bg:#00ffd7",
+        "colhead": "bold #94a3b8",
+        "dim": "#64748b",
+    })
+
+    app = Application(layout=layout, key_bindings=kb, style=style, full_screen=False, erase_when_done=True)
+    await app.run_async()
+    return result[0]
+
+
+async def interactive_mcp_add(session: PromptSession, mcp_manager, registry) -> bool:
+    """Interactive wizard to add a stdio or remote HTTP/SSE MCP server and connect immediately."""
+    import shlex
+    from ..mcp import MCPServerConfig
+
+    try:
+        choice = await _run_arrow_key_mcp_picker()
+    except Exception:
+        choice = None
+
+    if not choice:
+        console.print("  [dim]MCP setup cancelled.[/dim]\n")
+        return False
+
+    cfg: Optional[MCPServerConfig] = None
+
+    if choice == "github-remote":
+        console.print("\n  [bold #00ffd7]🐙 GitHub Remote MCP Setup[/bold #00ffd7]")
+        console.print("  [dim]Endpoint: https://api.githubcopilot.com/mcp/[/dim]")
+        name = (await session.prompt_async("  Server name [github] ❯ ", is_password=False)).strip() or "github"
+        url = (await session.prompt_async("  MCP URL [https://api.githubcopilot.com/mcp/] ❯ ", is_password=False)).strip() or "https://api.githubcopilot.com/mcp/"
+        try:
+            pat = (await session.prompt_async("  GitHub PAT Token (ghp_.../github_pat_..., optional if public) ❯ ", is_password=True)).strip()
+        finally:
+            session.is_password = False
+        headers = {"Authorization": f"Bearer {pat}"} if pat else {}
+        cfg = MCPServerConfig(name=name, url=url, headers=headers, transport="http")
+
+    elif choice == "github-local":
+        console.print("\n  [bold #00ffd7]🐙 GitHub Local MCP (npx) Setup[/bold #00ffd7]")
+        name = (await session.prompt_async("  Server name [github] ❯ ", is_password=False)).strip() or "github"
+        try:
+            pat = (await session.prompt_async("  GITHUB_PERSONAL_ACCESS_TOKEN ❯ ", is_password=True)).strip()
+        finally:
+            session.is_password = False
+        env = {"GITHUB_PERSONAL_ACCESS_TOKEN": pat} if pat else {}
+        cfg = MCPServerConfig(
+            name=name,
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-github"],
+            env=env,
+            transport="stdio",
+        )
+
+    elif choice == "filesystem":
+        console.print("\n  [bold #00ffd7]📁 Filesystem MCP Setup[/bold #00ffd7]")
+        name = (await session.prompt_async("  Server name [filesystem] ❯ ", is_password=False)).strip() or "filesystem"
+        default_dir = str(config.WORKSPACE_DIR)
+        root_dir = (await session.prompt_async(f"  Allowed directory [{default_dir}] ❯ ", is_password=False)).strip() or default_dir
+        cfg = MCPServerConfig(
+            name=name,
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-filesystem", root_dir],
+            transport="stdio",
+        )
+
+    elif choice == "playwright":
+        console.print("\n  [bold #00ffd7]🎭 Playwright Browser MCP Setup[/bold #00ffd7]")
+        name = (await session.prompt_async("  Server name [playwright] ❯ ", is_password=False)).strip() or "playwright"
+        cfg = MCPServerConfig(
+            name=name,
+            command="npx",
+            args=["-y", "@playwright/mcp@latest"],
+            transport="stdio",
+        )
+
+    elif choice == "context7":
+        console.print("\n  [bold #00ffd7]📚 Context7 Docs MCP Setup[/bold #00ffd7]")
+        name = (await session.prompt_async("  Server name [context7] ❯ ", is_password=False)).strip() or "context7"
+        cfg = MCPServerConfig(
+            name=name,
+            command="npx",
+            args=["-y", "@upstash/context7-mcp"],
+            transport="stdio",
+        )
+
+    elif choice == "fetch":
+        console.print("\n  [bold #00ffd7]🌐 Web Fetch MCP Setup[/bold #00ffd7]")
+        name = (await session.prompt_async("  Server name [fetch] ❯ ", is_password=False)).strip() or "fetch"
+        cfg = MCPServerConfig(
+            name=name,
+            command="uvx",
+            args=["mcp-server-fetch"],
+            transport="stdio",
+        )
+
+    elif choice == "custom-remote":
+        console.print("\n  [bold #00ffd7]🌐 Custom Remote MCP (Streamable HTTP / SSE)[/bold #00ffd7]")
+        name = (await session.prompt_async("  Server name (e.g. linear, cloudflare) ❯ ", is_password=False)).strip()
+        if not name:
+            console.print("  [red]Server name is required.[/red]\n")
+            return False
+        url = (await session.prompt_async("  Server URL (https://...) ❯ ", is_password=False)).strip()
+        if not url:
+            console.print("  [red]URL is required.[/red]\n")
+            return False
+        tmode = (await session.prompt_async("  Transport [1=Streamable HTTP (auto SSE fallback), 2=SSE] [1] ❯ ", is_password=False)).strip()
+        transport = "sse" if tmode == "2" else "http"
+        try:
+            auth = (await session.prompt_async("  Bearer Token / Authorization value (Enter to skip) ❯ ", is_password=True)).strip()
+        finally:
+            session.is_password = False
+        headers = {}
+        if auth:
+            headers["Authorization"] = auth if auth.lower().startswith(("bearer ", "token ", "basic ")) else f"Bearer {auth}"
+        cfg = MCPServerConfig(name=name, url=url, headers=headers, transport=transport)
+
+    elif choice == "custom-stdio":
+        console.print("\n  [bold #00ffd7]⚙️ Custom Stdio MCP Setup[/bold #00ffd7]")
+        name = (await session.prompt_async("  Server name (e.g. postgres, sqlite) ❯ ", is_password=False)).strip()
+        if not name:
+            console.print("  [red]Server name is required.[/red]\n")
+            return False
+        command = (await session.prompt_async("  Command (e.g. npx, uvx, python, docker) ❯ ", is_password=False)).strip()
+        if not command:
+            console.print("  [red]Command is required.[/red]\n")
+            return False
+        raw_args = (await session.prompt_async("  Args (space-separated, Enter if none) ❯ ", is_password=False)).strip()
+        try:
+            args = shlex.split(raw_args) if raw_args else []
+        except ValueError:
+            args = raw_args.split() if raw_args else []
+        raw_env = (await session.prompt_async("  Env vars KEY=VAL,KEY2=VAL2 (Enter to skip) ❯ ", is_password=False)).strip()
+        env: Dict[str, str] = {}
+        if raw_env:
+            for pair in raw_env.split(","):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    if k.strip():
+                        env[k.strip()] = v.strip()
+        cfg = MCPServerConfig(name=name, command=command, args=args, env=env, transport="stdio")
+
+    if not cfg:
+        return False
+
+    scope_ans = (await session.prompt_async("  Save to [1] Global (~/.nexus/mcp.json) or [2] Workspace (.mcp.json) [1] ❯ ", is_password=False)).strip()
+    scope = "workspace" if scope_ans == "2" else "global"
+
+    saved_path = mcp_manager.add_server_to_config(cfg, scope=scope)
+    console.print(f"\n  [bold #22c55e]✔ Saved '{cfg.name}' to[/bold #22c55e] [dim]{saved_path}[/dim]")
+    console.print(f"  [dim cyan]⠋ Connecting to MCP server '{cfg.name}'...[/dim cyan]")
+
+    started = await mcp_manager.reload(registry)
+    loaded_tools = started.get(cfg.name)
+    if loaded_tools is not None:
+        preview = ", ".join(loaded_tools[:8]) + (f" (+{len(loaded_tools)-8} more)" if len(loaded_tools) > 8 else "")
+        console.print(f"  [bold #22c55e]✔ Connected '{cfg.name}' ({len(loaded_tools)} tools):[/bold #22c55e] [cyan]{preview or 'none'}[/cyan]\n")
+    else:
+        err = mcp_manager._errors.get(cfg.name, "Unknown error")
+        console.print(f"  [bold yellow]⚠ Saved to config, but connection failed:[/bold yellow] [red]{err}[/red]\n")
+
+    return True
 
 

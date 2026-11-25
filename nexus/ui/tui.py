@@ -244,26 +244,26 @@ def render_mcp_table(servers: list):
     console.print("\n  [bold #38bdf8]🔌 Model Context Protocol (MCP) Servers[/bold #38bdf8]\n")
     if not servers:
         console.print("  [dim]No external MCP servers configured yet.[/dim]")
-        console.print("  [dim]Create [cyan].mcp.json[/cyan], [cyan]~/.nexus/mcp.json[/cyan], or [cyan]~/.agents/mcp.json[/cyan]:[/dim]")
-        console.print('  [dim]  {"mcpServers": {"name": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]}}}[/dim]\n')
+        console.print("  [dim]Run [bold #00ffd7]/mcp add[/bold #00ffd7] for interactive setup (GitHub, Playwright, Remote HTTP/SSE, Custom).[/dim]\n")
         return
     for s in servers:
         if isinstance(s, dict):
             name = s.get("name", "?")
+            transport = s.get("transport", "stdio").upper()
             cmd = s.get("command", "")
             status = s.get("status", "configured")
             tool_count = s.get("tools", 0)
             tool_names = s.get("tool_names", [])
             err = s.get("error", "")
             badge_map = {
-                "running": f"[green][RUNNING · {tool_count} tools][/green]",
-                "error": "[red][ERROR][/red]",
-                "disabled": "[dim][DISABLED][/dim]",
-                "configured": f"[yellow][CONFIGURED · {tool_count} tools][/yellow]",
+                "running": f"[green][RUNNING · {transport} · {tool_count} tools][/green]",
+                "error": f"[red][ERROR · {transport}][/red]",
+                "disabled": f"[dim][DISABLED · {transport}][/dim]",
+                "configured": f"[yellow][CONFIGURED · {transport} · {tool_count} tools][/yellow]",
             }
             badge = badge_map.get(status, f"[dim][{status.upper()}][/dim]")
             console.print(f"  [bold #00ffd7]● {name}[/bold #00ffd7] {badge}")
-            console.print(f"    [dim]Command:[/dim] [white]{cmd}[/white]")
+            console.print(f"    [dim]Target:[/dim]  [white]{cmd}[/white]")
             if tool_names:
                 preview = ", ".join(tool_names[:8]) + (f" (+{len(tool_names) - 8} more)" if len(tool_names) > 8 else "")
                 console.print(f"    [dim]Tools:[/dim]   [cyan]{preview}[/cyan]")
@@ -274,6 +274,7 @@ def render_mcp_table(servers: list):
             status_color = "green" if s.active else "dim"
             console.print(f"  [bold #00ffd7]● {s.name}[/bold #00ffd7] [{status_color}][ACTIVE][/{status_color}]")
             console.print(f"    [dim]Command:[/dim] [white]{s.command} {' '.join(s.args)}[/white]\n")
+    console.print("  [dim]Commands: [bold #00ffd7]/mcp add[/bold #00ffd7] · [bold #00ffd7]/mcp reload[/bold #00ffd7] · [bold #00ffd7]/mcp remove <name>[/bold #00ffd7][/dim]\n")
 
 def render_plugins_table(plugins: list):
     """Render modular extension plugins."""

@@ -26,7 +26,8 @@ from .interactive import (
     interactive_select_provider,
     interactive_select_model,
     interactive_resume_session,
-    interactive_gateway_setup
+    interactive_gateway_setup,
+    interactive_mcp_add
 )
 
 __all__ = [
@@ -55,5 +56,6 @@ __all__ = [
     "interactive_select_provider",
     "interactive_select_model",
     "interactive_resume_session",
-    "interactive_gateway_setup"
+    "interactive_gateway_setup",
+    "interactive_mcp_add"
 ]
