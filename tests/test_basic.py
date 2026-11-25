@@ -130,7 +130,7 @@ async def run_tests():
         "update_id": 1,
         "message": {"message_id": 10, "chat": {"id": 6966600514, "type": "private"}, "from": {"id": 6966600514, "username": "mallss"}, "text": "/start"}
     })
-    assert len(sent_payloads) == 1 and "Nexus Agent Gateway" in sent_payloads[0][1], f"Telegram reply missing: {sent_payloads}"
+    assert len(sent_payloads) == 1 and "Nexus Agent" in sent_payloads[0][1], f"Telegram reply missing: {sent_payloads}"
 
     print("   [OK] Gateway adapters, allow-list security, WhatsApp parser, Telegram update flow, and WS frame builder verified.")
 

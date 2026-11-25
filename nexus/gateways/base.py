@@ -178,32 +178,38 @@ class BaseGateway(ABC):
 
         if cmd in ("/start", "/help"):
             return (
-                f"⚡ *Nexus Agent Gateway* (`{self.platform_name.capitalize()}`)\n\n"
-                f"Connected to active model: `{self.llm.model}`\n"
-                f"Your User ID: `{msg.user_id}`\n"
-                f"Session ID: `{self.get_session_id(msg.chat_id)}`\n\n"
-                f"*Commands:*\n"
-                f"• `/new` or `/reset` — Start a fresh conversation context\n"
-                f"• `/status` — Show model, tools, and session telemetry\n"
-                f"• `/model <id>` — Switch active LLM model\n"
-                f"• `/help` — Show this help menu\n\n"
-                f"Send any prompt or task to get started!"
+                f"⚡ *Nexus Agent* · `{self.platform_name.capitalize()}` Gateway\n\n"
+                f"Model: `{self.llm.model}`\n"
+                f"User ID: `{msg.user_id}`\n"
+                f"Session: `{self.get_session_id(msg.chat_id)}`\n\n"
+                f"*📋 Commands:*\n"
+                f"• `/new` · `/reset` · `/clear` — Fresh conversation context\n"
+                f"• `/status` — Runtime telemetry\n"
+                f"• `/model [id]` — Show or switch active model\n"
+                f"• `/memory [n]` — Recent memories (default 10)\n"
+                f"• `/skills` — Loaded skills list\n"
+                f"• `/tools` — Available tools list\n"
+                f"• `/config` — Active configuration\n"
+                f"• `/sessions` — Active sessions\n"
+                f"• `/help` — This menu\n\n"
+                f"Send any message to chat with Nexus!"
             )
 
-        if cmd in ("/new", "/reset"):
+        if cmd in ("/new", "/reset", "/clear"):
             new_sid = self.reset_session(msg.chat_id)
-            return f"✨ Fresh session initialized: `{new_sid}` (memory context isolated)."
+            return f"✨ Fresh session started: `{new_sid}`"
 
         if cmd == "/status":
             skills_count = len(self.skill_manager.load_all_skills())
             tools_count = len(self.registry.get_all())
             return (
-                f"📊 *Nexus Gateway Telemetry*\n"
+                f"📊 *Nexus Gateway Status*\n"
                 f"• Platform: `{self.platform_name.capitalize()}`\n"
                 f"• Model: `{self.llm.model}`\n"
                 f"• Session: `{self.get_session_id(msg.chat_id)}`\n"
-                f"• Tools Active: `{tools_count}` | Skills: `{skills_count}`\n"
-                f"• Messages Handled: `{self.messages_handled}`"
+                f"• Tools: `{tools_count}` | Skills: `{skills_count}`\n"
+                f"• Messages Handled: `{self.messages_handled}`\n"
+                f"• Running Since: `{self.started_at or 'unknown'}`"
             )
 
         if cmd == "/model":
@@ -213,9 +219,91 @@ class BaseGateway(ABC):
             new_model = parts[1].strip()
             self.llm.model = new_model
             config.MODEL = new_model
-            return f"✔ Switched active model to `{new_model}`."
+            return f"✔ Switched to `{new_model}`"
 
-        lock = self._get_lock(msg.chat_id)
+        if cmd == "/memory":
+            parts = text.split(maxsplit=1)
+            limit = 10
+            try:
+                limit = int(parts[1].strip())
+            except Exception:
+                pass
+            try:
+                session_id = self.get_session_id(msg.chat_id)
+                memories = self.memory.get_history(session_id, limit=limit)
+                if not memories:
+                    return "🧠 No memories in this session yet."
+                lines = [f"🧠 *Last {min(limit, len(memories))} messages:*"]
+                for i, m in enumerate(memories[-limit:], 1):
+                    role = m.get("role", "?")
+                    content_text = (m.get("content") or "")[:80].replace("\n", " ")
+                    suffix = "…" if len(m.get("content", "")) > 80 else ""
+                    lines.append(f"{i}. [{role}] {content_text}{suffix}")
+                return "\n".join(lines)
+            except Exception as e:
+                return f"❌ Memory error: {e}"
+
+        if cmd == "/skills":
+            try:
+                skills = self.skill_manager.load_all_skills()
+                if not skills:
+                    return "📚 No skills loaded."
+                lines = [f"📚 *Loaded Skills ({len(skills)}):*"]
+                for s in skills:
+                    name = getattr(s, "name", None) or getattr(s, "id", None) or str(s)
+                    desc = (getattr(s, "description", "") or "")[:60]
+                    lines.append(f"• `{name}` — {desc}" if desc else f"• `{name}`")
+                return "\n".join(lines)
+            except Exception as e:
+                return f"❌ Skills error: {e}"
+
+        if cmd == "/tools":
+            try:
+                tools = self.registry.get_all()
+                if not tools:
+                    return "🔧 No tools registered."
+                lines = [f"🔧 *Available Tools ({len(tools)}):*"]
+                for t in tools:
+                    name = getattr(t, "name", None) or str(t)
+                    desc = (getattr(t, "description", "") or "")[:60]
+                    lines.append(f"• `{name}` — {desc}" if desc else f"• `{name}`")
+                return "\n".join(lines)
+            except Exception as e:
+                return f"❌ Tools error: {e}"
+
+        if cmd == "/config":
+            try:
+                session_id = self.get_session_id(msg.chat_id)
+                tools_count = len(self.registry.get_all())
+                skills_count = len(self.skill_manager.load_all_skills())
+                api_base = getattr(self.llm, "api_base", None) or config.API_BASE
+                return (
+                    f"⚙️ *Active Config*\n"
+                    f"• Model: `{self.llm.model}`\n"
+                    f"• API Base: `{api_base}`\n"
+                    f"• Platform: `{self.platform_name.capitalize()}`\n"
+                    f"• Session: `{session_id}`\n"
+                    f"• Tools: `{tools_count}` | Skills: `{skills_count}`\n"
+                    f"• Max Steps: `{self.max_steps}`\n"
+                    f"• Allow All Users: `{self.is_allow_all()}`\n"
+                    f"• Allowed Users: `{len(self.get_allowed_users())}`"
+                )
+            except Exception as e:
+                return f"❌ Config error: {e}"
+
+        if cmd == "/sessions":
+            try:
+                sessions = list(self._session_map.items())
+                if not sessions:
+                    return "📂 No active sessions yet."
+                lines = [f"📂 *Active Sessions ({len(sessions)}):*"]
+                for key, sid in sessions[-10:]:
+                    lines.append(f"• `{sid}`")
+                return "\n".join(lines)
+            except Exception as e:
+                return f"❌ Sessions error: {e}"
+
+                lock = self._get_lock(msg.chat_id)
         async with lock:
             session_id = self.get_session_id(msg.chat_id)
             agent = NexusAgent(
