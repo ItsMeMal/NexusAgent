@@ -319,6 +319,39 @@ def render_update_card(update_info: Optional[Dict[str, Any]]):
         console.print("\n  [bold #22c55e]✔ Nexus Agent is up to date![/bold #22c55e]")
         console.print("  [dim]You are running the latest version from GitHub main.[/dim]\n")
 
+def render_gateway_card(statuses: list):
+    """Render unified messaging gateway status card (Telegram, Discord, WhatsApp)."""
+    console.print("\n  [bold #00ffd7]🌐 Nexus Messaging Gateways (Hermes-Style Bridge)[/bold #00ffd7]\n")
+    icons = {"telegram": "✈️", "discord": "🎮", "whatsapp": "💬"}
+    for st in statuses:
+        icon = icons.get(st.platform.lower(), "📡")
+        name = st.platform.capitalize()
+        if st.running:
+            badge = "[bold #22c55e][ONLINE][/bold #22c55e]"
+        elif st.configured:
+            badge = "[bold #f59e0b][CONFIGURED · IDLE][/bold #f59e0b]"
+        else:
+            badge = "[dim][NOT CONFIGURED][/dim]"
+
+        id_str = f" [bold #00ffd7]{st.identity}[/bold #00ffd7]" if st.identity else ""
+        mode_str = f" [dim]({st.mode})[/dim]" if st.mode else ""
+        console.print(f"  {icon} [bold white]{name:<10}[/bold white] {badge}{id_str}{mode_str}")
+
+        sec_policy = "Allow-All (Open)" if st.allow_all else (
+            f"Allow-list ({st.allowed_users_count} user/number)" if st.allowed_users_count > 0 else "Locked (0 allowed · add IDs in .env)"
+        )
+        if st.configured or st.running:
+            console.print(f"     [dim]Security:[/dim] [white]{sec_policy}[/white]  [dim]| Handled:[/dim] [cyan]{st.messages_handled}[/cyan]")
+        if st.last_error:
+            console.print(f"     [bold red]Last Error:[/bold red] [red]{st.last_error}[/red]")
+
+    console.print("\n  [dim]Commands:[/dim]")
+    console.print("    [bold #38bdf8]/gateway setup[/bold #38bdf8]          [dim]Interactive setup wizard for Telegram / Discord / WhatsApp[/dim]")
+    console.print("    [bold #38bdf8]/gateway start \\[all|name][/bold #38bdf8] [dim]Start configured gateways in background[/dim]")
+    console.print("    [bold #38bdf8]/gateway stop \\[all|name][/bold #38bdf8]  [dim]Stop running gateways[/dim]")
+    console.print("    [bold #38bdf8]nexus --gateway[/bold #38bdf8]         [dim]Run standalone headless gateway daemon[/dim]\n")
+
+
 
 
 

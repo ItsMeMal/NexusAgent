@@ -74,6 +74,46 @@ async def run_tests():
     assert "Orchestrator" in prompt
     print("   [OK] Orchestrator System prompt assembled successfully.")
 
+    print("7. Testing Messaging Gateways (Telegram, Discord, WhatsApp) & Plugins...")
+    from nexus.plugins import PluginManager
+    from nexus.gateways import GatewayManager, GatewayMessage, chunk_text
+    from nexus.gateways.discord import _AsyncWebSocket
+
+    pm = PluginManager(workspace_dir=config.WORKSPACE_DIR, codebase_dir=config.CODEBASE_DIR)
+    plugin_names = [p.name for p in pm.list_plugins()]
+    assert "telegram-gateway" in plugin_names
+    assert "discord-gateway" in plugin_names
+    assert "whatsapp-gateway" in plugin_names
+    print(f"   [OK] Gateway plugins discovered: {plugin_names}")
+
+    gw_mgr = GatewayManager(llm_client=llm, memory=memory, skill_manager=skill_mgr, registry=registry)
+    gw_mgr.register_tools(registry)
+    assert registry.get("gateway_send") is not None
+
+    # Test allow-list security & WhatsApp webhook extraction
+    wa = gw_mgr.gateways["whatsapp"]
+    meta_payload = {
+        "entry": [{
+            "changes": [{
+                "value": {
+                    "contacts": [{"wa_id": "6281234567890", "profile": {"name": "Mallss"}}],
+                    "messages": [{"id": "wamid.1", "from": "6281234567890", "type": "text", "text": {"body": "/status"}}]
+                }
+            }]
+        }]
+    }
+    extracted = wa.extract_incoming_messages(meta_payload)
+    assert len(extracted) == 1 and extracted[0].user_id == "6281234567890" and extracted[0].text == "/status"
+    # Unauthorized by default when allow-list is empty
+    denied_reply = await wa.process_message(extracted[0])
+    assert "Access Denied" in denied_reply
+    # Test chunking and Discord WebSocket frame builder
+    chunks = chunk_text("hello\n" * 500, max_length=1000)
+    assert len(chunks) > 1 and all(len(c) <= 1000 for c in chunks)
+    frame = _AsyncWebSocket.build_frame(b'{"op":1}')
+    assert (frame[0] & 0x8F) == 0x81 and (frame[1] & 0x80) == 0x80
+    print("   [OK] Gateway adapters, allow-list security, WhatsApp parser, and WS frame builder verified.")
+
     # Cleanup
     import gc
     gc.collect()

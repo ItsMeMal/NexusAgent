@@ -15,6 +15,7 @@ from .orchestrator import SubagentManager
 from .providers.manager import ProviderManager
 from .mcp import MCPManager
 from .plugins import PluginManager
+from .gateways import GatewayManager
 from .security import SecurityGuard
 from .updater import check_for_update, perform_update
 from .tools import create_default_registry
@@ -34,12 +35,14 @@ from .ui import (
     render_computer_card,
     render_update_alert,
     render_update_card,
+    render_gateway_card,
     AgentUIController,
     NexusCommandCompleter,
     render_command_palette,
     interactive_select_provider,
     interactive_select_model,
     interactive_resume_session,
+    interactive_gateway_setup,
     console
 )
 
@@ -56,11 +59,25 @@ pt_style = Style.from_dict({
 })
 
 async def main_async():
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     parser = argparse.ArgumentParser(description="Nexus Agent Orchestrator - Autonomous Multi-Agent AI CLI")
     parser.add_argument("-p", "--prompt", type=str, help="Single-shot execution prompt", default=None)
     parser.add_argument("-m", "--model", type=str, help="Model override", default=None)
     parser.add_argument("-s", "--session", type=str, help="Session ID to resume or use", default=None)
+    parser.add_argument("-g", "--gateway", nargs="?", const="all", default=None, help="Run messaging gateway daemon (all|telegram|discord|whatsapp)")
+    parser.add_argument("subcommand", nargs="*", help=argparse.SUPPRESS)
     args = parser.parse_args()
+
+    # Support `nexus gateway [all|telegram|discord|whatsapp]` positional syntax
+    gateway_target = args.gateway
+    if not gateway_target and args.subcommand and args.subcommand[0].lower() == "gateway":
+        gateway_target = args.subcommand[1].lower() if len(args.subcommand) > 1 else "all"
 
     # Active configuration .env path (workspace override or global ~/.nexus/.env)
     env_path = config.ENV_PATH
@@ -107,6 +124,21 @@ async def main_async():
     mcp_manager.register_mcp_tools(registry)
     plugin_manager.register_plugin_tools(registry)
 
+    def _gateway_logger(platform: str, msg: str):
+        if gateway_target:
+            console.print(f"  [dim][{platform.upper()}][/dim] {msg}")
+
+    gateway_manager = GatewayManager(
+        llm_client=llm,
+        memory=memory,
+        skill_manager=skill_manager,
+        registry=registry,
+        soul_path=config.SOUL_PATH,
+        max_steps=config.MAX_STEPS,
+        on_log=_gateway_logger,
+    )
+    gateway_manager.register_tools(registry)
+
     agent = NexusAgent(
         llm_client=llm,
         memory=memory,
@@ -120,6 +152,24 @@ async def main_async():
         on_tool_call=ui_controller.on_tool_call,
         on_tool_result=ui_controller.on_tool_result
     )
+
+    # Headless Messaging Gateway Daemon Mode (`nexus --gateway` / `nexus gateway`)
+    if gateway_target:
+        console.print(f"\n  [bold #00ffd7]🌐 Starting Nexus Gateway Daemon[/bold #00ffd7] [dim](target: {gateway_target})[/dim]")
+        started = await gateway_manager.start_gateway(gateway_target)
+        render_gateway_card(gateway_manager.get_statuses())
+        if not any(v in ("started", "already_running") for v in started.values()):
+            console.print("  [bold yellow]⚠ No configured gateways found for target.[/bold yellow] Run `nexus` and type `/gateway setup` first.\n")
+            return
+        console.print("  [bold #22c55e]✔ Gateway daemon active.[/bold #22c55e] [dim]Listening for Telegram/Discord/WhatsApp messages (Ctrl+C to stop)...[/dim]\n")
+        try:
+            while True:
+                await asyncio.sleep(1.0)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            console.print("\n  [dim cyan]⠋ Shutting down messaging gateways...[/dim cyan]")
+            await gateway_manager.stop_gateway("all")
+            console.print("  [bold #00ffd7]✔ Gateways offline.[/bold #00ffd7]\n")
+        return
 
     # If single-shot prompt provided
     if args.prompt:
@@ -153,6 +203,13 @@ async def main_async():
         update_info=update_info
     )
 
+    # Optional auto-start gateways if configured in .env
+    if os.getenv("GATEWAY_AUTO_START", "false").lower() in ("true", "1", "yes"):
+        try:
+            await gateway_manager.start_gateway("all")
+        except Exception:
+            pass
+
     completer = NexusCommandCompleter()
     session = PromptSession(
         history=InMemoryHistory(),
@@ -162,6 +219,7 @@ async def main_async():
 
     while True:
         try:
+            session.is_password = False
             model_short = llm.model.split("/")[-1] if "/" in llm.model else llm.model
             prompt_fragments = [
                 ('class:box-top', '╭─ '),
@@ -171,12 +229,13 @@ async def main_async():
                 ('class:box-bottom', '\n╰─❯ '),
             ]
 
-            user_input = await session.prompt_async(prompt_fragments, style=pt_style)
+            user_input = await session.prompt_async(prompt_fragments, style=pt_style, is_password=False)
             text = user_input.strip()
             if not text:
                 continue
 
             if text.lower() in ("exit", "quit", "q"):
+                await gateway_manager.stop_gateway("all")
                 console.print("\n  [dim cyan]⠋ Preserving orchestrator session & persistent memory (FTS5)...[/dim cyan]")
                 await asyncio.sleep(0.25)
                 console.print("  [bold #00ffd7]✔ Session preserved.[/bold #00ffd7] [dim]Nexus Orchestrator offline. Goodbye![/dim]\n")
@@ -248,6 +307,24 @@ async def main_async():
                     continue
                 elif cmd in ("/plugins", "/plugin"):
                     render_plugins_table(plugin_manager.list_plugins())
+                    continue
+                elif cmd in ("/gateway", "/gateways", "/bot"):
+                    parts = text.strip().split()
+                    sub = parts[1].lower() if len(parts) > 1 else "status"
+                    target = parts[2].lower() if len(parts) > 2 else "all"
+                    if sub == "setup":
+                        await interactive_gateway_setup(session, env_path)
+                    elif sub == "start":
+                        console.print(f"\n  [dim cyan]⠋ Starting messaging gateway ({target})...[/dim cyan]")
+                        res = await gateway_manager.start_gateway(target)
+                        render_gateway_card(gateway_manager.get_statuses())
+                        if not any(v in ("started", "already_running") for v in res.values()):
+                            console.print("  [yellow]Tip: Run [bold #00ffd7]/gateway setup[/bold #00ffd7] to configure your bot token first.[/yellow]\n")
+                    elif sub == "stop":
+                        await gateway_manager.stop_gateway(target)
+                        console.print(f"\n  [bold #22c55e]✔ Stopped gateway ({target}).[/bold #22c55e]\n")
+                    else:
+                        render_gateway_card(gateway_manager.get_statuses())
                     continue
                 elif cmd in ("/security", "/safe", "/guard"):
                     render_security_card()
@@ -332,6 +409,7 @@ async def main_async():
 
         except (KeyboardInterrupt, EOFError):
             ui_controller.stop_status()
+            await gateway_manager.stop_gateway("all")
             console.print("\n  [yellow]Session interrupted. Goodbye![/yellow]\n")
             break
         except Exception as e:

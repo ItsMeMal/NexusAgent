@@ -1,0 +1,7 @@
+{
+  "name": "telegram-gateway",
+  "version": "1.0.0",
+  "author": "Nexus Core",
+  "description": "Telegram Bot long-polling bridge with session isolation, typing indicator, and allow-list security (use /gateway setup).",
+  "gateway": "telegram"
+}

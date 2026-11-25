@@ -1,0 +1,7 @@
+{
+  "name": "discord-gateway",
+  "version": "1.0.0",
+  "author": "Nexus Core",
+  "description": "Discord Gateway v10 WebSocket & REST bot plugin supporting DMs, @mentions, and whitelisted channels (use /gateway setup).",
+  "gateway": "discord"
+}

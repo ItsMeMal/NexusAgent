@@ -16,6 +16,7 @@ from .tui import (
     render_computer_card,
     render_update_alert,
     render_update_card,
+    render_gateway_card,
     console
 )
 from .controller import AgentUIController
@@ -24,7 +25,8 @@ from .interactive import (
     render_command_palette,
     interactive_select_provider,
     interactive_select_model,
-    interactive_resume_session
+    interactive_resume_session,
+    interactive_gateway_setup
 )
 
 __all__ = [
@@ -45,11 +47,13 @@ __all__ = [
     "render_computer_card",
     "render_update_alert",
     "render_update_card",
+    "render_gateway_card",
     "console",
     "AgentUIController",
     "NexusCommandCompleter",
     "render_command_palette",
     "interactive_select_provider",
     "interactive_select_model",
-    "interactive_resume_session"
+    "interactive_resume_session",
+    "interactive_gateway_setup"
 ]

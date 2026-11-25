@@ -1,0 +1,7 @@
+{
+  "name": "whatsapp-gateway",
+  "version": "1.0.0",
+  "author": "Nexus Core",
+  "description": "WhatsApp Cloud API & Baileys/Evolution webhook bridge with Meta verification and number allow-list (use /gateway setup).",
+  "gateway": "whatsapp"
+}

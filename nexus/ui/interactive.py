@@ -25,6 +25,8 @@ SLASH_COMMANDS = [
     ("/status", "Display agent system diagnostics and active telemetry", "Status"),
     ("/mcp", "Inspect connected Model Context Protocol (MCP) servers & tools", "Tools"),
     ("/plugins", "View loaded modular plugins from plugins/ directory", "Plugins"),
+    ("/gateway", "Configure or run Telegram, Discord & WhatsApp gateways (/gateway setup|start|stop)", "Gateway"),
+    ("/bot", "Alias for /gateway", "Gateway"),
     ("/security", "View security guardrails, command sandbox & safety policy", "Security"),
     ("/computer", "Inspect GUI automation status or capture screenshot (/computer screenshot)", "Computer"),
     ("/update", "Check for updates and upgrade Nexus Agent engine from GitHub", "System"),
@@ -69,6 +71,7 @@ def render_command_palette():
     """Render a clean, unboxed command palette grouped by domain."""
     categories = {
         "🤖 Models & Routing": [c for c in SLASH_COMMANDS if c[2] in ("Models", "Provider")],
+        "🌐 Messaging Gateways": [c for c in SLASH_COMMANDS if c[2] == "Gateway"],
         "🛠 Tools & Extensibility": [c for c in SLASH_COMMANDS if c[2] in ("Tools", "Status", "Plugins")],
         "🧠 Memory & Skills": [c for c in SLASH_COMMANDS if c[2] in ("Skills", "Memory")],
         "⏰ Automations & Session": [c for c in SLASH_COMMANDS if c[2] in ("Background", "Session")],
@@ -197,7 +200,7 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
     # Base URL configuration
     target_base = selected.default_base
     if selected.id == "custom":
-        custom_base = (await session.prompt_async(f"\n  Enter Custom Base URL [{config.API_BASE}] ❯ ")).strip()
+        custom_base = (await session.prompt_async(f"\n  Enter Custom Base URL [{config.API_BASE}] ❯ ", is_password=False)).strip()
         if custom_base:
             target_base = custom_base
 
@@ -206,7 +209,10 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
     if not selected.is_local:
         existing_masked = f"{target_key[:6]}...{target_key[-4:]}" if len(target_key) > 10 else (target_key or "None")
         console.print(f"  [dim]Current API Key for {selected.name}: {existing_masked}[/dim]")
-        new_key = (await session.prompt_async("  Enter API Key (press Enter to keep existing) ❯ ", is_password=True)).strip()
+        try:
+            new_key = (await session.prompt_async("  Enter API Key (press Enter to keep existing) ❯ ", is_password=True)).strip()
+        finally:
+            session.is_password = False
         if new_key:
             target_key = new_key
     else:
@@ -231,7 +237,7 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
     console.print(f"  [bold #22c55e]✔ Connected to {selected.name}![/bold #22c55e] [dim]({target_base})[/dim]\n")
 
     # Prompt to pick a model now
-    prompt_model = (await session.prompt_async(f"  Browse & select a model for {selected.name} now? [Y/n] ❯ ")).strip().lower()
+    prompt_model = (await session.prompt_async(f"  Browse & select a model for {selected.name} now? [Y/n] ❯ ", is_password=False)).strip().lower()
     if prompt_model in ("", "y", "yes"):
         await interactive_select_model(session, current_llm, env_path, provider_override=selected)
 
@@ -390,7 +396,7 @@ async def interactive_select_model(session: PromptSession, current_llm, env_path
         console.print("  [dim]No API key is configured for this router/provider yet.[/dim]")
         console.print("  [dim]Please connect and authenticate your provider before browsing models.[/dim]\n")
 
-        prompt_connect = (await session.prompt_async(f"  Connect to {provider.name} now? [Y/n] ❯ ")).strip().lower()
+        prompt_connect = (await session.prompt_async(f"  Connect to {provider.name} now? [Y/n] ❯ ", is_password=False)).strip().lower()
         if prompt_connect in ("", "y", "yes"):
             await interactive_select_provider(session, current_llm, env_path)
             provider = ProviderManager.detect_active_provider(config.API_BASE)
@@ -552,4 +558,186 @@ async def interactive_resume_session(memory, current_session: list, agent) -> Op
     await asyncio.sleep(0.2)
     console.print(f"  [bold #22c55e]✔ Resumed session:[/bold #22c55e] [bold #00ffd7]{chosen_id}[/bold #00ffd7] [dim]({len(history)} messages loaded)[/dim]\n")
     return chosen_id
+
+
+async def _run_arrow_key_gateway_picker() -> Optional[str]:
+    """Interactive arrow-key selector for messaging gateway platform."""
+    platforms = [
+        ("telegram", "Telegram Bot", "BotFather token · Long-polling · Typing indicator"),
+        ("discord", "Discord Bot", "Gateway v10 WebSocket · DMs, @mentions & channels"),
+        ("whatsapp", "WhatsApp Bridge", "Meta Cloud API or Baileys/Evolution webhook"),
+    ]
+    selected_idx = [0]
+    result = [None]
+    total = len(platforms)
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _(event):
+        selected_idx[0] = (selected_idx[0] - 1) % total
+        event.app.invalidate()
+
+    @kb.add("down")
+    def _(event):
+        selected_idx[0] = (selected_idx[0] + 1) % total
+        event.app.invalidate()
+
+    @kb.add("enter")
+    def _(event):
+        result[0] = platforms[selected_idx[0]][0]
+        event.app.exit()
+
+    @kb.add("escape")
+    @kb.add("c-c")
+    def _(event):
+        result[0] = None
+        event.app.exit()
+
+    def get_header():
+        return [
+            ("class:title", "Select Messaging Gateway to Configure:"),
+            ("class:dim", "  (Hermes-Style Unified Bridge)\n\n"),
+        ]
+
+    def get_content():
+        lines = [
+            ("class:colhead", f"   {'Gateway':<18} {'Description'}\n"),
+            ("class:dim", f"   {'─'*18} {'─'*56}\n"),
+        ]
+        for i, (pid, pname, pdesc) in enumerate(platforms):
+            if i == selected_idx[0]:
+                prefix = " ❯ "
+                line_style = "class:cursor"
+            else:
+                prefix = "   "
+                line_style = ""
+            lines.append((line_style, f"{prefix}{pname:<16} {pdesc}\n"))
+
+        lines.append(("class:dim", "\n   [↑/↓ move • Enter configure • Esc cancel]\n"))
+        return lines
+
+    layout = Layout(HSplit([
+        Window(FormattedTextControl(get_header), height=2),
+        Window(FormattedTextControl(get_content), height=8),
+    ]))
+
+    style = Style.from_dict({
+        "title": "bold #38bdf8",
+        "cursor": "bold #11111b bg:#00ffd7",
+        "colhead": "bold #94a3b8",
+        "dim": "#64748b",
+    })
+
+    app = Application(layout=layout, key_bindings=kb, style=style, full_screen=False, erase_when_done=True)
+    await app.run_async()
+    return result[0]
+
+
+async def interactive_gateway_setup(session: PromptSession, env_path: Path) -> Optional[str]:
+    """Interactive setup wizard for Telegram, Discord, and WhatsApp gateways."""
+    try:
+        choice = await _run_arrow_key_gateway_picker()
+    except Exception:
+        choice = None
+
+    if not choice:
+        console.print("  [dim]Gateway setup cancelled.[/dim]\n")
+        return None
+
+    updates: Dict[str, str] = {}
+
+    if choice == "telegram":
+        console.print("\n  [bold #00ffd7]✈️ Telegram Bot Gateway Setup[/bold #00ffd7]")
+        console.print("  [dim]Get a bot token from @BotFather on Telegram (/newbot).[/dim]")
+        try:
+            token = (await session.prompt_async("  TELEGRAM_BOT_TOKEN (Enter to keep existing) ❯ ", is_password=True)).strip()
+        finally:
+            session.is_password = False
+        if token:
+            updates["TELEGRAM_BOT_TOKEN"] = token
+
+        cur_allowed = os.getenv("TELEGRAM_ALLOWED_USERS", "")
+        allowed = (await session.prompt_async(f"  TELEGRAM_ALLOWED_USERS (comma IDs/@usernames) [{cur_allowed or 'empty=deny unknown'}] ❯ ", is_password=False)).strip()
+        if allowed:
+            updates["TELEGRAM_ALLOWED_USERS"] = allowed
+
+    elif choice == "discord":
+        console.print("\n  [bold #00ffd7]🎮 Discord Bot Gateway Setup[/bold #00ffd7]")
+        console.print("  [dim]Create a bot in Discord Developer Portal -> Bot -> Token.[/dim]")
+        try:
+            token = (await session.prompt_async("  DISCORD_BOT_TOKEN (Enter to keep existing) ❯ ", is_password=True)).strip()
+        finally:
+            session.is_password = False
+        if token:
+            updates["DISCORD_BOT_TOKEN"] = token
+
+        cur_users = os.getenv("DISCORD_ALLOWED_USERS", "")
+        allowed_u = (await session.prompt_async(f"  DISCORD_ALLOWED_USERS (comma IDs/usernames) [{cur_users or 'empty=deny unknown'}] ❯ ", is_password=False)).strip()
+        if allowed_u:
+            updates["DISCORD_ALLOWED_USERS"] = allowed_u
+
+        cur_ch = os.getenv("DISCORD_ALLOWED_CHANNELS", "")
+        allowed_c = (await session.prompt_async(f"  DISCORD_ALLOWED_CHANNELS (optional channel IDs) [{cur_ch}] ❯ ", is_password=False)).strip()
+        if allowed_c:
+            updates["DISCORD_ALLOWED_CHANNELS"] = allowed_c
+
+    elif choice == "whatsapp":
+        console.print("\n  [bold #00ffd7]💬 WhatsApp Gateway Setup[/bold #00ffd7]")
+        console.print("  [dim]Supports Meta Cloud API OR a local Baileys/Evolution QR bridge.[/dim]")
+        mode = (await session.prompt_async("  Mode: [1] Local Bridge (Baileys/Evolution) or [2] Meta Cloud API [1/2] ❯ ", is_password=False)).strip()
+        updates["WHATSAPP_ENABLED"] = "true"
+
+        if mode == "2":
+            try:
+                wa_tok = (await session.prompt_async("  WHATSAPP_API_TOKEN (Enter to keep existing) ❯ ", is_password=True)).strip()
+            finally:
+                session.is_password = False
+            if wa_tok:
+                updates["WHATSAPP_API_TOKEN"] = wa_tok
+            pid = (await session.prompt_async(f"  WHATSAPP_PHONE_NUMBER_ID [{os.getenv('WHATSAPP_PHONE_NUMBER_ID', '')}] ❯ ", is_password=False)).strip()
+            if pid:
+                updates["WHATSAPP_PHONE_NUMBER_ID"] = pid
+            vtok = (await session.prompt_async(f"  WHATSAPP_VERIFY_TOKEN [{os.getenv('WHATSAPP_VERIFY_TOKEN', 'nexus_verify_token')}] ❯ ", is_password=False)).strip()
+            if vtok:
+                updates["WHATSAPP_VERIFY_TOKEN"] = vtok
+        else:
+            cur_br = os.getenv("WHATSAPP_BRIDGE_URL", "http://localhost:3000/send")
+            burl = (await session.prompt_async(f"  WHATSAPP_BRIDGE_URL [{cur_br}] ❯ ", is_password=False)).strip()
+            updates["WHATSAPP_BRIDGE_URL"] = burl or cur_br
+            try:
+                btok = (await session.prompt_async("  WHATSAPP_BRIDGE_TOKEN (optional, Enter to skip) ❯ ", is_password=True)).strip()
+            finally:
+                session.is_password = False
+            if btok:
+                updates["WHATSAPP_BRIDGE_TOKEN"] = btok
+
+        cur_port = os.getenv("WHATSAPP_PORT", "8090")
+        wport = (await session.prompt_async(f"  Webhook Listen Port [{cur_port}] ❯ ", is_password=False)).strip()
+        if wport:
+            updates["WHATSAPP_PORT"] = wport
+
+        cur_nums = os.getenv("WHATSAPP_ALLOWED_NUMBERS", "")
+        wnums = (await session.prompt_async(f"  WHATSAPP_ALLOWED_NUMBERS (e.g. 62812xxx) [{cur_nums or 'empty=deny unknown'}] ❯ ", is_password=False)).strip()
+        if wnums:
+            updates["WHATSAPP_ALLOWED_NUMBERS"] = wnums
+
+    # Ask about allow-all policy if no allow-list was provided
+    allow_all_ans = (await session.prompt_async("  Allow ALL users (skip allow-list)? [y/N] ❯ ", is_password=False)).strip().lower()
+    if allow_all_ans in ("y", "yes"):
+        updates["GATEWAY_ALLOW_ALL_USERS"] = "true"
+    elif allow_all_ans in ("n", "no"):
+        updates["GATEWAY_ALLOW_ALL_USERS"] = "false"
+
+    if updates:
+        for k, v in updates.items():
+            os.environ[k] = v
+        ProviderManager.update_env_file(updates, env_path)
+        console.print(f"\n  [bold #22c55e]✔ Saved {choice.capitalize()} gateway config to .env![/bold #22c55e]")
+        console.print(f"  [dim]Run [bold #00ffd7]/gateway start {choice}[/bold #00ffd7] to start listening now, or [bold #00ffd7]nexus --gateway[/bold #00ffd7] in daemon mode.[/dim]\n")
+    else:
+        console.print("\n  [dim]No changes made.[/dim]\n")
+
+    return choice
+
 
