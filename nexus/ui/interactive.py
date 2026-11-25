@@ -25,6 +25,8 @@ SLASH_COMMANDS = [
     ("/status", "Display agent system diagnostics and active telemetry", "Status"),
     ("/mcp", "Manage MCP servers — status, /mcp add, /mcp reload, /mcp remove <name>", "Tools"),
     ("/plugins", "View loaded modular plugins from plugins/ directory", "Plugins"),
+    ("/github", "GitHub App — repos, PRs, issues, diff, comment, review (/github help)", "GitHub"),
+    ("/team", "AI-Team — spawn & manage a team of specialized AI sub-agents (/team help)", "Team"),
     ("/gateway", "Configure or run Telegram, Discord & WhatsApp gateways (/gateway setup|start|stop)", "Gateway"),
     ("/bot", "Alias for /gateway", "Gateway"),
     ("/security", "View security guardrails, command sandbox & safety policy", "Security"),
@@ -72,6 +74,8 @@ def render_command_palette():
     categories = {
         "🤖 Models & Routing": [c for c in SLASH_COMMANDS if c[2] in ("Models", "Provider")],
         "🌐 Messaging Gateways": [c for c in SLASH_COMMANDS if c[2] == "Gateway"],
+        "🐙 GitHub App": [c for c in SLASH_COMMANDS if c[2] == "GitHub"],
+        "👥 AI-Team": [c for c in SLASH_COMMANDS if c[2] == "Team"],
         "🛠 Tools & Extensibility": [c for c in SLASH_COMMANDS if c[2] in ("Tools", "Status", "Plugins")],
         "🧠 Memory & Skills": [c for c in SLASH_COMMANDS if c[2] in ("Skills", "Memory")],
         "⏰ Automations & Session": [c for c in SLASH_COMMANDS if c[2] in ("Background", "Session")],
