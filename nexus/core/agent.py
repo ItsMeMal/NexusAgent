@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import uuid
+import asyncio
 import datetime
 import time
 from pathlib import Path
@@ -111,92 +112,116 @@ class NexusAgent:
 
         final_response_text = ""
         recent_call_signatures: List[str] = []
+        pending_tc_ids: List[str] = []
 
         # 4. Autonomous ReAct loop
-        for step in range(self.max_steps):
-            try:
-                # Provide on_token for real-time live streaming
-                response_msg = await self.llm.chat_completion(
-                    messages=messages,
-                    tools=tools_schema if tools_schema else None,
-                    on_token=self.on_token
-                )
-            except Exception as e:
-                err_text = f"Agent Error during LLM completion: {str(e)}"
-                if self.on_thought:
-                    self.on_thought(err_text)
-                return err_text
-
-            content = response_msg.get("content")
-            tool_calls = response_msg.get("tool_calls")
-
-            # Save assistant message to memory and context
-            self.memory.save_message(
-                session_id=self.session_id,
-                role="assistant",
-                content=content,
-                tool_calls=tool_calls
-            )
-            messages.append(response_msg)
-
-            if content:
-                final_response_text = content
-                # If non-streaming was used and on_thought is provided
-                if self.on_thought and not self.on_token and not tool_calls:
-                    self.on_thought(content)
-
-            # If no tool calls, task is finished!
-            if not tool_calls:
-                break
-
-            # Process each tool call
-            for tc in tool_calls:
-                tc_id = tc.get("id", str(uuid.uuid4()))
-                function_info = tc.get("function", {})
-                tool_name = function_info.get("name")
-                raw_args = function_info.get("arguments", "{}")
-
+        try:
+            for step in range(self.max_steps):
                 try:
-                    args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                except Exception:
-                    args = {}
-
-                if self.on_tool_call:
-                    self.on_tool_call(tool_name, args)
-
-                # Generate signature for duplicate loop detection
-                sig = f"{tool_name}:{json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args)}"
-                same_call_count = recent_call_signatures.count(sig)
-                recent_call_signatures.append(sig)
-
-                if same_call_count >= 2:
-                    # Halt loop locally to avoid spinning and prevent upstream StalledToolLoopDetected
-                    result = (
-                        f"[System Loop Guard]: You have called '{tool_name}' multiple times with identical arguments. "
-                        "Stop repeating this call. Synthesize your final answer for the user using the information already retrieved."
+                    # Provide on_token for real-time live streaming
+                    response_msg = await self.llm.chat_completion(
+                        messages=messages,
+                        tools=tools_schema if tools_schema else None,
+                        on_token=self.on_token
                     )
-                    elapsed = 0.001
-                else:
-                    # Execute tool via registry with timing measurement
-                    start_t = time.perf_counter()
-                    result = await self.registry.execute_tool(tool_name, args)
-                    elapsed = time.perf_counter() - start_t
+                except Exception as e:
+                    err_text = f"Agent Error during LLM completion: {str(e)}"
+                    if self.on_thought:
+                        self.on_thought(err_text)
+                    return err_text
 
-                if self.on_tool_result:
-                    self.on_tool_result(tool_name, result, elapsed)
+                content = response_msg.get("content")
+                tool_calls = response_msg.get("tool_calls")
 
-                # Append tool result to conversation history
-                tool_msg = {
-                    "role": "tool",
-                    "tool_call_id": tc_id,
-                    "content": result
-                }
+                # Ensure every tool_call has a stable ID before saving assistant turn
+                if tool_calls:
+                    for tc in tool_calls:
+                        if not tc.get("id"):
+                            tc["id"] = str(uuid.uuid4())
+                    pending_tc_ids = [tc["id"] for tc in tool_calls]
+
+                # Save assistant message to memory and context
                 self.memory.save_message(
                     session_id=self.session_id,
-                    role="tool",
-                    content=result,
-                    tool_call_id=tc_id
+                    role="assistant",
+                    content=content,
+                    tool_calls=tool_calls
                 )
-                messages.append(tool_msg)
+                messages.append(response_msg)
+
+                if content:
+                    final_response_text = content
+                    # If non-streaming was used and on_thought is provided
+                    if self.on_thought and not self.on_token and not tool_calls:
+                        self.on_thought(content)
+
+                # If no tool calls, task is finished!
+                if not tool_calls:
+                    break
+
+                # Process each tool call
+                for tc in tool_calls:
+                    tc_id = tc["id"]
+                    function_info = tc.get("function", {})
+                    tool_name = function_info.get("name")
+                    raw_args = function_info.get("arguments", "{}")
+
+                    try:
+                        args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                    except Exception:
+                        args = {}
+
+                    if self.on_tool_call:
+                        self.on_tool_call(tool_name, args)
+
+                    # Generate signature for duplicate loop detection
+                    sig = f"{tool_name}:{json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args)}"
+                    same_call_count = recent_call_signatures.count(sig)
+                    recent_call_signatures.append(sig)
+
+                    if same_call_count >= 2:
+                        # Halt loop locally to avoid spinning and prevent upstream StalledToolLoopDetected
+                        result = (
+                            f"[System Loop Guard]: You have called '{tool_name}' multiple times with identical arguments. "
+                            "Stop repeating this call. Synthesize your final answer for the user using the information already retrieved."
+                        )
+                        elapsed = 0.001
+                    else:
+                        # Execute tool via registry with timing measurement
+                        start_t = time.perf_counter()
+                        result = await self.registry.execute_tool(tool_name, args)
+                        elapsed = time.perf_counter() - start_t
+
+                    if self.on_tool_result:
+                        self.on_tool_result(tool_name, result, elapsed)
+
+                    # Append tool result to conversation history
+                    tool_msg = {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": result
+                    }
+                    self.memory.save_message(
+                        session_id=self.session_id,
+                        role="tool",
+                        content=result,
+                        tool_call_id=tc_id
+                    )
+                    if tc_id in pending_tc_ids:
+                        pending_tc_ids.remove(tc_id)
+                    messages.append(tool_msg)
+        except asyncio.CancelledError:
+            # Close out any unanswered tool calls so SQLite history remains schema-valid
+            for pid in pending_tc_ids:
+                try:
+                    self.memory.save_message(
+                        session_id=self.session_id,
+                        role="tool",
+                        content="[Interrupted by user]",
+                        tool_call_id=pid
+                    )
+                except Exception:
+                    pass
+            raise
 
         return final_response_text

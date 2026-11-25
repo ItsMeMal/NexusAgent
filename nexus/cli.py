@@ -1,5 +1,6 @@
 ﻿import sys
 import os
+import signal
 import asyncio
 import argparse
 from pathlib import Path
@@ -424,12 +425,8 @@ async def main_async():
                         "  Type [bold #00ffd7]/provider[/bold #00ffd7] to connect your API key, or edit [bold].env[/bold].\n"
                     )
 
-            # Smooth ReAct execution with live streaming and zero collision
-            ui_controller.start_thinking()
-            try:
-                await agent.run(text)
-            finally:
-                ui_controller.finish_stream()
+            # Smooth ReAct execution with live streaming & Ctrl+C / Esc interrupt
+            await _run_interruptible_agent(agent, text, ui_controller, console)
 
         except (KeyboardInterrupt, EOFError):
             ui_controller.stop_status()
@@ -440,6 +437,89 @@ async def main_async():
         except Exception as e:
             ui_controller.stop_status()
             console.print(f"\n  [bold red]Error:[/bold red] {str(e)}\n")
+
+async def _watch_interrupt_keys(target_task: asyncio.Task, stop_evt: asyncio.Event):
+    """Watch for standalone Esc / Ctrl+C keypresses while agent is running (Windows console)."""
+    if sys.platform != "win32":
+        return
+    try:
+        if not sys.stdin or not sys.stdin.isatty():
+            return
+        import msvcrt
+    except Exception:
+        return
+
+    while not stop_evt.is_set() and not target_task.done():
+        try:
+            if msvcrt.kbhit():
+                ch = msvcrt.getch()
+                if ch == b"\x03":
+                    if not target_task.done():
+                        target_task.cancel()
+                    return
+                if ch == b"\x1b":
+                    await asyncio.sleep(0.015)
+                    if msvcrt.kbhit():
+                        # Escape sequence (e.g. arrow key), drain trailing bytes
+                        while msvcrt.kbhit():
+                            msvcrt.getch()
+                    else:
+                        if not target_task.done():
+                            target_task.cancel()
+                        return
+        except Exception:
+            return
+        await asyncio.sleep(0.06)
+
+
+async def _run_interruptible_agent(agent: NexusAgent, text: str, ui_controller: AgentUIController, console_out):
+    """Run agent.run(text) with Ctrl+C and Esc interruption that stops the AI without exiting CLI."""
+    loop = asyncio.get_running_loop()
+    agent_task = asyncio.create_task(agent.run(text))
+    stop_evt = asyncio.Event()
+    key_task = asyncio.create_task(_watch_interrupt_keys(agent_task, stop_evt))
+
+    def _trigger_cancel():
+        if not agent_task.done():
+            agent_task.cancel()
+
+    used_loop_sig = False
+    prev_sigint = None
+    try:
+        try:
+            loop.add_signal_handler(signal.SIGINT, _trigger_cancel)
+            used_loop_sig = True
+        except (NotImplementedError, RuntimeError):
+            prev_sigint = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGINT, lambda *_: loop.call_soon_threadsafe(_trigger_cancel))
+
+        ui_controller.start_thinking()
+        try:
+            await agent_task
+        except asyncio.CancelledError:
+            ui_controller.finish_stream()
+            console_out.print("\n  [bold #f59e0b]⚡ Interrupted by user — AI stopped.[/bold #f59e0b] [dim](Session preserved)[/dim]\n")
+        finally:
+            ui_controller.finish_stream()
+    finally:
+        stop_evt.set()
+        if not key_task.done():
+            key_task.cancel()
+            try:
+                await key_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        if used_loop_sig:
+            try:
+                loop.remove_signal_handler(signal.SIGINT)
+            except Exception:
+                pass
+        elif prev_sigint is not None:
+            try:
+                signal.signal(signal.SIGINT, prev_sigint)
+            except Exception:
+                pass
+
 
 def main():
     asyncio.run(main_async())

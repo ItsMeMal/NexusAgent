@@ -112,6 +112,7 @@ class BaseGateway(ABC):
 
         self._session_map: Dict[str, str] = {}
         self._chat_locks: Dict[str, asyncio.Lock] = {}
+        self._active_tasks: Dict[str, asyncio.Task] = {}
 
     def log(self, level: str, message: str):
         if self.on_log:
@@ -177,6 +178,14 @@ class BaseGateway(ABC):
 
         cmd = text.lower().split()[0]
 
+        if cmd in ("/stop", "/cancel", "/interrupt"):
+            active_task = self._active_tasks.get(msg.chat_id)
+            if active_task and not active_task.done():
+                active_task.cancel()
+                self.log("INFO", f"Interrupted active AI task in chat {msg.chat_id}")
+                return "🛑 Interrupted! Stopped the current AI task."
+            return "ℹ️ No active AI task is running right now."
+
         if cmd in ("/start", "/help"):
             return (
                 f"⚡ *Nexus Agent* · `{self.platform_name.capitalize()}` Gateway\n\n"
@@ -184,6 +193,7 @@ class BaseGateway(ABC):
                 f"User ID: `{msg.user_id}`\n"
                 f"Session: `{self.get_session_id(msg.chat_id)}`\n\n"
                 f"*📋 Commands:*\n"
+                f"• `/stop` · `/cancel` — Interrupt active AI response\n"
                 f"• `/new` · `/reset` · `/clear` — Fresh conversation context\n"
                 f"• `/status` — Runtime telemetry\n"
                 f"• `/model [id]` — Show or switch active model\n"
@@ -334,14 +344,21 @@ class BaseGateway(ABC):
                 session_id=session_id,
             )
             self.log("INFO", f"Handling message from {msg.username or msg.user_id} in chat {msg.chat_id}")
+            task = asyncio.create_task(agent.run(text))
+            self._active_tasks[msg.chat_id] = task
             try:
-                reply = await agent.run(text)
+                reply = await task
                 self.messages_handled += 1
                 return reply or "(No text output generated)"
+            except asyncio.CancelledError:
+                return None
             except Exception as e:
                 self.last_error = str(e)
                 self.log("ERROR", f"Agent run failed: {e}")
                 return f"❌ Agent Error: {e}"
+            finally:
+                if self._active_tasks.get(msg.chat_id) is task:
+                    self._active_tasks.pop(msg.chat_id, None)
 
     def get_status(self) -> GatewayStatus:
         return GatewayStatus(

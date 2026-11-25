@@ -38,7 +38,7 @@ class AgentUIController:
         self._current_message = message
 
         self.status = self.console.status(
-            f"[bold #00ffd7]⠋[/bold #00ffd7] [bold #38bdf8]Nexus Thinking[/bold #38bdf8] [dim]· {message} (0.0s)[/dim]",
+            f"[bold #00ffd7]⠋[/bold #00ffd7] [bold #38bdf8]Nexus Thinking[/bold #38bdf8] [dim]· {message} (0.0s · Ctrl+C/Esc to stop)[/dim]",
             spinner="dots"
         )
         self.status.start()
@@ -58,7 +58,7 @@ class AgentUIController:
             spin = spinners[idx % len(spinners)]
             try:
                 self.status.update(
-                    f"[bold #00ffd7]{spin}[/bold #00ffd7] [bold #38bdf8]Nexus Thinking[/bold #38bdf8] [dim]· {self._current_message} ({elapsed:.1f}s)[/dim]"
+                    f"[bold #00ffd7]{spin}[/bold #00ffd7] [bold #38bdf8]Nexus Thinking[/bold #38bdf8] [dim]· {self._current_message} ({elapsed:.1f}s · Ctrl+C/Esc to stop)[/dim]"
                 )
             except Exception:
                 break

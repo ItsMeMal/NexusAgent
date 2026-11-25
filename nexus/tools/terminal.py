@@ -26,6 +26,13 @@ def get_terminal_tools(root_dir: Path):
                     process.communicate(),
                     timeout=float(timeout)
                 )
+            except asyncio.CancelledError:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
+                raise
             except asyncio.TimeoutError:
                 try:
                     process.kill()

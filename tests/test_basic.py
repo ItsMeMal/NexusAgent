@@ -267,6 +267,48 @@ async def run_tests():
         os.environ.pop("NEXUS_TEST_MCP_TOKEN", None)
     print("   [OK] Remote HTTP MCP transport, env header expansion, session tracking, and add/remove verified.")
 
+    print("10. Testing Agent & Gateway Interrupt / /stop Cancellation...")
+    from nexus.gateways.base import GatewayMessage
+    from nexus.tools.base import Tool
+
+    slow_started = asyncio.Event()
+    async def slow_handler(**kwargs):
+        slow_started.set()
+        await asyncio.sleep(10)
+        return "finished"
+
+    registry.register(Tool(
+        name="slow_mock_tool",
+        description="Slow test tool",
+        parameters={"type": "object", "properties": {}},
+        handler=slow_handler,
+    ))
+
+    class SlowMockLLM:
+        model = "mock-model"
+        async def chat_completion(self, messages, tools=None, on_token=None):
+            return {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": "tc_interrupt_1", "type": "function", "function": {"name": "slow_mock_tool", "arguments": "{}"}}],
+            }
+
+    tg_int = gw_mgr.gateways["telegram"]
+    tg_int.llm = SlowMockLLM()
+    run_coro = asyncio.create_task(tg_int.process_message(GatewayMessage(
+        platform="telegram", user_id="6966600514", chat_id="99999", text="run slow tool", username="mallss"
+    )))
+    await asyncio.wait_for(slow_started.wait(), timeout=3.0)
+    stop_reply = await tg_int.process_message(GatewayMessage(
+        platform="telegram", user_id="6966600514", chat_id="99999", text="/stop", username="mallss"
+    ))
+    assert "Interrupted" in stop_reply, f"Expected interrupted reply, got: {stop_reply}"
+    run_res = await run_coro
+    assert run_res is None, f"Expected None on cancelled task, got: {run_res}"
+    hist = memory.get_session_history("telegram_99999")
+    assert any(m.get("role") == "tool" and m.get("tool_call_id") == "tc_interrupt_1" and "Interrupted" in (m.get("content") or "") for m in hist), f"Dangling tool call not cleaned up: {hist}"
+    print("   [OK] Gateway /stop cancellation and dangling tool_call memory cleanup verified.")
+
     # Cleanup
     import gc
     gc.collect()
