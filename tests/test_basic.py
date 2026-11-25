@@ -112,7 +112,27 @@ async def run_tests():
     assert len(chunks) > 1 and all(len(c) <= 1000 for c in chunks)
     frame = _AsyncWebSocket.build_frame(b'{"op":1}')
     assert (frame[0] & 0x8F) == 0x81 and (frame[1] & 0x80) == 0x80
-    print("   [OK] Gateway adapters, allow-list security, WhatsApp parser, and WS frame builder verified.")
+
+    # Test Telegram _handle_update completes & sends reply despite typing_task cancellation
+    import os
+    os.environ["TELEGRAM_BOT_TOKEN"] = "123456:TESTTOKEN"
+    os.environ["TELEGRAM_ALLOWED_USERS"] = "6966600514"
+    tg = gw_mgr.gateways["telegram"]
+    sent_payloads = []
+    async def mock_send_text(chat_id: str, text: str) -> bool:
+        sent_payloads.append((chat_id, text))
+        return True
+    async def mock_typing(client, chat_id, stop_evt):
+        await asyncio.sleep(10)
+    tg.send_text = mock_send_text
+    tg._send_typing_loop = mock_typing
+    await tg._handle_update(None, {
+        "update_id": 1,
+        "message": {"message_id": 10, "chat": {"id": 6966600514, "type": "private"}, "from": {"id": 6966600514, "username": "mallss"}, "text": "/start"}
+    })
+    assert len(sent_payloads) == 1 and "Nexus Agent Gateway" in sent_payloads[0][1], f"Telegram reply missing: {sent_payloads}"
+
+    print("   [OK] Gateway adapters, allow-list security, WhatsApp parser, Telegram update flow, and WS frame builder verified.")
 
     # Cleanup
     import gc

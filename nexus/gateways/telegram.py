@@ -109,14 +109,19 @@ class TelegramGateway(BaseGateway):
 
         stop_typing = asyncio.Event()
         typing_task = asyncio.create_task(self._send_typing_loop(client, chat_id, stop_typing))
+        reply: Optional[str] = None
         try:
             reply = await self.process_message(gmsg)
+        except Exception as e:
+            self.last_error = str(e)
+            self.log("ERROR", f"Update handling failed: {e}")
+            reply = f"❌ Agent Error: {e}"
         finally:
             stop_typing.set()
             typing_task.cancel()
             try:
                 await typing_task
-            except Exception:
+            except (asyncio.CancelledError, Exception):
                 pass
 
         if reply:
