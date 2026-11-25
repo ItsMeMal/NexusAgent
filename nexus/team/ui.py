@@ -84,10 +84,10 @@ def _make_panel(
 
         table.add_row(emoji, f"[bold]{name}[/bold]", status_txt, time_txt)
 
-    mode_label = "PIPELINE" if mode == "pipeline" else "PARALLEL"
+    mode_label = "→ sequential" if mode == "pipeline" else "⚡ parallel"
     task_short = task[:70] + ("…" if len(task) > 70 else "")
 
-    title = f"[bold #00ffd7]👥 AI-Team[/bold #00ffd7] [dim]{mode_label}[/dim]  ·  {total_elapsed:.1f}s"
+    title = f"[bold #00ffd7]👥 AI-Team[/bold #00ffd7]  [dim]{mode_label}[/dim]  ·  {total_elapsed:.1f}s"
     subtitle = f"[dim]📋 {task_short}[/dim]"
 
     return Panel(

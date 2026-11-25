@@ -63,6 +63,25 @@ PRESET_TEAMS: Dict[str, List[str]] = {
     "review":   ["reviewer", "security"],
 }
 
+# Presets that benefit from sequential context passing (pipeline)
+# Everything else defaults to parallel
+PIPELINE_PRESETS = {"dev", "fulldev"}
+
+def auto_mode(preset: str, custom_roles: list) -> str:
+    """
+    Auto-detect best execution mode:
+    - Pipeline: roles where each step builds on the previous (plan → code → review → test)
+    - Parallel: roles that are independent analyzers (review + security + docs at same time)
+    """
+    if preset in PIPELINE_PRESETS:
+        return "pipeline"
+    if custom_roles:
+        # If roles include planner/coder they need sequential context
+        sequential_roles = {"planner", "coder", "tester", "devops", "writer"}
+        if any(r in sequential_roles for r in custom_roles):
+            return "pipeline"
+    return "parallel"
+
 
 class TeamManager:
     """

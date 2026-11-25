@@ -170,14 +170,19 @@ class TeamAgent:
 
         try:
             response = await self.llm.chat_completion(messages)
-            # chat_completion returns a raw API dict: choices[0].message.content
-            result = (
-                response.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                or ""
-            )
-            if not result:
+            # Router returns flat dict: {'content': '...', 'role': 'assistant', 'reasoning_content': '...'}
+            if isinstance(response, dict):
+                result = response.get("content") or ""
+                # Fallback: OpenAI-style choices array
+                if not result and "choices" in response:
+                    result = (
+                        response.get("choices", [{}])[0]
+                        .get("message", {})
+                        .get("content", "")
+                    ) or ""
+            else:
+                result = str(response)
+            if not result.strip():
                 result = "⚠️ Agent returned empty response."
             self.last_result = result
             logger.info("[Team:%s] Completed task (%d chars)", self.role.id, len(result))

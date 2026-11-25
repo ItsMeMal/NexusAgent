@@ -345,10 +345,10 @@ async def main_async():
                     console.print(Markdown(output_text))
                     continue
                 elif cmd in ("/team", "/ai-team"):
-                    from nexus.team.commands import HELP_TEXT as TEAM_HELP, PRESET_TEAMS_REF
+                    from nexus.team.commands import HELP_TEXT as TEAM_HELP
                     from nexus.team.ui import run_team_with_ui
-                    from nexus.team.agent import BUILTIN_ROLES_BY_ID
-                    from nexus.team.manager import PRESET_TEAMS
+                    from nexus.team.agent import BUILTIN_ROLES_BY_ID, BUILTIN_ROLES
+                    from nexus.team.manager import PRESET_TEAMS, TeamManager, auto_mode
                     from rich.markdown import Markdown
 
                     team_args = text.strip().split()[1:]
@@ -360,7 +360,6 @@ async def main_async():
                     sub_t = team_args[0].lower()
 
                     if sub_t == "roles":
-                        from nexus.team.agent import BUILTIN_ROLES
                         console.print("\n  [bold #00ffd7]👥 AI-Team Roles[/bold #00ffd7]\n")
                         for role in BUILTIN_ROLES:
                             console.print(f"    {role.emoji}  [bold #38bdf8]{role.id:<12}[/bold #38bdf8] [dim]→[/dim]  {role.description}")
@@ -370,23 +369,22 @@ async def main_async():
                     if sub_t == "presets":
                         console.print("\n  [bold #00ffd7]🎭 Preset Teams[/bold #00ffd7]\n")
                         for name, roles in PRESET_TEAMS.items():
-                            console.print(f"    [bold #38bdf8]{name:<12}[/bold #38bdf8] [dim]→[/dim]  {' → '.join(roles)}")
+                            mode_hint = "pipeline" if name in {"dev", "fulldev"} else "parallel"
+                            console.print(f"    [bold #38bdf8]{name:<12}[/bold #38bdf8] [dim]→[/dim]  {' → '.join(roles)}  [dim]({mode_hint})[/dim]")
                         console.print()
                         continue
 
                     if sub_t == "ask":
-                        # /team ask <role> <task...>
                         if len(team_args) < 3:
                             console.print("  [yellow]Usage: /team ask <role_id> <task>[/yellow]\n")
                             continue
                         role_id = team_args[1].lower()
                         task_text = " ".join(team_args[2:])
                         if role_id not in BUILTIN_ROLES_BY_ID:
-                            console.print(f"  [red]Unknown role `{role_id}`. Run /team roles to see options.[/red]\n")
+                            console.print(f"  [red]Unknown role `{role_id}`. Run /team roles.[/red]\n")
                             continue
                         role = BUILTIN_ROLES_BY_ID[role_id]
                         console.print(f"\n  {role.emoji} [bold cyan]{role.name}[/bold cyan] is thinking…\n")
-                        from nexus.team.manager import TeamManager
                         _tm = TeamManager(llm)
                         _run = await _tm.run_single(task_text, role_id)
                         result = _run.results.get(role_id, "No output.")
@@ -398,7 +396,7 @@ async def main_async():
                     if sub_t == "run":
                         rest = team_args[1:]
                         preset = "dev"
-                        mode = "pipeline"
+                        mode_override = None   # None = auto-detect
                         custom_roles = []
                         task_parts = []
                         i = 0
@@ -408,7 +406,10 @@ async def main_async():
                                 preset = rest[i + 1].lower()
                                 i += 2
                             elif tok == "--parallel":
-                                mode = "parallel"
+                                mode_override = "parallel"
+                                i += 1
+                            elif tok == "--pipeline":
+                                mode_override = "pipeline"
                                 i += 1
                             elif tok == "--roles" and i + 1 < len(rest):
                                 custom_roles = [r.strip() for r in rest[i + 1].split(",")]
@@ -431,6 +432,8 @@ async def main_async():
                             if not roles_to_run:
                                 console.print(f"  [red]Unknown preset `{preset}`. Available: {', '.join(PRESET_TEAMS)}[/red]\n")
                                 continue
+                        # Auto-detect mode if not forced
+                        mode = mode_override or auto_mode(preset, custom_roles)
                         await run_team_with_ui(task_text, roles_to_run, mode, llm)
                         continue
 
