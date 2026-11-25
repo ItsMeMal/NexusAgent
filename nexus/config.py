@@ -56,12 +56,20 @@ class Config:
         )
     )
     SKILLS_DIR: Path = (
-        WORKSPACE_DIR / ".skills"
-        if (WORKSPACE_DIR / ".skills").exists()
+        Path(os.getenv("NEXUS_SKILLS_DIR"))
+        if os.getenv("NEXUS_SKILLS_DIR")
         else (
-            NEXUS_HOME / "skills"
-            if (NEXUS_HOME / "skills").exists()
-            else CODEBASE_DIR / ".skills"
+            WORKSPACE_DIR / ".skills"
+            if (WORKSPACE_DIR / ".skills").exists()
+            else (
+                NEXUS_HOME / "skills"
+                if (NEXUS_HOME / "skills").exists()
+                else (
+                    Path.home() / ".agents" / "skills"
+                    if (Path.home() / ".agents" / "skills").exists()
+                    else CODEBASE_DIR / ".skills"
+                )
+            )
         )
     )
 

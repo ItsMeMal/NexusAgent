@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 import asyncio
 import argparse
@@ -282,7 +282,7 @@ async def main_async():
                         "Max ReAct Loop Steps": config.MAX_STEPS,
                         "Working Directory": str(config.ROOT_DIR),
                         "SQLite Memory DB": str(config.MEMORY_DB_PATH),
-                        "Learned Skills Path": str(config.SKILLS_DIR),
+                        "Learned Skills Path": skill_manager.get_search_paths_summary(),
                         "Persona SOUL Path": str(config.SOUL_PATH),
                     }
                     render_config_table(cfg_dict)
@@ -421,3 +421,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
