@@ -333,6 +333,17 @@ async def main_async():
                 elif cmd in ("/plugins", "/plugin"):
                     render_plugins_table(plugin_manager.list_plugins())
                     continue
+                elif cmd == "/github":
+                    from nexus.github_app.commands import handle_github_command, HELP_TEXT
+                    gh_args = text.strip().split()[1:]
+                    _gh_replies = []
+                    async def _gh_send(t):
+                        _gh_replies.append(t)
+                    await handle_github_command(gh_args, _gh_send)
+                    output_text = "\n\n".join(_gh_replies) if _gh_replies else HELP_TEXT
+                    from rich.markdown import Markdown
+                    console.print(Markdown(output_text))
+                    continue
                 elif cmd in ("/gateway", "/gateways", "/bot"):
                     parts = text.strip().split()
                     sub = parts[1].lower() if len(parts) > 1 else "status"

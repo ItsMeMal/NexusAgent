@@ -97,6 +97,23 @@ class Config:
     SCREENSHOTS_DIR: Path = NEXUS_HOME / "screenshots"
     AUTO_APPROVE: bool = os.getenv("NEXUS_AUTO_APPROVE", "false").lower() in ("true", "1", "yes")
 
+    # GitHub App integration
+    GITHUB_APP_ID: str = os.getenv("GITHUB_APP_ID", "")
+    GITHUB_INSTALLATION_ID: str = os.getenv("GITHUB_INSTALLATION_ID", "")
+    GITHUB_APP_PRIVATE_KEY_PATH: str = os.getenv("GITHUB_APP_PRIVATE_KEY_PATH", "")
+    GITHUB_APP_PRIVATE_KEY: str = os.getenv("GITHUB_APP_PRIVATE_KEY", "")
+    GITHUB_WEBHOOK_SECRET: str = os.getenv("GITHUB_WEBHOOK_SECRET", "")
+    GITHUB_WEBHOOK_PORT: int = int(os.getenv("GITHUB_WEBHOOK_PORT", "8765"))
+
+    @property
+    def github_app_configured(self) -> bool:
+        """True if the minimum GitHub App env vars are present."""
+        return bool(
+            self.GITHUB_APP_ID
+            and self.GITHUB_INSTALLATION_ID
+            and (self.GITHUB_APP_PRIVATE_KEY_PATH or self.GITHUB_APP_PRIVATE_KEY)
+        )
+
 try:
     Config.SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 except Exception:

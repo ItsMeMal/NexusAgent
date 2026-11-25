@@ -202,6 +202,7 @@ class BaseGateway(ABC):
                 f"• `/tools` — Available tools list\n"
                 f"• `/config` — Active configuration\n"
                 f"• `/sessions` — Active sessions\n"
+                f"• `/github` — GitHub App (repos/PRs/issues)\n"
                 f"• `/help` — This menu\n\n"
                 f"Send any message to chat with Nexus!"
             )
@@ -330,6 +331,15 @@ class BaseGateway(ABC):
                 return "\n".join(lines)
             except Exception as e:
                 return f"❌ Sessions error: {e}"
+
+        if cmd == "/github" or text.startswith("/github "):
+            from nexus.github_app.commands import handle_github_command, HELP_TEXT
+            replies = []
+            async def _send(t):
+                replies.append(t)
+            sub_args = text.split()[1:]  # tokens after /github
+            await handle_github_command(sub_args, _send)
+            return "\n\n".join(replies) if replies else HELP_TEXT
 
         lock = self._get_lock(msg.chat_id)
         async with lock:
