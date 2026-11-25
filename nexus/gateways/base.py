@@ -321,7 +321,7 @@ class BaseGateway(ABC):
             except Exception as e:
                 return f"❌ Sessions error: {e}"
 
-                lock = self._get_lock(msg.chat_id)
+        lock = self._get_lock(msg.chat_id)
         async with lock:
             session_id = self.get_session_id(msg.chat_id)
             agent = NexusAgent(
