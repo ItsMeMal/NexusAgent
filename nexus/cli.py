@@ -121,6 +121,8 @@ async def main_async():
         session_id_getter=lambda: current_session[0],
         llm_client=llm
     )
+    if mcp_manager.servers:
+        await mcp_manager.start_all()
     mcp_manager.register_mcp_tools(registry)
     plugin_manager.register_plugin_tools(registry)
 
@@ -168,6 +170,7 @@ async def main_async():
         except (KeyboardInterrupt, asyncio.CancelledError):
             console.print("\n  [dim cyan]⠋ Shutting down messaging gateways...[/dim cyan]")
             await gateway_manager.stop_gateway("all")
+            await mcp_manager.stop_all()
             console.print("  [bold #00ffd7]✔ Gateways offline.[/bold #00ffd7]\n")
         return
 
@@ -179,6 +182,7 @@ async def main_async():
             await agent.run(args.prompt)
         finally:
             ui_controller.finish_stream()
+            await mcp_manager.stop_all()
         return
 
     # Interactive REPL mode
@@ -236,6 +240,7 @@ async def main_async():
 
             if text.lower() in ("exit", "quit", "q"):
                 await gateway_manager.stop_gateway("all")
+                await mcp_manager.stop_all()
                 console.print("\n  [dim cyan]⠋ Preserving orchestrator session & persistent memory (FTS5)...[/dim cyan]")
                 await asyncio.sleep(0.25)
                 console.print("  [bold #00ffd7]✔ Session preserved.[/bold #00ffd7] [dim]Nexus Orchestrator offline. Goodbye![/dim]\n")
@@ -303,7 +308,12 @@ async def main_async():
                         await interactive_resume_session(memory, current_session, agent)
                     continue
                 elif cmd in ("/mcp", "/servers"):
-                    render_mcp_table(mcp_manager.list_servers())
+                    parts = text.strip().split()
+                    if len(parts) > 1 and parts[1].lower() == "reload":
+                        console.print("\n  [dim cyan]⠋ Reloading MCP servers...[/dim cyan]")
+                        await mcp_manager.reload(registry)
+                        tools = registry.get_all()
+                    render_mcp_table(mcp_manager.get_status())
                     continue
                 elif cmd in ("/plugins", "/plugin"):
                     render_plugins_table(plugin_manager.list_plugins())
@@ -410,6 +420,7 @@ async def main_async():
         except (KeyboardInterrupt, EOFError):
             ui_controller.stop_status()
             await gateway_manager.stop_gateway("all")
+            await mcp_manager.stop_all()
             console.print("\n  [yellow]Session interrupted. Goodbye![/yellow]\n")
             break
         except Exception as e:

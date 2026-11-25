@@ -134,6 +134,56 @@ async def run_tests():
 
     print("   [OK] Gateway adapters, allow-list security, WhatsApp parser, Telegram update flow, and WS frame builder verified.")
 
+    print("8. Testing MCP Stdio JSON-RPC Transport...")
+    import sys, json, tempfile
+    from nexus.mcp import MCPManager
+    mock_mcp_script = (
+        "import sys, json\n"
+        "for line in sys.stdin:\n"
+        "    line = line.strip()\n"
+        "    if not line:\n"
+        "        continue\n"
+        "    msg = json.loads(line)\n"
+        "    mid = msg.get('id')\n"
+        "    method = msg.get('method')\n"
+        "    if method == 'initialize':\n"
+        "        resp = {'jsonrpc': '2.0', 'id': mid, 'result': {'protocolVersion': '2024-11-05', 'capabilities': {'tools': {}}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        resp = {'jsonrpc': '2.0', 'id': mid, 'result': {'tools': [{'name': 'ping', 'description': 'Echo ping', 'inputSchema': {'type': 'object', 'properties': {'msg': {'type': 'string'}}}}]}}\n"
+        "    elif method == 'tools/call':\n"
+        "        arg = msg.get('params', {}).get('arguments', {}).get('msg', '')\n"
+        "        resp = {'jsonrpc': '2.0', 'id': mid, 'result': {'content': [{'type': 'text', 'text': f'pong:{arg}'}]}}\n"
+        "    else:\n"
+        "        continue\n"
+        "    sys.stdout.write(json.dumps(resp) + '\\n')\n"
+        "    sys.stdout.flush()\n"
+    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        server_py = tmp_path / "mock_mcp.py"
+        server_py.write_text(mock_mcp_script, encoding="utf-8")
+        mcp_cfg = {
+            "mcpServers": {
+                "mock": {
+                    "command": sys.executable,
+                    "args": [str(server_py)]
+                }
+            }
+        }
+        (tmp_path / ".mcp.json").write_text(json.dumps(mcp_cfg), encoding="utf-8")
+        mcp_mgr = MCPManager(workspace_dir=tmp_path, codebase_dir=tmp_path)
+        started = await mcp_mgr.start_all()
+        assert "mock" in started and "ping" in started["mock"], f"MCP start failed: {started}, errors={mcp_mgr._errors}"
+        mcp_mgr.register_mcp_tools(registry)
+        mcp_tool = registry.get("mcp_mock_ping")
+        assert mcp_tool is not None, "MCP tool not registered"
+        call_res = await mcp_tool.execute(msg="nexus")
+        assert call_res == "pong:nexus", f"Unexpected MCP tool output: {call_res}"
+        statuses = mcp_mgr.get_status()
+        assert statuses and statuses[0]["status"] == "running" and statuses[0]["tools"] == 1
+        await mcp_mgr.stop_all()
+    print("   [OK] MCP stdio handshake, tools/list, tools/call, and cleanup verified.")
+
     # Cleanup
     import gc
     gc.collect()
