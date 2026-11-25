@@ -13,6 +13,7 @@ from ..core.llm import LLMClient
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
 from ..tools.base import ToolRegistry
+from ..providers.manager import ProviderManager
 
 
 def parse_allow_list(raw: str) -> List[str]:
@@ -214,12 +215,29 @@ class BaseGateway(ABC):
 
         if cmd == "/model":
             parts = text.split(maxsplit=1)
-            if len(parts) == 1:
-                return f"🤖 Active model: `{self.llm.model}`\nUsage: `/model <model-id>` to switch."
-            new_model = parts[1].strip()
-            self.llm.model = new_model
-            config.MODEL = new_model
-            return f"✔ Switched to `{new_model}`"
+            if len(parts) >= 2:
+                # Switch model
+                new_model = parts[1].strip()
+                self.llm.model = new_model
+                config.MODEL = new_model
+                return f"✔ Switched to `{new_model}`"
+            # List available models
+            try:
+                provider = ProviderManager.detect_active_provider(config.API_BASE)
+                models = await ProviderManager.get_models_for_provider(
+                    provider, api_key=config.API_KEY, api_base=config.API_BASE
+                )
+                current = self.llm.model
+                lines = [f"🤖 *Available Models* (active: `{current}`)\n"]
+                for m in models[:25]:
+                    marker = "▶" if m.id == current else "•"
+                    ctx = f" [{m.context}]" if m.context and m.context != "Auto" else ""
+                    tag = f" `{m.tag}`" if m.tag else ""
+                    lines.append(f"{marker} `{m.id}`{tag}{ctx}")
+                lines.append(f"\nUsage: `/model <id>` to switch")
+                return "\n".join(lines)
+            except Exception as e:
+                return f"🤖 Active model: `{self.llm.model}`\n❌ Could not fetch model list: {e}"
 
         if cmd == "/memory":
             parts = text.split(maxsplit=1)
