@@ -203,6 +203,7 @@ class BaseGateway(ABC):
                 f"• `/config` — Active configuration\n"
                 f"• `/sessions` — Active sessions\n"
                 f"• `/github` — GitHub App (repos/PRs/issues)\n"
+                f"• `/team` — AI-Team multi-agent (/team help)\n"
                 f"• `/help` — This menu\n\n"
                 f"Send any message to chat with Nexus!"
             )
@@ -340,6 +341,15 @@ class BaseGateway(ABC):
             sub_args = text.split()[1:]  # tokens after /github
             await handle_github_command(sub_args, _send)
             return "\n\n".join(replies) if replies else HELP_TEXT
+
+        if cmd in ("/team", "/ai-team") or text.startswith("/team ") or text.startswith("/ai-team "):
+            from nexus.team.commands import handle_team_command, HELP_TEXT as TEAM_HELP
+            replies = []
+            async def _team_send(t):
+                replies.append(t)
+            team_args = text.split()[1:]
+            await handle_team_command(team_args, _team_send, self.llm)
+            return "\n\n".join(replies) if replies else TEAM_HELP
 
         lock = self._get_lock(msg.chat_id)
         async with lock:

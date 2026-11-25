@@ -344,6 +344,19 @@ async def main_async():
                     from rich.markdown import Markdown
                     console.print(Markdown(output_text))
                     continue
+                elif cmd in ("/team", "/ai-team"):
+                    from nexus.team.commands import handle_team_command, HELP_TEXT as TEAM_HELP
+                    team_args = text.strip().split()[1:]
+                    _team_replies = []
+                    async def _team_send(t):
+                        _team_replies.append(t)
+                        from rich.markdown import Markdown
+                        console.print(Markdown(t))
+                    await handle_team_command(team_args, _team_send, llm)
+                    if not _team_replies:
+                        from rich.markdown import Markdown
+                        console.print(Markdown(TEAM_HELP))
+                    continue
                 elif cmd in ("/gateway", "/gateways", "/bot"):
                     parts = text.strip().split()
                     sub = parts[1].lower() if len(parts) > 1 else "status"
