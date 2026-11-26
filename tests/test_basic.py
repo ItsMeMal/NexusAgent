@@ -547,7 +547,7 @@ async def run_tests():
         rend = build_nexus_mascot_renderable(f_idx, 1.2, msg, "nexus/test-model", 96)
         buf_console.print(rend)
     rendered = buf_console.file.getvalue()
-    assert "NEXUS CORE" in rendered and "THINKING" in rendered and "EXECUTING" in rendered and "SYNTHESIZING" in rendered
+    assert "NEXUS PIKO" in rendered and "THINKING" in rendered and "EXECUTING" in rendered and "SYNTHESIZING" in rendered
     compact_rend = build_nexus_mascot_renderable(0, 0.5, "Thinking...", "m", width=48)
     buf_console.print(compact_rend)
     assert "Thinking" in buf_console.file.getvalue()
