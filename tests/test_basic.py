@@ -700,6 +700,59 @@ async def run_tests():
     assert "Synthesized non-blank response" in heal_out
     print("   [OK] Auto-retry (502), content sanitization (400), history healing, & blank-output synthesis verified.")
 
+    print("16. Testing Streaming Tool-Call Coding (null args, repeated name/id, leading slash path)...")
+    with tempfile.TemporaryDirectory() as ctmp:
+        c_root = Path(ctmp)
+        c_reg = create_default_registry(root_dir=c_root, memory=memory, skill_manager=skill_mgr)
+        stream_turn = {"n": 0}
+
+        class StreamCodingHandler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                pass
+
+            def do_POST(self):
+                stream_turn["n"] += 1
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                if stream_turn["n"] == 1:
+                    chunks = [
+                        {"choices": [{"delta": {"role": "assistant", "content": None, "tool_calls": [{"index": 0, "id": "tc_w", "function": {"name": "write_file", "arguments": None}}]}}]},
+                        {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "tc_w", "function": {"name": "write_file", "arguments": '{"path":"/site/'}}]}}]},
+                        {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": None, "function": {"name": None, "arguments": 'index.html","content":"<h1>OK</h1>"}'}}]}}]},
+                    ]
+                else:
+                    chunks = [
+                        {"choices": [{"delta": {"content": "Created /site/index.html successfully."}}]},
+                    ]
+                for c in chunks:
+                    self.wfile.write(f"data: {json.dumps(c)}\n\n".encode("utf-8"))
+                self.wfile.write(b"data: [DONE]\n\n")
+
+        s_srv = HTTPServer(("127.0.0.1", 0), StreamCodingHandler)
+        s_port = s_srv.server_address[1]
+        threading.Thread(target=s_srv.serve_forever, daemon=True).start()
+        try:
+            s_llm = LLMClient(api_key="k", api_base=f"http://127.0.0.1:{s_port}/v1", model="stream-coder")
+            tokens = []
+            s_agent = NexusAgent(
+                llm_client=s_llm,
+                memory=memory,
+                skill_manager=skill_mgr,
+                registry=c_reg,
+                session_id="stream-code-sess",
+                on_token=lambda t: tokens.append(t),
+            )
+            out = await s_agent.run("Build index.html")
+            assert "Created /site/index.html" in out
+            written = c_root / "site" / "index.html"
+            assert written.exists() and written.read_text(encoding="utf-8") == "<h1>OK</h1>"
+        finally:
+            s_srv.shutdown()
+            s_srv.server_close()
+
+    print("   [OK] Streaming null/repeated tool_call coding & workspace path resolution verified.")
+
     # Cleanup
     import gc
     gc.collect()

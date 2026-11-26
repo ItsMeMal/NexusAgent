@@ -161,7 +161,10 @@ class SkillManager:
             return []
 
         scored: List[tuple[int, Skill]] = []
+        meta_gate_skills = {"brainstorming", "using-superpowers", "run-workflow", "swarm_monitor", "swarm_pane"}
         for skill in self.load_all_skills():
+            if skill.name in meta_gate_skills:
+                continue
             name_low = skill.name.lower()
             desc_low = (skill.description or "").lower()
             name_words = set(re.findall(r"[a-z0-9]{2,}", name_low))

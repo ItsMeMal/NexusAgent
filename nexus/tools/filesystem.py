@@ -4,10 +4,21 @@ from typing import Dict, Any
 from .base import Tool
 from ..security import SecurityGuard
 
+def _resolve_workspace_path(root_dir: Path, raw_path: str) -> Path:
+    """Resolve user/LLM path against root_dir without letting leading '/' escape to drive root."""
+    p = (raw_path or "").strip()
+    if p.startswith("/") and not p.startswith("//"):
+        # On Windows /index.html drops subpath under root_dir; on POSIX only keep true abs paths that already exist under root or /tmp
+        stripped = p.lstrip("/")
+        if os.name == "nt" or not Path(p).exists():
+            p = stripped or "."
+    return (root_dir / p).resolve()
+
+
 def get_filesystem_tools(root_dir: Path):
     def read_file(path: str, start_line: int = 1, line_count: int = 200) -> str:
         """Read content of a file with line numbers."""
-        file_path = (root_dir / path).resolve()
+        file_path = _resolve_workspace_path(root_dir, path)
         if not SecurityGuard.is_path_safe(file_path, root_dir):
             return f"Security Guard: Access to path '{path}' is blocked (system directory restriction)."
         if SecurityGuard.is_secret_path(file_path):
@@ -34,7 +45,7 @@ def get_filesystem_tools(root_dir: Path):
 
     def write_file(path: str, content: str) -> str:
         """Create or completely overwrite a file."""
-        file_path = (root_dir / path).resolve()
+        file_path = _resolve_workspace_path(root_dir, path)
         if not SecurityGuard.is_path_safe(file_path, root_dir):
             return f"Security Guard: Writing to path '{path}' is blocked (system directory restriction)."
         if SecurityGuard.is_secret_path(file_path):
@@ -50,7 +61,7 @@ def get_filesystem_tools(root_dir: Path):
 
     def patch_file(path: str, target: str, replacement: str) -> str:
         """Replace an exact string target in a file with replacement."""
-        file_path = (root_dir / path).resolve()
+        file_path = _resolve_workspace_path(root_dir, path)
         if not SecurityGuard.is_path_safe(file_path, root_dir):
             return f"Security Guard: Patching path '{path}' is blocked (system directory restriction)."
         if SecurityGuard.is_secret_path(file_path):
@@ -74,7 +85,7 @@ def get_filesystem_tools(root_dir: Path):
 
     def list_dir(path: str = ".") -> str:
         """List files and folders in a directory."""
-        dir_path = (root_dir / path).resolve()
+        dir_path = _resolve_workspace_path(root_dir, path)
         if not dir_path.exists():
             return f"Error: Directory '{path}' does not exist."
         if not dir_path.is_dir():
@@ -93,7 +104,7 @@ def get_filesystem_tools(root_dir: Path):
 
     def search_files(query: str, path: str = ".", max_results: int = 40) -> str:
         """Search for a text string or pattern across all files in workspace."""
-        dir_path = (root_dir / path).resolve()
+        dir_path = _resolve_workspace_path(root_dir, path)
         if not dir_path.exists():
             return f"Error: Path '{path}' does not exist."
         matches = []

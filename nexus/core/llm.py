@@ -243,8 +243,8 @@ class LLMClient:
                 async for line in resp.aiter_lines():
                     if not line:
                         continue
-                    if line.startswith("data: "):
-                        data_str = line[6:].strip()
+                    if line.startswith("data:"):
+                        data_str = line[5:].strip()
                         if data_str == "[DONE]":
                             break
                         try:
@@ -264,26 +264,65 @@ class LLMClient:
                                 accumulated_content += text_chunk
                                 on_token(text_chunk)
 
-                            tc_chunks = delta.get("tool_calls", [])
+                            tc_chunks = delta.get("tool_calls") or []
                             for tc in tc_chunks:
-                                idx = tc.get("index", 0)
+                                if not isinstance(tc, dict):
+                                    continue
+                                raw_idx = tc.get("index")
+                                tc_id_chunk = tc.get("id") or ""
+                                if raw_idx is not None:
+                                    idx = raw_idx
+                                elif not tool_calls_dict:
+                                    idx = 0
+                                elif tc_id_chunk and tc_id_chunk != tool_calls_dict.get(max(tool_calls_dict), {}).get("id"):
+                                    idx = max(tool_calls_dict) + 1
+                                else:
+                                    idx = max(tool_calls_dict)
+
+                                fn = tc.get("function") or {}
+                                fn_name_chunk = fn.get("name") or ""
+                                fn_args_chunk = fn.get("arguments")
+                                if fn_args_chunk is None:
+                                    fn_args_chunk = ""
+                                elif not isinstance(fn_args_chunk, str):
+                                    fn_args_chunk = json.dumps(fn_args_chunk)
+
                                 if idx not in tool_calls_dict:
                                     tool_calls_dict[idx] = {
-                                        "id": tc.get("id", ""),
+                                        "id": tc_id_chunk,
                                         "type": "function",
                                         "function": {
-                                            "name": tc.get("function", {}).get("name", ""),
-                                            "arguments": tc.get("function", {}).get("arguments", ""),
+                                            "name": fn_name_chunk,
+                                            "arguments": fn_args_chunk,
                                         },
                                     }
                                 else:
-                                    if tc.get("id"):
-                                        tool_calls_dict[idx]["id"] += tc["id"]
-                                    fn = tc.get("function", {})
-                                    if fn.get("name"):
-                                        tool_calls_dict[idx]["function"]["name"] += fn["name"]
-                                    if fn.get("arguments"):
-                                        tool_calls_dict[idx]["function"]["arguments"] += fn["arguments"]
+                                    cur_id = tool_calls_dict[idx].get("id") or ""
+                                    if tc_id_chunk:
+                                        if not cur_id:
+                                            tool_calls_dict[idx]["id"] = tc_id_chunk
+                                        elif tc_id_chunk == cur_id:
+                                            pass  # repeated ID across chunks
+                                        elif tc_id_chunk.startswith(cur_id):
+                                            tool_calls_dict[idx]["id"] = tc_id_chunk
+                                        else:
+                                            tool_calls_dict[idx]["id"] = cur_id + tc_id_chunk
+
+                                    cur_name = tool_calls_dict[idx]["function"].get("name") or ""
+                                    if fn_name_chunk:
+                                        if not cur_name:
+                                            tool_calls_dict[idx]["function"]["name"] = fn_name_chunk
+                                        elif fn_name_chunk == cur_name:
+                                            pass  # repeated name across chunks (common on proxies)
+                                        elif fn_name_chunk.startswith(cur_name):
+                                            tool_calls_dict[idx]["function"]["name"] = fn_name_chunk
+                                        else:
+                                            tool_calls_dict[idx]["function"]["name"] = cur_name + fn_name_chunk
+
+                                    if fn_args_chunk:
+                                        tool_calls_dict[idx]["function"]["arguments"] = (
+                                            (tool_calls_dict[idx]["function"].get("arguments") or "") + fn_args_chunk
+                                        )
                         except _RetryableAPIError:
                             raise
                         except Exception:

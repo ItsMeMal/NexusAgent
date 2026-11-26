@@ -102,7 +102,8 @@ class NexusAgent:
 
 ## Tool & Skill Usage Rules
 - **MANDATORY SKILL-FIRST PROTOCOL**: Whenever the user's request involves a real task (coding, UI/frontend, design, architecture, debugging, data analysis, DevOps, security, writing, automation, video/typography, etc.), you **MUST** check the `## Learned Skills (.skills)` catalog above first!
-  - Call `read_skill(skill_name)` on the **1–2 most relevant skills** BEFORE planning, writing files, or executing other tools, and **strictly apply** their instructions and standards. (Avoid loading 4+ large skills at once to keep context lean.)
+  - Call `read_skill(skill_name)` on the **1–2 most relevant domain skills** BEFORE planning, writing files, or executing other tools, and **strictly apply** their technical, design, and coding standards. (Avoid loading 4+ giant skills at once.)
+  - **IGNORE EXTERNAL-IDE GATES IN SKILLS**: Some skills were authored for other IDEs and mention unavailable tools (`ask_question`, `TodoWrite`, `$CLAUDE_PLUGIN_ROOT`) or tell you to *"STOP and present a design for approval before writing code"*. **NEVER** stop to ask approval when the user asked you to build/code — extract the design/engineering guidance and **write real workspace files directly** using `write_file`, `patch_file`, and `run_command`!
   - Only skip `read_skill` for casual greetings/banter or when no listed skill is relevant.
 - **DECISIVE ACTION RULE**: When the user asks to build/make/create something — even phrased casually like *"bisa buat website X?"*, *"can you make X?"*, *"bebas"*, or *"use your skills"* — treat it as an execution order (unless in `PLAN` or `ASK` mode). Do NOT ask questionnaires ("what tech stack? what vibe? ready to proceed?"): inspect the workspace briefly, pick strong modern defaults informed by your skills, execute with `write_file`/`patch_file`/`run_command`, and deliver working results!
 - For simple greetings, identity questions ("who are you"), banter, or small talk (e.g., "yo", "hello", "lol", "hey"), DO NOT call any tools.
@@ -268,9 +269,24 @@ class NexusAgent:
                     tool_name = function_info.get("name")
                     raw_args = function_info.get("arguments", "{}")
 
-                    try:
-                        args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                    except Exception:
+                    arg_parse_err: Optional[str] = None
+                    if raw_args is None or raw_args == "":
+                        args = {}
+                    elif isinstance(raw_args, dict):
+                        args = raw_args
+                    elif isinstance(raw_args, str):
+                        try:
+                            parsed = json.loads(raw_args)
+                            args = parsed if isinstance(parsed, dict) else {}
+                            if not isinstance(parsed, dict):
+                                arg_parse_err = f"Expected JSON object arguments for '{tool_name}', got {type(parsed).__name__}."
+                        except Exception as je:
+                            args = {}
+                            arg_parse_err = (
+                                f"Error: Tool '{tool_name}' JSON arguments were invalid or truncated ({je}). "
+                                "Retry with valid JSON; if writing a large file, split into modular files or shorter `write_file` calls."
+                            )
+                    else:
                         args = {}
 
                     if self.on_tool_call:
@@ -281,7 +297,10 @@ class NexusAgent:
                     same_call_count = recent_call_signatures.count(sig)
                     recent_call_signatures.append(sig)
 
-                    if same_call_count >= 2:
+                    if arg_parse_err:
+                        result = arg_parse_err
+                        elapsed = 0.001
+                    elif same_call_count >= 2:
                         # Halt loop locally to avoid spinning and prevent upstream StalledToolLoopDetected
                         result = (
                             f"[System Loop Guard]: You have called '{tool_name}' multiple times with identical arguments. "
