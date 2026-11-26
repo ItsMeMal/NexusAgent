@@ -128,21 +128,55 @@ class SkillManager:
         return skills
 
     def get_skill(self, name: str) -> Optional[Skill]:
-        """Search all directories for a skill by name."""
+        """Search all directories for a skill by name (exact, then normalized fallback)."""
+        clean = (name or "").strip()
+        if not clean:
+            return None
         for directory in self.all_search_dirs():
-            # Try flat file
             for candidate in [
-                directory / f"{name}.md",
-                directory / name / "SKILL.md",
-                directory / name / f"{name}.md",
+                directory / f"{clean}.md",
+                directory / clean / "SKILL.md",
+                directory / clean / f"{clean}.md",
             ]:
                 if candidate.exists():
                     try:
                         text = candidate.read_text(encoding="utf-8")
-                        return Skill(name=name, description="", content=text, file_path=candidate)
+                        return Skill(name=clean, description="", content=text, file_path=candidate)
                     except Exception:
                         continue
+        # Normalized case-insensitive / hyphen-underscore fallback
+        norm_target = re.sub(r"[-_\s]+", "", clean.lower())
+        for skill in self.load_all_skills():
+            if re.sub(r"[-_\s]+", "", skill.name.lower()) == norm_target:
+                return skill
         return None
+
+    def match_skills(self, query: str, top_k: int = 5) -> List[Skill]:
+        """Return top skills matching keywords in query (fast lexical scoring)."""
+        tokens = set(re.findall(r"[a-z0-9]{3,}", (query or "").lower()))
+        # Filter ultra-common stopwords to avoid noisy matches
+        stopwords = {"the", "and", "for", "with", "this", "that", "from", "into", "buat", "yang", "dan", "untuk", "ini", "itu", "nya", "bisa", "tolong", "please", "make", "create", "build", "use", "using"}
+        tokens -= stopwords
+        if not tokens:
+            return []
+
+        scored: List[tuple[int, Skill]] = []
+        for skill in self.load_all_skills():
+            name_low = skill.name.lower()
+            desc_low = (skill.description or "").lower()
+            name_words = set(re.findall(r"[a-z0-9]{2,}", name_low))
+            desc_words = set(re.findall(r"[a-z0-9]{3,}", desc_low))
+            score = 0
+            for tok in tokens:
+                if tok in name_words or tok in name_low:
+                    score += 4
+                elif tok in desc_words:
+                    score += 2
+            if score >= 3:
+                scored.append((score, skill))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [s for _, s in scored[:top_k]]
 
     def save_skill(self, name: str, description: str, content: str) -> Path:
         """Save a new skill to the primary (writable) skills directory."""

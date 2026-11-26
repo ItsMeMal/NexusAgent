@@ -88,7 +88,10 @@ class NexusAgent:
 - NEVER end messages with work menus or task offerings (e.g., NEVER ask: "What would you like to work on?", "How can I assist you today?", "Want to code or just chat?").
 - When the user jokes, drops memes, or chats casually, match their vibe and stop naturally like a sharp human peer.
 
-## Tool Usage Rules
+## Tool & Skill Usage Rules
+- **MANDATORY SKILL-FIRST PROTOCOL**: Whenever the user's request involves a real task (coding, UI/frontend, design, architecture, debugging, data analysis, DevOps, security, writing, automation, video/typography, etc.), you **MUST** check the `## Learned Skills (.skills)` catalog above first!
+  - If ANY skill matches or can improve your work, you **MUST call `read_skill(skill_name)` BEFORE** planning, writing files, or executing other tools, and **strictly apply** the instructions, conventions, and standards inside that skill.
+  - Only skip `read_skill` for casual greetings/banter or when no listed skill is relevant.
 - For simple greetings, identity questions ("who are you"), banter, or small talk (e.g., "yo", "hello", "lol", "hey"), DO NOT call any tools.
 - Only call tools when the user's prompt actually requires action, web search, system execution, or specific memory recall.
 - When you execute a tool, inspect its result carefully before taking your next step.
@@ -107,6 +110,18 @@ class NexusAgent:
 
         # 3. Assemble full messages payload with fresh system prompt
         system_prompt = self.build_system_prompt()
+
+        # Lightweight skill auto-detection hint injected cleanly into system prompt (zero SQLite pollution)
+        if self.registry.get("read_skill") is not None and hasattr(self.skill_manager, "match_skills"):
+            matched_skills = self.skill_manager.match_skills(user_prompt, top_k=4)
+            if matched_skills:
+                skill_list = ", ".join(f"`{s.name}`" for s in matched_skills)
+                system_prompt += (
+                    f"\n\n## Active Task Skill Match\n"
+                    f"Relevant skill(s) detected for the user's request: {skill_list}.\n"
+                    f"You MUST call `read_skill` on the applicable skill(s) FIRST before planning, coding, or executing other tools."
+                )
+
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}] + history
         tools_schema = self.registry.to_openai_schemas()
 
