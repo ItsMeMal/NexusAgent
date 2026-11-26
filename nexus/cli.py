@@ -399,6 +399,7 @@ async def main_async():
                         mode_override = None   # None = auto-detect
                         custom_roles = []
                         task_parts = []
+                        use_web = True         # default: open web dashboard
                         i = 0
                         while i < len(rest):
                             tok = rest[i].lower()
@@ -414,6 +415,9 @@ async def main_async():
                             elif tok == "--roles" and i + 1 < len(rest):
                                 custom_roles = [r.strip() for r in rest[i + 1].split(",")]
                                 i += 2
+                            elif tok == "--no-web":
+                                use_web = False
+                                i += 1
                             else:
                                 task_parts.append(rest[i])
                                 i += 1
@@ -434,7 +438,12 @@ async def main_async():
                                 continue
                         # Auto-detect mode if not forced
                         mode = mode_override or auto_mode(preset, custom_roles)
-                        await run_team_with_ui(task_text, roles_to_run, mode, llm)
+                        if use_web:
+                            from nexus.team.dashboard import run_team_with_dashboard
+                            console.print(f"\n  [bold #00ffd7]👥 AI-Team[/bold #00ffd7]  [dim]opening dashboard at http://localhost:7891[/dim]\n")
+                            await run_team_with_dashboard(task_text, roles_to_run, mode, llm)
+                        else:
+                            await run_team_with_ui(task_text, roles_to_run, mode, llm)
                         continue
 
                     # Unknown subcommand — show help
