@@ -246,13 +246,23 @@ class TeamManager:
         board: TeamBoard,
         roles: List[str],
         results: Dict[str, str],
-        max_waves: int = 8,
+        max_waves: int = 10,
     ) -> None:
         """Execute ready tasks wave-by-wave until all tasks are resolved."""
+        stall_count = 0
         for _ in range(max_waves):
             ready = board.get_ready_tasks()
             if not ready:
+                if board.has_open_tasks():
+                    # Deadlock: pending tasks but none ready → unblock by clearing deps on the first pending task
+                    unblocked = await board.unblock_stalled_tasks()
+                    if unblocked:
+                        stall_count += 1
+                        if stall_count <= 3:
+                            continue  # retry with cleared deps
                 break
+
+            stall_count = 0  # reset on successful wave
 
             async def _execute_task(t: TeamTask):
                 target_role_id = t.assigned_to if t.assigned_to in BUILTIN_ROLES_BY_ID else (roles[0] if roles else "coder")
@@ -265,7 +275,8 @@ class TeamManager:
                 out = await agent.run(task=t.description, context=ctx, task_id=t.id)
                 results[target_role_id] = out
                 # Ensure task status transitions out of in_progress even if model didn't call team_update_task
-                if t.status == "in_progress":
+                current_status = next((tk.status for tk in board.tasks if tk.id == t.id), "in_progress")
+                if current_status == "in_progress":
                     final_status = "failed" if out.startswith("Error in ") else "completed"
                     await board.update_task(t.id, status=final_status, result=out[:1200])
 
@@ -323,14 +334,35 @@ class TeamManager:
                 roster_desc = ", ".join(
                     f"@{r} ({BUILTIN_ROLES_BY_ID[r].name})" for r in selected_roles if r in BUILTIN_ROLES_BY_ID
                 )
+                # Snapshot the workspace root so Lead doesn't waste tool budget
+                try:
+                    from ..tools.filesystem import get_filesystem_tools
+                    fs_tools = get_filesystem_tools(self.root_dir)
+                    list_dir_tool = next((t for t in fs_tools if t.name == "list_dir"), None)
+                    if list_dir_tool:
+                        import asyncio as _asyncio
+                        ws_snapshot = await list_dir_tool.handler(path=".")
+                        ws_snapshot = str(ws_snapshot)[:600]
+                    else:
+                        ws_snapshot = f"Workspace root: {self.root_dir}"
+                except Exception:
+                    ws_snapshot = f"Workspace root: {self.root_dir}"
+
                 lead_prompt = (
                     f"User Mission: {task}\n\n"
                     f"Available Team Roster: {roster_desc}\n\n"
-                    "Plan this mission for the AI-Team:\n"
-                    "1. Inspect the workspace briefly (`list_dir`) if relevant.\n"
-                    "2. Call `team_create_task` to create concrete tasks for the teammates above. "
-                    "Set `depends_on` only where a task genuinely requires files/output from an earlier task so independent tasks run in parallel.\n"
-                    "3. Post a short kickoff message via `team_send_message(recipient='all', ...)`."
+                    f"Workspace Snapshot:\n{ws_snapshot}\n\n"
+                    "Plan this mission for the AI-Team by creating tasks on the Shared Task Board.\n\n"
+                    "RULES (follow exactly):\n"
+                    "1. Call `team_create_task` for each task. Example:\n"
+                    "   team_create_task(title='Scaffold HTML structure', description='Create index.html with nav, hero, about, contact sections', assigned_to='coder', depends_on=[])\n"
+                    "2. `depends_on` must contain ONLY exact task IDs like ['T1'] or ['T1','T2'].\n"
+                    "   NEVER put the task title or description in depends_on. NEVER put a role name.\n"
+                    "   Tasks that don't need prior output: depends_on=[]\n"
+                    "   Tasks that need T1's files: depends_on=['T1']\n"
+                    "3. Create 3-5 tasks total. Keep descriptions concrete and actionable.\n"
+                    "4. After creating tasks, post a kickoff via team_send_message(recipient='all', content='...', kind='handoff').\n"
+                    "5. Do NOT ask the user questions. Make sensible decisions and create the tasks NOW."
                 )
                 await lead_agent.run(lead_prompt)
 
@@ -357,6 +389,22 @@ class TeamManager:
                     "listing what the team actually built, which files were created/modified, and any test/verification outputs."
                 )
                 summary = await lead_agent.run(synth_prompt)
+                # Fallback: build summary from task results if Lead returned empty
+                if not summary or summary.strip() in ("", "No output.", f"{LEAD_ROLE.name} completed assigned actions."):
+                    completed = [t for t in board.tasks if t.status == "completed"]
+                    if completed:
+                        lines = [f"Mission: {task}\n"]
+                        for t in completed:
+                            lines.append(f"✓ [{t.id}] {t.title} (@{t.assigned_to})")
+                            if t.result:
+                                lines.append(f"  → {t.result[:300]}")
+                        if board.files_touched:
+                            lines.append("\nFiles created/modified:")
+                            for f in board.files_touched:
+                                lines.append(f"  • {f['path']} ({f['action']} by @{f['by']})")
+                        summary = "\n".join(lines)
+                    else:
+                        summary = f"Mission '{task}' completed. {len(board.tasks)} tasks processed."
                 board.summary = summary
                 await board.post_message("lead", "all", summary, kind="status")
             else:

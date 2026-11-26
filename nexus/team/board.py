@@ -12,10 +12,12 @@ Provides the shared state that turns multiple isolated agents into a real AI-Tea
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import time
 import uuid
 from dataclasses import dataclass, field, asdict
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 
 EventCallback = Callable[[str, Dict[str, Any]], Any]
@@ -23,6 +25,47 @@ EventCallback = Callable[[str, Dict[str, Any]], Any]
 
 def _now_hms() -> str:
     return time.strftime("%H:%M:%S")
+
+
+def normalize_task_id(raw: Any) -> str:
+    """Normalize task ID references like 't1', '1', 'T1: Build UI' -> 'T1'."""
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    m = re.match(r"^[Tt]?(\d+)\b", s)
+    if m:
+        return f"T{m.group(1)}"
+    return s
+
+
+def normalize_depends_on(depends_on: Any) -> List[str]:
+    """Safely normalize depends_on from list, JSON array string, or comma-separated string."""
+    if not depends_on:
+        return []
+    items: List[Any]
+    if isinstance(depends_on, str):
+        s = depends_on.strip()
+        if not s:
+            return []
+        if s.startswith("[") and s.endswith("]"):
+            try:
+                parsed = json.loads(s)
+                items = parsed if isinstance(parsed, list) else [s]
+            except Exception:
+                items = [x.strip() for x in s.strip("[]").split(",")]
+        else:
+            items = [x.strip() for x in s.split(",")]
+    elif isinstance(depends_on, (list, tuple, set)):
+        items = list(depends_on)
+    else:
+        items = [depends_on]
+
+    out: List[str] = []
+    for item in items:
+        norm = normalize_task_id(item)
+        if norm and norm not in out:
+            out.append(norm)
+    return out
 
 
 @dataclass
@@ -190,18 +233,19 @@ class TeamBoard:
         title: str,
         description: str,
         assigned_to: str,
-        depends_on: Optional[List[str]] = None,
+        depends_on: Any = None,
         created_by: str = "lead",
     ) -> TeamTask:
         async with self._lock:
             self._task_seq += 1
             tid = f"T{self._task_seq}"
+            deps = [d for d in normalize_depends_on(depends_on) if d != tid]
             task = TeamTask(
                 id=tid,
                 title=title.strip(),
                 description=description.strip(),
                 assigned_to=assigned_to.strip().lower(),
-                depends_on=[d.strip() for d in (depends_on or []) if d and d.strip()],
+                depends_on=deps,
                 created_by=created_by,
             )
             self.tasks.append(task)
@@ -215,10 +259,11 @@ class TeamBoard:
         result: Optional[str] = None,
         files: Optional[List[str]] = None,
     ) -> Optional[TeamTask]:
+        norm_id = normalize_task_id(task_id)
         updated: Optional[TeamTask] = None
         async with self._lock:
             for t in self.tasks:
-                if t.id == task_id:
+                if t.id == norm_id or t.id.lower() == str(task_id).strip().lower():
                     if status:
                         t.status = status
                     if result is not None:
@@ -234,20 +279,48 @@ class TeamBoard:
             await self.emit("board_update", {"run_id": self.id, "tasks": [t.to_dict() for t in self.tasks]})
         return updated
 
+    def _resolve_deps(self, task: TeamTask) -> List[str]:
+        """Resolve dependency entries to real task IDs on this board (ignoring phantom refs)."""
+        all_ids = {t.id for t in self.tasks}
+        resolved: List[str] = []
+        for dep in task.depends_on:
+            norm = normalize_task_id(dep)
+            if norm in all_ids and norm != task.id:
+                resolved.append(norm)
+            else:
+                # Try matching by role name if model passed e.g. 'planner'
+                role_match = [t.id for t in self.tasks if t.assigned_to == dep.lower() and t.id != task.id]
+                resolved.extend(role_match)
+        return resolved
+
     def get_ready_tasks(self) -> List[TeamTask]:
-        """Return pending tasks whose dependencies are all completed."""
+        """Return pending tasks whose resolvable dependencies are all completed."""
         done_ids = {t.id for t in self.tasks if t.status == "completed"}
         failed_ids = {t.id for t in self.tasks if t.status in ("failed", "blocked")}
         ready: List[TeamTask] = []
         for t in self.tasks:
             if t.status != "pending":
                 continue
-            if any(dep in failed_ids for dep in t.depends_on):
-                # Dependency failed, unblock anyway or let Lead inspect; still keep runnable only if unmet deps aren't hard-stuck
+            deps = self._resolve_deps(t)
+            if any(dep in failed_ids for dep in deps):
                 continue
-            if all(dep in done_ids for dep in t.depends_on):
+            if all(dep in done_ids for dep in deps):
                 ready.append(t)
         return ready
+
+    async def unblock_stalled_tasks(self) -> bool:
+        """If pending tasks are deadlocked on failed/circular deps, unblock the earliest pending task."""
+        target: Optional[TeamTask] = None
+        async with self._lock:
+            for t in self.tasks:
+                if t.status == "pending":
+                    t.depends_on = []
+                    target = t
+                    break
+        if target:
+            await self.emit("board_update", {"run_id": self.id, "tasks": [t.to_dict() for t in self.tasks]})
+            return True
+        return False
 
     def has_open_tasks(self) -> bool:
         return any(t.status in ("pending", "in_progress") for t in self.tasks)

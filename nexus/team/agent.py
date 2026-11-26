@@ -222,6 +222,8 @@ class TeamAgent:
         task: str,
         context: str = "",
         task_id: Optional[str] = None,
+        toolsets_override: Optional[List[str]] = None,
+        max_steps_override: Optional[int] = None,
     ) -> str:
         """Execute a task autonomously using real NexusAgent tools."""
         self.total_runs += 1
@@ -244,12 +246,23 @@ class TeamAgent:
         board = self.board
         role_id = self.role.id
         loop = asyncio.get_running_loop()
+        pending_ui_tasks: List[asyncio.Task] = []
+        turn_active = True
 
         def _schedule(coro):
+            if not turn_active:
+                coro.close()
+                return
             try:
-                loop.create_task(coro)
+                t = loop.create_task(coro)
+                pending_ui_tasks.append(t)
             except Exception:
                 pass
+
+        async def _flush_ui_tasks():
+            if pending_ui_tasks:
+                await asyncio.gather(*list(pending_ui_tasks), return_exceptions=True)
+                pending_ui_tasks.clear()
 
         def on_tool_call(tool_name: str, args: Dict[str, Any]):
             summary = _summarize_args(args)
@@ -281,7 +294,7 @@ class TeamAgent:
             board=board,
             agent_id=role_id,
             root_dir=self.root_dir,
-            toolsets=self.role.toolsets,
+            toolsets=toolsets_override if toolsets_override is not None else self.role.toolsets,
             memory=self.memory,
             skill_manager=self.skill_manager,
             parent_registry=self.parent_registry,
@@ -296,7 +309,7 @@ class TeamAgent:
             skill_manager=self.skill_manager,
             registry=scoped_registry,
             soul_path=config.SOUL_PATH,
-            max_steps=self.role.max_steps,
+            max_steps=max_steps_override if max_steps_override is not None else self.role.max_steps,
             session_id=session_id,
             on_tool_call=on_tool_call,
             on_tool_result=on_tool_result,
@@ -312,7 +325,8 @@ class TeamAgent:
             f"## Your Role\n{self.role.system_prompt}\n\n"
             "## AI-Team Operating Rules\n"
             "- Act directly in the workspace using your real tools (`list_dir`, `read_file`, `write_file`, `patch_file`, `run_command`, `web_search`, etc.).\n"
-            "- NEVER ask the user clarifying questions like a passive chatbot when you have an assigned team task — inspect the workspace, make sensible engineering choices, execute with tools, and report concrete results.\n"
+            "- Work decisively in minimal tool steps: do NOT repeatedly scan unrelated folders when a quick workspace snapshot is already provided.\n"
+            "- NEVER ask the user clarifying questions like a passive chatbot when you have an assigned team task — inspect if needed, make sensible engineering choices, execute with tools, and produce concrete deliverables.\n"
             "- Check `team_read_board` / `team_read_messages` if you need context from teammates.\n"
             "- Use `team_send_message` to share important handoff notes (files written, endpoints, test findings) with `'all'` or specific teammates.\n"
             + (
@@ -331,14 +345,38 @@ class TeamAgent:
         await board.set_agent_state(role_id, "thinking", current_task=task[:90])
         try:
             result = await agent.run(full_prompt)
-            final_text = (result or "").strip() or "(Completed with tool actions)"
+            turn_active = False
+            await _flush_ui_tasks()
+
+            final_text = (result or "").strip()
+            if not final_text:
+                # Guarantee a real text summary if the loop ended right after a tool call
+                try:
+                    hist = self.memory.get_session_history(session_id)
+                    synth_msgs = [
+                        {"role": "system", "content": f"You are {self.role.name}. Summarize concisely what you accomplished and verified based on the tool actions in this session."},
+                        *hist[-8:],
+                        {"role": "user", "content": "Provide your concise final summary now without calling tools."},
+                    ]
+                    resp = await self.llm.chat_completion(messages=synth_msgs, tools=None)
+                    if isinstance(resp, dict):
+                        final_text = (resp.get("content") or "").strip()
+                except Exception:
+                    pass
+            if not final_text:
+                final_text = f"{self.role.name} completed assigned actions."
+
             self.last_result = final_text
             await board.set_agent_state(role_id, "done", output=final_text)
             return final_text
         except asyncio.CancelledError:
+            turn_active = False
+            await _flush_ui_tasks()
             await board.set_agent_state(role_id, "cancelled")
             raise
         except Exception as exc:
+            turn_active = False
+            await _flush_ui_tasks()
             err = f"Error in {self.role.name}: {exc}"
             self.last_result = err
             await board.set_agent_state(role_id, "error", output=err)

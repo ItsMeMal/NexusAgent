@@ -192,14 +192,14 @@ def get_team_collaboration_tools(
             title: str,
             description: str,
             assigned_to: str,
-            depends_on: Optional[List[str]] = None,
+            depends_on: Any = None,
         ) -> str:
             """Create a new task on the Shared Team Board assigned to a specific teammate role."""
             task = await board.create_task(
                 title=title,
                 description=description,
                 assigned_to=assigned_to,
-                depends_on=depends_on or [],
+                depends_on=depends_on,
                 created_by=agent_id,
             )
             return f"Created task {task.id} assigned to @{task.assigned_to}: {task.title}"
