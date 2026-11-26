@@ -30,6 +30,7 @@ def render_banner(
     provider_name: str = "OpenRouter",
     animate: bool = True,
     update_info: Optional[Dict[str, Any]] = None,
+    mode_id: str = "auto",
     **kwargs
 ):
     """Render a cyberpunk welcome banner with interactive laser shimmer and bootloader."""
@@ -86,12 +87,14 @@ def render_banner(
             console.print(f"    [bold #22c55e]✔[/bold #22c55e] [white]{name:<30}[/white] [dim]· {detail}[/dim]")
 
     # 4. Status card & command hints
+    from ..core.modes import get_mode
+    mode_spec = get_mode(mode_id)
     console.print()
-    console.print(f"  [bold #00ffd7]◈[/bold #00ffd7] [bold #38bdf8]Nexus Agent Orchestrator[/bold #38bdf8] [dim]· Autonomous Multi-Agent Engine[/dim]")
+    console.print(f"  [bold #00ffd7]◈[/bold #00ffd7] [bold #38bdf8]Nexus Agent Orchestrator[/bold #38bdf8] [dim]·[/dim] [bold {mode_spec.color}]{mode_spec.icon} {mode_spec.label}[/bold {mode_spec.color}] [dim]· Autonomous Multi-Agent Engine[/dim]")
     console.print(f"  [dim]Router:[/dim] [bold #f59e0b]{provider_name}[/bold #f59e0b]  [dim]·[/dim]  [dim]Model:[/dim] [bold #22c55e]{model_name}[/bold #22c55e]  [dim]·[/dim]  [dim]Session:[/dim] [bold #38bdf8]{session_id}[/bold #38bdf8]")
     console.print(f"  [dim]Directory:[/dim] [dim white]{os.getcwd()}[/dim white]  [dim]·[/dim]  [dim]{tools_count} tools online · {skills_count} skills · SQLite+FTS5[/dim]")
     console.print("  [dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
-    console.print("  [dim]Type [bold #00ffd7]/[/bold #00ffd7] for command palette · [bold #00ffd7]/models[/bold #00ffd7] to switch model · [bold #00ffd7]/provider[/bold #00ffd7] to connect router · [dim red]exit[/dim red] to quit[/dim]\n")
+    console.print("  [dim]Type [bold #00ffd7]/[/bold #00ffd7] commands · [bold #00ffd7]Shift+Tab[/bold #00ffd7] or [bold #00ffd7]/mode[/bold #00ffd7] switch mode · [bold #00ffd7]/models[/bold #00ffd7] model · [bold #00ffd7]/provider[/bold #00ffd7] router · [dim red]exit[/dim red] quit[/dim]\n")
 
     if update_info and update_info.get("update_available"):
         render_update_alert(update_info)
@@ -125,6 +128,7 @@ def build_nexus_mascot_renderable(
     message: str = "Thinking & coordinating...",
     model_name: str = "",
     width: int = 100,
+    mode_id: str = "auto",
 ):
     """Build a crisp 4-line animated Nexus Mascot + live telemetry widget for Rich Live."""
     msg_low = (message or "").lower()
@@ -219,10 +223,14 @@ def build_nexus_mascot_renderable(
     if pos >= bar_len:
         pos = cycle - pos
 
+    from ..core.modes import get_mode
+    mode_spec = get_mode(mode_id)
+
     info = Text()
     info.append("◈ NEXUS CORE ", style="bold #00ffd7")
     info.append(badge_text, style=badge_style)
-    info.append(f"  {model_short}\n", style="dim #94a3b8")
+    info.append(f"  {mode_spec.icon} {mode_spec.label}", style=f"bold {mode_spec.color}")
+    info.append(f"  ·  {model_short}\n", style="dim #94a3b8")
 
     clean_msg = message if len(message) <= 44 else message[:41] + "..."
     info.append(f"{spin} ", style="bold #00ffd7" if not is_tool else "bold #f59e0b")
@@ -355,9 +363,12 @@ def render_tools_table(tools: list):
             console.print(f"    [bold #38bdf8]{name:<24}[/bold #38bdf8] [dim]→[/dim]  [white]{short_desc}[/white]")
         console.print()
 
-def render_status_card(model_name: str, provider_name: str, session_id: str, tools_count: int, skills_count: int, mem_count: int, cron_count: int):
+def render_status_card(model_name: str, provider_name: str, session_id: str, tools_count: int, skills_count: int, mem_count: int, cron_count: int, mode_id: str = "auto"):
     """Render system diagnostics overview."""
+    from ..core.modes import get_mode
+    mode_spec = get_mode(mode_id)
     console.print("\n  [bold #00ffd7]◈ Nexus System Diagnostic Overview[/bold #00ffd7]\n")
+    console.print(f"    [dim]Agent Mode:[/dim]        [bold {mode_spec.color}]{mode_spec.icon} {mode_spec.label}[/bold {mode_spec.color}] [dim]({mode_spec.short_desc})[/dim]")
     console.print(f"    [dim]Active Model:[/dim]      [bold #22c55e]{model_name}[/bold #22c55e]")
     console.print(f"    [dim]Inference Router:[/dim]  [bold #f59e0b]{provider_name}[/bold #f59e0b]")
     console.print(f"    [dim]Active Session:[/dim]    [bold #38bdf8]{session_id}[/bold #38bdf8]")

@@ -556,6 +556,70 @@ async def run_tests():
     ui_ctrl.stop_status()
     print("   [OK] Animated Nexus Mascot thinking/tool/compact lifecycle verified.")
 
+    print("14. Testing Agent Modes (auto/plan/code/ask/turbo) & Upgraded Prompt HUD...")
+    from nexus.core import AGENT_MODES, MODE_ORDER, cycle_mode, get_mode
+    from nexus.cli import build_prompt_fragments, build_bottom_toolbar
+
+    cur = "auto"
+    visited = [cur]
+    for _ in range(len(MODE_ORDER)):
+        cur = cycle_mode(cur).id
+        visited.append(cur)
+    assert visited == ["auto", "plan", "code", "ask", "turbo", "auto"], f"Unexpected cycle: {visited}"
+
+    # Verify PLAN mode blocks mutating tools at schema & execution level
+    seen_tools_in_plan = []
+    class ModeMockLLM:
+        def __init__(self):
+            self.temperature = 0.7
+            self.turn = 0
+        async def chat_completion(self, messages, tools=None, on_token=None):
+            self.turn += 1
+            if tools is not None:
+                seen_tools_in_plan.append([t["function"]["name"] for t in tools])
+            if self.turn == 1:
+                # Even if model hallucinates calling write_file in PLAN mode, Mode Guard blocks it!
+                return {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": "plan_tc_1",
+                        "type": "function",
+                        "function": {"name": "write_file", "arguments": '{"path":"bad.txt","content":"no"}'}
+                    }]
+                }
+            return {"role": "assistant", "content": "Architecture blueprint ready."}
+
+    with tempfile.TemporaryDirectory() as mtmp:
+        mode_llm = ModeMockLLM()
+        mode_agent = NexusAgent(
+            llm_client=mode_llm,
+            memory=memory,
+            skill_manager=skill_mgr,
+            registry=registry,
+            mode="plan",
+            session_id="mode-test-sess",
+        )
+        assert "PLAN" in mode_agent.build_system_prompt()
+        out = await mode_agent.run("Design a REST API")
+        assert "blueprint" in out.lower()
+        assert not (Path(mtmp) / "bad.txt").exists()
+        assert "write_file" not in seen_tools_in_plan[0] and "run_command" not in seen_tools_in_plan[0]
+        assert "read_file" in seen_tools_in_plan[0]
+        hist_m = memory.get_session_history("mode-test-sess")
+        assert any("Mode Guard (PLAN)" in (m.get("content") or "") for m in hist_m)
+
+        # Verify CODE mode caps temperature cleanly during run and restores afterwards
+        mode_agent.set_mode("code")
+        assert mode_llm.temperature == 0.7
+        frags = build_prompt_fragments("deepai-cyber", "code", "NexusAgentCLIV2", "main")
+        bar = build_bottom_toolbar("code", "Custom", "abcd1234")
+        frag_txt = "".join(t for _, t in frags)
+        bar_txt = "".join(t for _, t in bar)
+        assert "CODE" in frag_txt and "deepai-cyber" in frag_txt and "main" in frag_txt
+        assert "Shift+Tab" in bar_txt and "CODE" in bar_txt
+    print("   [OK] Agent modes, PLAN read-only guard, and prompt HUD verified.")
+
     # Cleanup
     import gc
     gc.collect()

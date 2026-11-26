@@ -12,11 +12,13 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
 from ..providers.manager import ProviderManager, ProviderProfile, ModelInfo, PROVIDERS
+from ..core.modes import AGENT_MODES, MODE_ORDER, get_mode
 from ..config import config
 
 console = Console()
 
 SLASH_COMMANDS = [
+    ("/mode", "Switch AI Agent mode: auto, plan, code, ask, turbo (Shift+Tab)", "Mode"),
     ("/models", "Select or search AI models (interactive arrow-key menu)", "Models"),
     ("/model", "Alias for /models", "Models"),
     ("/provider", "Select or switch router / provider (interactive arrow-key menu)", "Provider"),
@@ -72,7 +74,7 @@ class NexusCommandCompleter(Completer):
 def render_command_palette():
     """Render a clean, unboxed command palette grouped by domain."""
     categories = {
-        "🤖 Models & Routing": [c for c in SLASH_COMMANDS if c[2] in ("Models", "Provider")],
+        "◈ Agent Mode & Models": [c for c in SLASH_COMMANDS if c[2] in ("Mode", "Models", "Provider")],
         "🌐 Messaging Gateways": [c for c in SLASH_COMMANDS if c[2] == "Gateway"],
         "🐙 GitHub App": [c for c in SLASH_COMMANDS if c[2] == "GitHub"],
         "👥 AI-Team": [c for c in SLASH_COMMANDS if c[2] == "Team"],
@@ -1037,5 +1039,108 @@ async def interactive_mcp_add(session: PromptSession, mcp_manager, registry) -> 
         console.print(f"  [bold yellow]⚠ Saved to config, but connection failed:[/bold yellow] [red]{err}[/red]\n")
 
     return True
+
+
+async def _run_arrow_key_mode_picker(active_mode: str) -> Optional[str]:
+    """Interactive arrow-key selector for AI Agent operating modes."""
+    selected_idx = [0]
+    result = [None]
+    cur_id = get_mode(active_mode).id
+    if cur_id in MODE_ORDER:
+        selected_idx[0] = MODE_ORDER.index(cur_id)
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _(event):
+        selected_idx[0] = (selected_idx[0] - 1) % len(MODE_ORDER)
+        event.app.invalidate()
+
+    @kb.add("down")
+    def _(event):
+        selected_idx[0] = (selected_idx[0] + 1) % len(MODE_ORDER)
+        event.app.invalidate()
+
+    @kb.add("enter")
+    def _(event):
+        result[0] = MODE_ORDER[selected_idx[0]]
+        event.app.exit()
+
+    @kb.add("escape")
+    @kb.add("c-c")
+    def _(event):
+        result[0] = None
+        event.app.exit()
+
+    def get_header():
+        return [
+            ("class:title", "Select Nexus AI Agent Operating Mode:"),
+            ("class:dim", "  (or press Shift+Tab anytime in prompt)\n\n"),
+        ]
+
+    def get_content():
+        lines = [
+            ("class:colhead", f"   {'Mode':<14} {'Status':<14} Description\n"),
+            ("class:dim", f"   {'─'*14} {'─'*14} {'─'*56}\n"),
+        ]
+        for i, mid in enumerate(MODE_ORDER):
+            m = AGENT_MODES[mid]
+            is_active = (mid == cur_id)
+            is_sel = (i == selected_idx[0])
+            prefix = " ❯ " if is_sel else "   "
+            style_cls = "class:cursor" if is_sel else ("class:active" if is_active else "")
+            status_lbl = "● ACTIVE" if is_active else ""
+            row = f"{prefix}{m.icon} {m.label:<12} {status_lbl:<14} {m.short_desc}\n"
+            lines.append((style_cls, row))
+        lines.append(("class:dim", "\n   [↑/↓ move • Enter activate • Esc cancel]\n"))
+        return lines
+
+    layout = Layout(HSplit([
+        Window(FormattedTextControl(get_header), height=2),
+        Window(FormattedTextControl(get_content), height=10),
+    ]))
+
+    style = Style.from_dict({
+        "title": "bold #38bdf8",
+        "cursor": "bold #11111b bg:#00ffd7",
+        "active": "bold #22c55e",
+        "colhead": "bold #94a3b8",
+        "dim": "#64748b",
+    })
+
+    app = Application(layout=layout, key_bindings=kb, style=style, full_screen=False, erase_when_done=True)
+    await app.run_async()
+    return result[0]
+
+
+async def interactive_select_mode(agent, env_path: Path, requested_mode: Optional[str] = None) -> Optional[str]:
+    """Select an AI Agent operating mode interactively or via direct argument."""
+    if requested_mode:
+        clean = requested_mode.strip().lower()
+        if clean not in AGENT_MODES:
+            console.print(f"\n  [red]Unknown mode '{requested_mode}'.[/red] Available: {', '.join(MODE_ORDER)}\n")
+            return None
+        chosen_id = clean
+    else:
+        try:
+            chosen_id = await _run_arrow_key_mode_picker(agent.mode)
+        except Exception:
+            chosen_id = None
+
+    if not chosen_id:
+        console.print("  [dim]Kept current mode.[/dim]\n")
+        return None
+
+    spec = agent.set_mode(chosen_id)
+    config.AGENT_MODE = spec.id
+    os.environ["NEXUS_AGENT_MODE"] = spec.id
+    ProviderManager.update_env_file({"NEXUS_AGENT_MODE": spec.id}, env_path)
+
+    console.print(
+        f"\n  [bold {spec.color}]{spec.icon} Agent Mode switched to {spec.label}[/bold {spec.color}] "
+        f"[dim]— {spec.short_desc}[/dim]\n"
+    )
+    return spec.id
+
 
 

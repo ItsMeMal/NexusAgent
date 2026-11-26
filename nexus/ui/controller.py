@@ -17,9 +17,10 @@ from .tui import (
 class AgentUIController:
     """Coordinates live output, animated Nexus Mascot thinking/loading indicator, and streaming tokens without stdout collisions."""
 
-    def __init__(self, model_name: str, console_instance: Optional[Console] = None):
+    def __init__(self, model_name: str, console_instance: Optional[Console] = None, mode_id: str = "auto"):
         self.console = console_instance or console
         self.model_name = model_name
+        self.mode_id = mode_id
         self.status = None
         self.live: Optional[Live] = None
         self.stream_started = False
@@ -33,6 +34,9 @@ class AgentUIController:
     def update_model(self, new_model_name: str):
         self.model_name = new_model_name
 
+    def update_mode(self, new_mode_id: str):
+        self.mode_id = new_mode_id
+
     def _render_mascot(self, frame_idx: int, elapsed: float):
         return build_nexus_mascot_renderable(
             frame_idx=frame_idx,
@@ -40,6 +44,7 @@ class AgentUIController:
             message=self._current_message,
             model_name=self.model_name,
             width=getattr(self.console, "width", 100) or 100,
+            mode_id=self.mode_id,
         )
 
     def start_thinking(self, message: str = "Thinking & coordinating..."):
@@ -99,6 +104,18 @@ class AgentUIController:
                 pass
             self.status = None
 
+    def _print_assistant_header(self):
+        if not self.header_printed:
+            from ..core.modes import get_mode
+            mode_spec = get_mode(self.mode_id)
+            model_short = self.model_name.split("/")[-1] if "/" in self.model_name else self.model_name
+            self.console.print(
+                f"\n[bold #00ffd7]◈ Nexus[/bold #00ffd7] "
+                f"[bold {mode_spec.color}]\\[{mode_spec.icon} {mode_spec.label}][/bold {mode_spec.color}] "
+                f"[dim]({model_short})[/dim]"
+            )
+            self.header_printed = True
+
     def on_token(self, token: str):
         """Called as each streaming token arrives from the LLM."""
         if not self.stream_started:
@@ -110,10 +127,7 @@ class AgentUIController:
             self.has_content = True
 
             # 2. Print assistant header only once per turn
-            if not self.header_printed:
-                model_short = self.model_name.split("/")[-1] if "/" in self.model_name else self.model_name
-                self.console.print(f"\n[bold #00ffd7]◈ Nexus[/bold #00ffd7] [dim]({model_short})[/dim]")
-                self.header_printed = True
+            self._print_assistant_header()
 
         # 3. Stream token directly to stdout with immediate flush
         sys.stdout.write(token)
@@ -124,10 +138,7 @@ class AgentUIController:
         if not thought or not thought.strip():
             return
         self.stop_status()
-        if not self.header_printed:
-            model_short = self.model_name.split("/")[-1] if "/" in self.model_name else self.model_name
-            self.console.print(f"\n[bold #00ffd7]◈ Nexus[/bold #00ffd7] [dim]({model_short})[/dim]")
-            self.header_printed = True
+        self._print_assistant_header()
         self.console.print(Markdown(thought))
         self.console.print()
         self.has_content = True

@@ -26,6 +26,7 @@ from .interactive import (
     render_command_palette,
     interactive_select_provider,
     interactive_select_model,
+    interactive_select_mode,
     interactive_resume_session,
     interactive_gateway_setup,
     interactive_mcp_add
@@ -57,6 +58,7 @@ __all__ = [
     "render_command_palette",
     "interactive_select_provider",
     "interactive_select_model",
+    "interactive_select_mode",
     "interactive_resume_session",
     "interactive_gateway_setup",
     "interactive_mcp_add"

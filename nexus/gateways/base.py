@@ -225,6 +225,25 @@ class BaseGateway(ABC):
                 f"• Running Since: `{self.started_at or 'unknown'}`"
             )
 
+        if cmd == "/mode":
+            from ..core.modes import AGENT_MODES, MODE_ORDER, get_mode
+            parts = text.split(maxsplit=1)
+            if len(parts) >= 2:
+                req = parts[1].strip().lower()
+                if req not in AGENT_MODES:
+                    return f"❌ Unknown mode `{req}`. Available: {', '.join(MODE_ORDER)}"
+                spec = get_mode(req)
+                config.AGENT_MODE = spec.id
+                return f"{spec.icon} Agent mode switched to *{spec.label}* — {spec.short_desc}"
+            cur = get_mode(getattr(config, "AGENT_MODE", "auto"))
+            lines = [f"◈ *Agent Mode* (active: `{cur.id}`)\n"]
+            for mid in MODE_ORDER:
+                m = AGENT_MODES[mid]
+                mark = "▶" if m.id == cur.id else "•"
+                lines.append(f"{mark} `{m.id}` — {m.short_desc}")
+            lines.append("\nUsage: `/mode <auto|plan|code|ask|turbo>`")
+            return "\n".join(lines)
+
         if cmd == "/model":
             parts = text.split(maxsplit=1)
             if len(parts) >= 2:

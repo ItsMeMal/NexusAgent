@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 
 from .config import config
@@ -20,7 +21,7 @@ from .gateways import GatewayManager
 from .security import SecurityGuard
 from .updater import check_for_update, perform_update
 from .tools import create_default_registry
-from .core import LLMClient, NexusAgent
+from .core import LLMClient, NexusAgent, get_mode, cycle_mode
 from .ui import (
     render_banner,
     render_memories_table,
@@ -42,6 +43,7 @@ from .ui import (
     render_command_palette,
     interactive_select_provider,
     interactive_select_model,
+    interactive_select_mode,
     interactive_resume_session,
     interactive_gateway_setup,
     interactive_mcp_add,
@@ -53,12 +55,85 @@ pt_style = Style.from_dict({
     'app-name': '#38bdf8 bold',
     'dim': '#64748b',
     'model-badge': '#22c55e bold',
+    'workspace': '#94a3b8',
+    'git-branch': '#a78bfa',
+    'mode-auto': 'bg:#042f2e #00ffd7 bold',
+    'mode-plan': 'bg:#2e1065 #c4b5fd bold',
+    'mode-code': 'bg:#0c4a6e #38bdf8 bold',
+    'mode-ask': 'bg:#052e16 #4ade80 bold',
+    'mode-turbo': 'bg:#451a03 #fbbf24 bold',
     'box-bottom': '#00ffd7 bold',
+    'rprompt': '#64748b',
+    'rprompt-key': '#38bdf8 bold',
+    'bottom-toolbar': 'bg:#0f172a #94a3b8',
+    'bottom-toolbar.key': '#00ffd7 bold',
+    'bottom-toolbar.sep': '#334155',
     'completion-menu.completion': 'bg:#1e1e2e #cdd6f4',
     'completion-menu.completion.current': 'bg:#00d7af #11111b bold',
     'completion-menu.meta.completion': 'bg:#181825 #94a3b8',
     'completion-menu.meta.completion.current': 'bg:#00d7af #11111b',
 })
+
+
+def _detect_git_branch(root: Path) -> str:
+    """Fast local .git HEAD reader without spawning subprocess."""
+    try:
+        cur = root.resolve()
+        for parent in [cur, *cur.parents]:
+            head_file = parent / ".git" / "HEAD"
+            if head_file.exists():
+                txt = head_file.read_text(encoding="utf-8", errors="ignore").strip()
+                if txt.startswith("ref: "):
+                    return txt.split("/")[-1]
+                return txt[:7]
+    except Exception:
+        pass
+    return ""
+
+
+def build_prompt_fragments(model_name: str, mode_id: str, workspace_name: str = "", git_branch: str = ""):
+    """Build sleek cyberpunk prompt header fragments with mode, model, workspace, and git pill."""
+    spec = get_mode(mode_id)
+    model_short = model_name.split("/")[-1] if "/" in model_name else model_name
+    frags = [
+        ('class:box-top', '╭─ '),
+        ('class:app-name', '◈ nexus'),
+        ('class:dim', ' · '),
+        (f'class:mode-{spec.id}', f' {spec.icon} {spec.label} '),
+        ('class:dim', ' · '),
+        ('class:model-badge', model_short),
+    ]
+    if workspace_name:
+        frags.extend([
+            ('class:dim', ' · '),
+            ('class:workspace', f'⌂ {workspace_name}'),
+        ])
+    if git_branch:
+        frags.extend([
+            ('class:dim', ' '),
+            ('class:git-branch', f'({git_branch})'),
+        ])
+    frags.append(('class:box-bottom', '\n╰─❯ '))
+    return frags
+
+
+def build_bottom_toolbar(mode_id: str, provider_name: str, session_id: str):
+    """Build clean single-line bottom HUD bar."""
+    spec = get_mode(mode_id)
+    return [
+        ('class:bottom-toolbar', ' '),
+        (f'class:mode-{spec.id}', f' {spec.icon} {spec.label} '),
+        ('class:bottom-toolbar', f' {spec.short_desc} '),
+        ('class:bottom-toolbar.sep', '│ '),
+        ('class:bottom-toolbar.key', 'Shift+Tab'),
+        ('class:bottom-toolbar', ' mode  '),
+        ('class:bottom-toolbar.key', '/'),
+        ('class:bottom-toolbar', ' cmds  '),
+        ('class:bottom-toolbar.key', '/models'),
+        ('class:bottom-toolbar', ' model  '),
+        ('class:bottom-toolbar.sep', '│ '),
+        ('class:bottom-toolbar', f'{provider_name} · #{session_id} '),
+    ]
 
 async def main_async():
     if sys.platform == "win32":
@@ -71,6 +146,7 @@ async def main_async():
     parser = argparse.ArgumentParser(description="Nexus Agent Orchestrator - Autonomous Multi-Agent AI CLI")
     parser.add_argument("-p", "--prompt", type=str, help="Single-shot execution prompt", default=None)
     parser.add_argument("-m", "--model", type=str, help="Model override", default=None)
+    parser.add_argument("-M", "--mode", type=str, help="Agent mode override (auto|plan|code|ask|turbo)", default=None)
     parser.add_argument("-s", "--session", type=str, help="Session ID to resume or use", default=None)
     parser.add_argument("-g", "--gateway", nargs="?", const="all", default=None, help="Run messaging gateway daemon (all|telegram|discord|whatsapp)")
     parser.add_argument("subcommand", nargs="*", help=argparse.SUPPRESS)
@@ -99,8 +175,10 @@ async def main_async():
         temperature=config.TEMPERATURE
     )
 
+    active_mode = get_mode(args.mode or config.AGENT_MODE).id
+
     # Dedicated UI controller for collision-free live streaming & spinners
-    ui_controller = AgentUIController(model_name=llm.model, console_instance=console)
+    ui_controller = AgentUIController(model_name=llm.model, console_instance=console, mode_id=active_mode)
 
     # Subagent orchestrator manager
     subagent_manager = SubagentManager(
@@ -151,6 +229,7 @@ async def main_async():
         soul_path=config.SOUL_PATH,
         max_steps=config.MAX_STEPS,
         session_id=current_session[0],
+        mode=active_mode,
         on_thought=ui_controller.on_thought,
         on_token=ui_controller.on_token,
         on_tool_call=ui_controller.on_tool_call,
@@ -206,7 +285,8 @@ async def main_async():
         tools_count=len(tools),
         provider_name=active_provider.name,
         animate=True,
-        update_info=update_info
+        update_info=update_info,
+        mode_id=agent.mode,
     )
 
     # Optional auto-start gateways if configured in .env
@@ -232,25 +312,64 @@ async def main_async():
         pass  # Dashboard is optional, don't block CLI
 
     completer = NexusCommandCompleter()
+    prompt_kb = KeyBindings()
+
+    @prompt_kb.add("s-tab")
+    def _cycle_mode_hotkey(event):
+        spec = cycle_mode(agent.mode)
+        agent.mode = spec.id
+        config.AGENT_MODE = spec.id
+        os.environ["NEXUS_AGENT_MODE"] = spec.id
+        ui_controller.update_mode(spec.id)
+        try:
+            ProviderManager.update_env_file({"NEXUS_AGENT_MODE": spec.id}, env_path)
+        except Exception:
+            pass
+        event.app.invalidate()
+
     session = PromptSession(
         history=InMemoryHistory(),
         completer=completer,
-        complete_while_typing=True
+        complete_while_typing=True,
+        key_bindings=prompt_kb,
     )
+
+    workspace_name = config.ROOT_DIR.name
 
     while True:
         try:
             session.is_password = False
-            model_short = llm.model.split("/")[-1] if "/" in llm.model else llm.model
-            prompt_fragments = [
-                ('class:box-top', '╭─ '),
-                ('class:app-name', 'nexus '),
-                ('class:dim', '· '),
-                ('class:model-badge', f'[{model_short}]'),
-                ('class:box-bottom', '\n╰─❯ '),
-            ]
+            git_branch = _detect_git_branch(config.ROOT_DIR)
+            prov_name = ProviderManager.detect_active_provider(config.API_BASE).name.split("(")[0].strip()
 
-            user_input = await session.prompt_async(prompt_fragments, style=pt_style, is_password=False)
+            def _get_prompt():
+                return build_prompt_fragments(
+                    model_name=llm.model,
+                    mode_id=agent.mode,
+                    workspace_name=workspace_name,
+                    git_branch=git_branch,
+                )
+
+            def _get_rprompt():
+                return [
+                    ('class:rprompt-key', 'Shift+Tab'),
+                    ('class:rprompt', ' ⇄ mode '),
+                ]
+
+            def _get_toolbar():
+                return build_bottom_toolbar(
+                    mode_id=agent.mode,
+                    provider_name=prov_name,
+                    session_id=agent.session_id,
+                )
+
+            user_input = await session.prompt_async(
+                _get_prompt,
+                rprompt=_get_rprompt,
+                bottom_toolbar=_get_toolbar,
+                style=pt_style,
+                is_password=False,
+            )
             text = user_input.strip()
             if not text:
                 continue
@@ -275,7 +394,14 @@ async def main_async():
 
             if text.startswith("/"):
                 cmd = text.lower().split()[0]
-                if cmd in ("/models", "/model"):
+                if cmd in ("/mode", "/modes"):
+                    args_mode = text.split(maxsplit=1)
+                    req_m = args_mode[1].strip() if len(args_mode) > 1 else None
+                    new_m = await interactive_select_mode(agent, env_path, requested_mode=req_m)
+                    if new_m:
+                        ui_controller.update_mode(new_m)
+                    continue
+                elif cmd in ("/models", "/model"):
                     args_m = text.lower().split()[1:]
                     force_chk = any(a in ("check", "refresh", "--check", "--refresh") for a in args_m)
                     await interactive_select_model(session, llm, env_path, force_check=force_chk)
@@ -299,11 +425,13 @@ async def main_async():
                         tools_count=len(tools),
                         skills_count=len(skills),
                         mem_count=len(all_mems),
-                        cron_count=len(cron_tasks)
+                        cron_count=len(cron_tasks),
+                        mode_id=agent.mode,
                     )
                     continue
                 elif cmd in ("/config", "/env", "/settings"):
                     cfg_dict = {
+                        "Agent Mode": agent.mode.upper(),
                         "Active Model": llm.model,
                         "Inference API Base": config.API_BASE,
                         "API Key": config.API_KEY,
@@ -566,7 +694,8 @@ async def main_async():
                         tools_count=len(tools),
                         provider_name=active_provider.name,
                         animate=True,
-                        update_info=up_info
+                        update_info=up_info,
+                        mode_id=agent.mode,
                     )
                     continue
                 elif cmd.startswith("/new"):

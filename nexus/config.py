@@ -84,6 +84,7 @@ class Config:
         or os.getenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1")
     )
     MODEL: str = os.getenv("NEXUS_MODEL", "anthropic/claude-3.5-sonnet")
+    AGENT_MODE: str = os.getenv("NEXUS_AGENT_MODE", "auto").strip().lower()
     TEMPERATURE: float = float(os.getenv("NEXUS_TEMPERATURE", "0.7"))
     MAX_STEPS: int = int(os.getenv("NEXUS_MAX_STEPS", "25"))
 

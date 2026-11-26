@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
 from .llm import LLMClient
+from .modes import get_mode, AgentMode
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
 from ..tools.base import ToolRegistry
@@ -24,6 +25,7 @@ class NexusAgent:
         soul_path: Path = config.SOUL_PATH,
         max_steps: int = config.MAX_STEPS,
         session_id: Optional[str] = None,
+        mode: Optional[str] = None,
         on_thought: Optional[Callable[[str], None]] = None,
         on_token: Optional[Callable[[str], None]] = None,
         on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None,
@@ -36,6 +38,7 @@ class NexusAgent:
         self.soul_path = soul_path
         self.max_steps = max_steps
         self.session_id = session_id or str(uuid.uuid4())[:8]
+        self.mode: str = get_mode(mode or getattr(config, "AGENT_MODE", "auto")).id
         
         # UI Callbacks
         self.on_thought = on_thought
@@ -45,6 +48,12 @@ class NexusAgent:
 
         # Ensure session exists in SQLite
         self.memory.create_session(self.session_id, title=f"Session {self.session_id}")
+
+    def set_mode(self, mode_id: str) -> AgentMode:
+        """Switch operating mode cleanly."""
+        spec = get_mode(mode_id)
+        self.mode = spec.id
+        return spec
 
     def build_system_prompt(self) -> str:
         soul_content = ""
@@ -97,10 +106,18 @@ class NexusAgent:
 - When you execute a tool, inspect its result carefully before taking your next step.
 - If you solve a reusable workflow or discover a useful repeatable procedure, use `create_skill` to save it!
 """
+        mode_spec = get_mode(self.mode)
+        if mode_spec.system_directive:
+            system_prompt += "\n" + mode_spec.system_directive + "\n"
         return system_prompt.strip()
 
     async def run(self, user_prompt: str) -> str:
         """Run the autonomous ReAct cycle for the given user prompt."""
+        mode_spec = get_mode(self.mode)
+        effective_max_steps = max(self.max_steps, mode_spec.max_steps_floor)
+        if mode_spec.max_steps_cap is not None:
+            effective_max_steps = min(effective_max_steps, mode_spec.max_steps_cap)
+
         # 1. Load existing session history
         history = self.memory.get_session_history(self.session_id)
         
@@ -123,15 +140,28 @@ class NexusAgent:
                 )
 
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}] + history
-        tools_schema = self.registry.to_openai_schemas()
+        all_schemas = self.registry.to_openai_schemas()
+        if mode_spec.blocked_tools:
+            tools_schema = [
+                s for s in all_schemas
+                if s.get("function", {}).get("name") not in mode_spec.blocked_tools
+            ]
+        else:
+            tools_schema = all_schemas
 
         final_response_text = ""
         recent_call_signatures: List[str] = []
         pending_tc_ids: List[str] = []
 
+        # Temporarily enforce mode temperature cap if applicable
+        has_temp = hasattr(self.llm, "temperature")
+        orig_temp = getattr(self.llm, "temperature", None)
+        if has_temp and mode_spec.max_temperature is not None and isinstance(orig_temp, (int, float)):
+            self.llm.temperature = min(orig_temp, mode_spec.max_temperature)
+
         # 4. Autonomous ReAct loop
         try:
-            for step in range(self.max_steps):
+            for step in range(effective_max_steps):
                 try:
                     # Provide on_token for real-time live streaming
                     response_msg = await self.llm.chat_completion(
@@ -201,6 +231,12 @@ class NexusAgent:
                             "Stop repeating this call. Synthesize your final answer for the user using the information already retrieved."
                         )
                         elapsed = 0.001
+                    elif tool_name in mode_spec.blocked_tools:
+                        result = (
+                            f"[Mode Guard ({mode_spec.label})]: Tool '{tool_name}' is disabled in {mode_spec.label} mode "
+                            f"({mode_spec.short_desc}). Complete your response without mutating workspace files or switch mode."
+                        )
+                        elapsed = 0.001
                     else:
                         # Execute tool via registry with timing measurement
                         start_t = time.perf_counter()
@@ -238,5 +274,8 @@ class NexusAgent:
                 except Exception:
                     pass
             raise
+        finally:
+            if has_temp and orig_temp is not None:
+                self.llm.temperature = orig_temp
 
         return final_response_text
