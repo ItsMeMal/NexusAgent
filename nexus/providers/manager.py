@@ -1,9 +1,12 @@
 import os
 import re
+import json
+import asyncio
+import datetime
 import httpx
 from urllib.parse import urlparse
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from ..config import config
 
@@ -14,6 +17,8 @@ class ModelInfo:
     tag: str = "Standard"
     context: str = "128k"
     description: str = ""
+    status: str = "unchecked"  # "active" | "down" | "unchecked"
+    status_reason: str = ""
 
 @dataclass
 class ProviderProfile:
@@ -252,6 +257,155 @@ def _detect_tags(model_id: str, raw_meta: Dict[str, Any]) -> str:
 
     return "/".join(tags[:2])
 
+_DOWN_STATUS_VALUES = {
+    "down", "offline", "inactive", "disabled", "unavailable",
+    "dead", "error", "maintenance", "deprecated", "suspended",
+    "paused", "failed", "unhealthy",
+}
+_ACTIVE_STATUS_VALUES = {
+    "active", "online", "available", "healthy", "ok", "up", "ready", "enabled",
+}
+_DEFAULT_HEALTH_CACHE_PATH = Path.home() / ".nexus" / "model_health.json"
+
+
+class ModelHealthCache:
+    """Persists daily per-provider model health (aktif / down / belum dicek)."""
+
+    def __init__(self, cache_path: Optional[Path] = None):
+        self.cache_path = cache_path or _DEFAULT_HEALTH_CACHE_PATH
+        self._data: Dict[str, Dict[str, Dict[str, str]]] = {}
+        self._load()
+
+    def _load(self) -> None:
+        try:
+            if self.cache_path.exists():
+                raw = json.loads(self.cache_path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    self._data = raw
+        except Exception:
+            self._data = {}
+
+    def save(self) -> None:
+        try:
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self.cache_path.write_text(json.dumps(self._data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    @staticmethod
+    def _today(today_str: Optional[str] = None) -> str:
+        return today_str or datetime.date.today().isoformat()
+
+    def get(self, api_base: str, model_id: str, today_str: Optional[str] = None) -> Optional[Dict[str, str]]:
+        base_key = api_base.rstrip("/")
+        entry = self._data.get(base_key, {}).get(model_id)
+        if not isinstance(entry, dict):
+            return None
+        today = self._today(today_str)
+        # Only trust cached status from the same calendar day; next day ("besoknya") must re-check!
+        if entry.get("date") != today:
+            return None
+        return entry
+
+    def set(self, api_base: str, model_id: str, status: str, reason: str = "", today_str: Optional[str] = None) -> None:
+        base_key = api_base.rstrip("/")
+        if base_key not in self._data or not isinstance(self._data[base_key], dict):
+            self._data[base_key] = {}
+        self._data[base_key][model_id] = {
+            "status": status,
+            "date": self._today(today_str),
+            "reason": reason[:160],
+        }
+
+
+def _inspect_provider_model_status(m_dict: Dict[str, Any]) -> Tuple[Optional[str], str]:
+    """Inspect metadata fields from provider /models response for explicit active/down state."""
+    if not isinstance(m_dict, dict):
+        return None, ""
+
+    for key in ("status", "state", "health", "availability", "provider_status"):
+        val = m_dict.get(key)
+        if isinstance(val, str) and val.strip():
+            low = val.strip().lower()
+            if low in _DOWN_STATUS_VALUES:
+                return "down", f"Provider status: {val}"
+            if low in _ACTIVE_STATUS_VALUES:
+                return "active", f"Provider status: {val}"
+
+    for bool_false_key in ("active", "is_active", "enabled", "is_enabled", "available", "is_available", "healthy", "online"):
+        if bool_false_key in m_dict and m_dict[bool_false_key] is False:
+            return "down", f"Provider {bool_false_key}=false"
+
+    for bool_true_key in ("down", "is_down", "disabled", "deprecated", "is_deprecated", "offline"):
+        if bool_true_key in m_dict and m_dict[bool_true_key] is True:
+            return "down", f"Provider {bool_true_key}=true"
+
+    return None, ""
+
+
+async def _probe_model_health(
+    client: httpx.AsyncClient,
+    target_base: str,
+    api_key: str,
+    model_id: str,
+    use_x_api_key: bool = False,
+) -> Tuple[str, str]:
+    """Probe {target_base}/chat/completions lightly to test if model is aktif or down/mati."""
+    url = f"{target_base}/chat/completions"
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if api_key:
+        if use_x_api_key:
+            headers["x-api-key"] = api_key
+        else:
+            headers["Authorization"] = f"Bearer {api_key}"
+    if "openrouter.ai" in target_base:
+        headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NexusAgent"
+        headers["X-Title"] = "Nexus Agent CLI"
+
+    payload = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1,
+    }
+
+    try:
+        resp = await client.post(url, headers=headers, json=payload)
+        code = resp.status_code
+
+        if code == 200:
+            try:
+                body = resp.json()
+                if isinstance(body, dict) and body.get("error") and not body.get("choices"):
+                    err_txt = str(body.get("error")).lower()
+                    if any(w in err_txt for w in ("down", "unavailable", "offline", "disabled", "not found", "does not exist", "maintenance", "no available")):
+                        return "down", f"API error: {str(body.get('error'))[:80]}"
+                    return "unchecked", "API returned non-fatal error"
+            except Exception:
+                pass
+            return "active", "200 OK"
+
+        body_text = (resp.text or "").lower()
+
+        if code in (404, 410, 500, 502, 503, 504) or 520 <= code <= 530:
+            return "down", f"HTTP {code}"
+
+        if code == 400:
+            if any(w in body_text for w in ("not found", "does not exist", "no such model", "unknown model", "model is down", "unavailable", "disabled", "offline", "decommissioned", "deprecated")):
+                return "down", "HTTP 400: model unavailable"
+            if any(w in body_text for w in ("max_tokens", "max_completion_tokens", "temperature", "unsupported parameter")):
+                return "active", "Endpoint OK (param hint)"
+            return "unchecked", "HTTP 400"
+
+        if code in (401, 403, 429):
+            return "unchecked", f"HTTP {code} (auth/rate-limit)"
+
+        return "unchecked", f"HTTP {code}"
+    except (httpx.TimeoutException, httpx.ConnectError) as exc:
+        return "down", f"Connection failed: {type(exc).__name__}"
+    except Exception:
+        return "unchecked", "Probe error"
+
+
 class ProviderManager:
     @staticmethod
     def list_providers() -> List[ProviderProfile]:
@@ -312,11 +466,32 @@ class ProviderManager:
             return PROVIDERS["custom"]
 
     @staticmethod
-    async def get_models_for_provider(provider: ProviderProfile, api_key: str = "", api_base: str = "") -> List[ModelInfo]:
-        """Fetch real live models from the {api_base}/models endpoint, with smart fallback."""
+    async def get_models_with_health(
+        provider: ProviderProfile,
+        api_key: str = "",
+        api_base: str = "",
+        check_health: bool = True,
+        force_refresh: bool = False,
+        health_cache_path: Optional[Path] = None,
+        today_str: Optional[str] = None,
+        max_probes: int = 24,
+    ) -> Tuple[List[ModelInfo], Dict[str, Any]]:
+        """
+        Fetch live models from {api_base}/models, classify health (active / down / unchecked),
+        exclude models that are down today (re-checked automatically next day / on force_refresh),
+        and return (usable_models, stats).
+        """
         target_base = (api_base or provider.default_base).rstrip("/")
+        stats: Dict[str, Any] = {
+            "active_count": 0,
+            "unchecked_count": 0,
+            "down_excluded": 0,
+            "down_models": [],
+        }
         if not target_base:
-            return provider.curated_models or [ModelInfo(id="default-model", name="Default Model")]
+            models = list(provider.curated_models) or [ModelInfo(id="default-model", name="Default Model")]
+            stats["unchecked_count"] = len(models)
+            return models, stats
 
         # Collect candidate keys to authenticate against /models
         candidate_keys: List[str] = []
@@ -342,6 +517,8 @@ class ProviderManager:
         if not candidate_keys:
             candidate_keys.append("")
 
+        cache = ModelHealthCache(health_cache_path)
+
         # 1. Try querying /models on the target API base
         models_url = f"{target_base}/models"
         for candidate_key in candidate_keys:
@@ -349,16 +526,17 @@ class ProviderManager:
                 headers = {"Accept": "application/json"}
                 if candidate_key:
                     headers["Authorization"] = f"Bearer {candidate_key}"
-                
-                # Special header for OpenRouter
+
                 if "openrouter.ai" in target_base:
                     headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NexusAgent"
 
+                use_x_api_key = False
                 async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
                     resp = await client.get(models_url, headers=headers)
                     if resp.status_code in (401, 403) and candidate_key:
-                        # Try x-api-key alternative format
                         resp = await client.get(models_url, headers={"Accept": "application/json", "x-api-key": candidate_key})
+                        if resp.status_code == 200:
+                            use_x_api_key = True
 
                     if resp.status_code == 200:
                         json_data = resp.json()
@@ -371,7 +549,7 @@ class ProviderManager:
                                 raw_list = []
 
                         if raw_list:
-                            live_models: List[ModelInfo] = []
+                            parsed_items: List[Tuple[ModelInfo, Dict[str, Any]]] = []
                             for m in raw_list:
                                 if isinstance(m, str):
                                     mid = m
@@ -385,39 +563,114 @@ class ProviderManager:
                                 if not mid:
                                     continue
 
-                                # Extract context window
                                 ctx_raw = (
                                     m_dict.get("context_length")
-                                    or m_dict.get("capabilities", {}).get("contextWindow")
+                                    or (m_dict.get("capabilities") or {}).get("contextWindow")
                                     or m_dict.get("context_window")
                                     or m_dict.get("max_tokens")
                                 )
                                 ctx_formatted = _format_context_size(ctx_raw)
-
-                                # Tags
                                 tag = _detect_tags(mid, m_dict)
-
-                                # Description
                                 desc = m_dict.get("owned_by") or m_dict.get("object") or ""
 
-                                live_models.append(ModelInfo(
+                                info = ModelInfo(
                                     id=mid,
                                     name=mid,
                                     tag=tag,
                                     context=ctx_formatted,
-                                    description=str(desc)
-                                ))
+                                    description=str(desc),
+                                    status="unchecked",
+                                )
+                                parsed_items.append((info, m_dict))
 
-                            if live_models:
-                                # Prioritize active model and free/reasoning models
+                            if parsed_items:
+                                # Step A: Check explicit provider metadata + daily health cache
+                                to_probe: List[ModelInfo] = []
+                                live_models: List[ModelInfo] = []
+
+                                for info, m_dict in parsed_items:
+                                    meta_status, meta_reason = _inspect_provider_model_status(m_dict)
+                                    if meta_status == "down":
+                                        cache.set(target_base, info.id, "down", meta_reason, today_str=today_str)
+                                        stats["down_excluded"] += 1
+                                        stats["down_models"].append(info.id)
+                                        continue
+
+                                    cached = None if force_refresh else cache.get(target_base, info.id, today_str=today_str)
+                                    if cached:
+                                        c_status = cached.get("status", "unchecked")
+                                        c_reason = cached.get("reason", "")
+                                        if c_status == "down":
+                                            # Already confirmed down today -> exclude until tomorrow (besoknya)
+                                            stats["down_excluded"] += 1
+                                            stats["down_models"].append(info.id)
+                                            continue
+                                        if c_status == "active":
+                                            info.status = "active"
+                                            info.status_reason = c_reason or "Cached active"
+                                            live_models.append(info)
+                                            continue
+
+                                    if meta_status == "active":
+                                        info.status = "active"
+                                        info.status_reason = meta_reason
+                                        cache.set(target_base, info.id, "active", meta_reason, today_str=today_str)
+                                        live_models.append(info)
+                                        continue
+
+                                    # Eligible for live probe (or stays unchecked if over probe cap)
+                                    live_models.append(info)
+                                    to_probe.append(info)
+
+                                # Step B: Live concurrent probe for unchecked models
+                                if check_health and to_probe:
+                                    # Prioritize current model & free/popular models within probe cap
+                                    cur_low = (config.MODEL or "").lower()
+                                    to_probe.sort(key=lambda x: (
+                                        x.id.lower() != cur_low,
+                                        "free" not in x.tag.lower() and "free" not in x.id.lower(),
+                                        x.id.lower(),
+                                    ))
+                                    probe_targets = to_probe[:max_probes]
+                                    sem = asyncio.Semaphore(6)
+
+                                    async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as probe_client:
+                                        async def _run_probe_with_client(item: ModelInfo):
+                                            async with sem:
+                                                st, rsn = await _probe_model_health(
+                                                    probe_client, target_base, candidate_key, item.id, use_x_api_key=use_x_api_key
+                                                )
+                                                item.status = st
+                                                item.status_reason = rsn
+                                                if st in ("active", "down"):
+                                                    cache.set(target_base, item.id, st, rsn, today_str=today_str)
+
+                                        await asyncio.gather(*[_run_probe_with_client(m) for m in probe_targets], return_exceptions=True)
+
+                                    # Filter out newly confirmed down models!
+                                    filtered_models: List[ModelInfo] = []
+                                    for m in live_models:
+                                        if m.status == "down":
+                                            stats["down_excluded"] += 1
+                                            if m.id not in stats["down_models"]:
+                                                stats["down_models"].append(m.id)
+                                        else:
+                                            filtered_models.append(m)
+                                    live_models = filtered_models
+
+                                cache.save()
+
                                 current_model = (config.MODEL or "").lower()
                                 def sort_key(item: ModelInfo):
                                     is_current = (item.id.lower() == current_model)
+                                    is_active_health = (item.status == "active")
                                     is_free = "free" in item.tag.lower() or "free" in item.id.lower()
-                                    return (not is_current, not is_free, item.id.lower())
+                                    return (not is_current, not is_active_health, not is_free, item.id.lower())
 
                                 live_models.sort(key=sort_key)
-                                return live_models
+                                stats["active_count"] = sum(1 for m in live_models if m.status == "active")
+                                stats["unchecked_count"] = sum(1 for m in live_models if m.status == "unchecked")
+                                return live_models, stats
             except Exception:
                 continue
 
@@ -438,18 +691,28 @@ class ProviderManager:
                                 name=m_name,
                                 tag="Local",
                                 context=f"{size_mb:.0f}MB",
-                                description="Local host model"
+                                description="Local host model",
+                                status="active",
+                                status_reason="Ollama local daemon",
                             ))
                         if models:
-                            return models
+                            stats["active_count"] = len(models)
+                            return models, stats
             except Exception:
                 pass
 
         # 3. Fallback to curated models if live query didn't yield results
         if provider.curated_models:
-            return provider.curated_models
+            res = [
+                ModelInfo(
+                    id=m.id, name=m.name, tag=m.tag, context=m.context,
+                    description=m.description, status="unchecked",
+                )
+                for m in provider.curated_models
+            ]
+            stats["unchecked_count"] = len(res)
+            return res, stats
 
-        # If custom provider and no live models fetched, preserve current active model
         fallback_models: List[ModelInfo] = []
         if config.MODEL and config.MODEL != "default-model":
             fallback_models.append(ModelInfo(
@@ -457,12 +720,32 @@ class ProviderManager:
                 name=config.MODEL,
                 tag="Active",
                 context="Auto",
-                description="Current active model"
+                description="Current active model",
+                status="unchecked",
             ))
         fallback_models.append(
-            ModelInfo(id="default-model", name="Default Model", tag="Custom", context="Auto")
+            ModelInfo(id="default-model", name="Default Model", tag="Custom", context="Auto", status="unchecked")
         )
-        return fallback_models
+        stats["unchecked_count"] = len(fallback_models)
+        return fallback_models, stats
+
+    @staticmethod
+    async def get_models_for_provider(
+        provider: ProviderProfile,
+        api_key: str = "",
+        api_base: str = "",
+        check_health: bool = True,
+        force_refresh: bool = False,
+    ) -> List[ModelInfo]:
+        """Fetch live models from {api_base}/models, excluding down models."""
+        models, _ = await ProviderManager.get_models_with_health(
+            provider=provider,
+            api_key=api_key,
+            api_base=api_base,
+            check_health=check_health,
+            force_refresh=force_refresh,
+        )
+        return models
 
     @staticmethod
     def update_env_file(key_values: Dict[str, str], env_path: Path):

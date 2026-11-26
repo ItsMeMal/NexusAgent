@@ -428,6 +428,114 @@ async def run_tests():
         assert blocked, "Path traversal outside workspace must be blocked"
     print("   [OK] Real AI-Team Lead + Shared Task Board + Real File Tools + Dashboard API verified.")
 
+    print("12. Testing /models Health Check (aktif / mati / belum dicek + next-day recovery)...")
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from nexus.providers import ProviderManager, PROVIDERS
+
+    probe_state = {"probe_down_recovered": False, "probed": []}
+
+    class MockRouterHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass
+
+        def do_GET(self):
+            if self.path.endswith("/models"):
+                body = json.dumps({
+                    "data": [
+                        {"id": "model-ok", "context_length": 128000},
+                        {"id": "model-meta-down", "status": "down"},
+                        {"id": "model-probe-down", "context_length": 64000},
+                        {"id": "model-rate-limit", "context_length": 32000},
+                    ]
+                }).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length).decode("utf-8", errors="replace")
+            req = json.loads(raw) if raw else {}
+            mid = req.get("model", "")
+            probe_state["probed"].append(mid)
+            if mid == "model-ok":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode("utf-8"))
+            elif mid == "model-probe-down":
+                if probe_state["probe_down_recovered"]:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode("utf-8"))
+                else:
+                    self.send_response(503)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"error": {"message": "model unavailable"}}')
+            elif mid == "model-rate-limit":
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error": {"message": "rate limit"}}')
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+    srv = HTTPServer(("127.0.0.1", 0), MockRouterHandler)
+    port = srv.server_address[1]
+    srv_thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    srv_thread.start()
+
+    try:
+        with tempfile.TemporaryDirectory() as htmp:
+            cache_file = Path(htmp) / "model_health.json"
+            base_url = f"http://127.0.0.1:{port}/v1"
+            prov = ProviderManager.detect_active_provider(base_url)
+
+            # Day 1: model-meta-down & model-probe-down must be excluded; model-ok=active; model-rate-limit=unchecked
+            models_d1, stats_d1 = await ProviderManager.get_models_with_health(
+                prov, api_key="test-key", api_base=base_url,
+                health_cache_path=cache_file, today_str="2026-11-26"
+            )
+            ids_d1 = {m.id: m.status for m in models_d1}
+            assert ids_d1.get("model-ok") == "active", f"Expected active, got {ids_d1}"
+            assert ids_d1.get("model-rate-limit") == "unchecked", f"Expected unchecked on 429, got {ids_d1}"
+            assert "model-meta-down" not in ids_d1, "Metadata down model should be excluded"
+            assert "model-probe-down" not in ids_d1, "Probed down model should be excluded"
+            assert stats_d1["down_excluded"] == 2
+
+            # Same day re-check: model-probe-down stays excluded from cache without re-probing
+            probe_state["probed"].clear()
+            models_same, _ = await ProviderManager.get_models_with_health(
+                prov, api_key="test-key", api_base=base_url,
+                health_cache_path=cache_file, today_str="2026-11-26"
+            )
+            assert "model-probe-down" not in [m.id for m in models_same]
+            assert "model-probe-down" not in probe_state["probed"], "Same-day cached down model must not be re-probed"
+
+            # Next day ("besoknya"): model-probe-down recovers -> automatically re-checked and added back!
+            probe_state["probe_down_recovered"] = True
+            models_d2, stats_d2 = await ProviderManager.get_models_with_health(
+                prov, api_key="test-key", api_base=base_url,
+                health_cache_path=cache_file, today_str="2026-11-27"
+            )
+            ids_d2 = {m.id: m.status for m in models_d2}
+            assert ids_d2.get("model-probe-down") == "active", f"Recovered next-day model should be added back: {ids_d2}"
+            assert "model-meta-down" not in ids_d2, "Still-down metadata model stays excluded"
+            assert stats_d2["down_excluded"] == 1
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    print("   [OK] Model health classification (aktif/unchecked/down) + next-day recovery verified.")
+
     # Cleanup
     import gc
     gc.collect()

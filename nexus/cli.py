@@ -276,7 +276,9 @@ async def main_async():
             if text.startswith("/"):
                 cmd = text.lower().split()[0]
                 if cmd in ("/models", "/model"):
-                    await interactive_select_model(session, llm, env_path)
+                    args_m = text.lower().split()[1:]
+                    force_chk = any(a in ("check", "refresh", "--check", "--refresh") for a in args_m)
+                    await interactive_select_model(session, llm, env_path, force_check=force_chk)
                     ui_controller.update_model(llm.model)
                     continue
                 elif cmd in ("/provider", "/providers", "/connect"):

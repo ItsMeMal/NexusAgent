@@ -236,16 +236,19 @@ class BaseGateway(ABC):
             # List available models
             try:
                 provider = ProviderManager.detect_active_provider(config.API_BASE)
-                models = await ProviderManager.get_models_for_provider(
+                models, stats = await ProviderManager.get_models_with_health(
                     provider, api_key=config.API_KEY, api_base=config.API_BASE
                 )
                 current = self.llm.model
                 lines = [f"🤖 *Available Models* (active: `{current}`)\n"]
                 for m in models[:25]:
                     marker = "▶" if m.id == current else "•"
+                    st_icon = "🟢" if m.status == "active" else "⚪"
                     ctx = f" [{m.context}]" if m.context and m.context != "Auto" else ""
                     tag = f" `{m.tag}`" if m.tag else ""
-                    lines.append(f"{marker} `{m.id}`{tag}{ctx}")
+                    lines.append(f"{marker} {st_icon} `{m.id}`{tag}{ctx}")
+                if stats.get("down_excluded", 0) > 0:
+                    lines.append(f"\n⛔ Excluded {stats['down_excluded']} down model(s) (re-checked tomorrow)")
                 lines.append(f"\nUsage: `/model <id>` to switch")
                 return "\n".join(lines)
             except Exception as e:

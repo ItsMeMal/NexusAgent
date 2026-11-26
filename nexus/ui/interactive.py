@@ -245,12 +245,19 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
     if prompt_model in ("", "y", "yes"):
         await interactive_select_model(session, current_llm, env_path, provider_override=selected)
 
-async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str, provider_name: str) -> Optional[str]:
-    """Interactive unboxed arrow-key selector with real-time fuzzy filter."""
+async def _run_arrow_key_model_picker(
+    models: List[ModelInfo],
+    active_model: str,
+    provider_name: str,
+    health_stats: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    """Interactive unboxed arrow-key selector with real-time fuzzy filter and model health status."""
     filter_text = [""]
     selected_idx = [0]
     result = [None]
     total_models = len(models)
+    stats = health_stats or {}
+    down_excluded = int(stats.get("down_excluded", 0))
 
     # Pre-select current active model
     for i, m in enumerate(models):
@@ -262,7 +269,7 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
         q = filter_text[0].lower().strip()
         if not q:
             return models
-        return [m for m in models if q in m.id.lower() or q in m.tag.lower()]
+        return [m for m in models if q in m.id.lower() or q in m.tag.lower() or q in m.status.lower()]
 
     kb = KeyBindings()
 
@@ -285,6 +292,11 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
         filtered = get_filtered()
         if filtered and 0 <= selected_idx[0] < len(filtered):
             result[0] = filtered[selected_idx[0]].id
+        event.app.exit()
+
+    @kb.add("c-r")
+    def _(event):
+        result[0] = "__REFRESH__"
         event.app.exit()
 
     @kb.add("escape")
@@ -312,10 +324,16 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
         q = filter_text[0]
         filter_display = q if q else "<type to search...>"
         filter_style = "class:filter-active" if q else "class:dim"
+        active_cnt = sum(1 for m in models if m.status == "active")
+        unchecked_cnt = sum(1 for m in models if m.status != "active")
+        down_note = f" · {down_excluded} down skipped" if down_excluded > 0 else ""
         return [
             ("class:title", f"Select model for [{provider_name}]:"),
-            ("class:dim", f"  (Router: "),
-            ("class:provider", f"{provider_name}"),
+            ("class:dim", f"  ("),
+            ("class:status-ok", f"{active_cnt} aktif"),
+            ("class:dim", f" · "),
+            ("class:status-unk", f"{unchecked_cnt} belum dicek"),
+            ("class:status-down", down_note),
             ("class:dim", f" · Filter: "),
             (filter_style, filter_display),
             ("class:dim", f" · {total_models} models)\n\n")
@@ -327,8 +345,8 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
             return [("class:dim", f"\n   No models match '{filter_text[0]}'. Press Backspace to clear filter.\n")]
 
         lines = [
-            ("class:colhead", f"   {'Model Identifier':<42} {'Tag':<16} {'Context':<8} Status\n"),
-            ("class:dim", f"   {'─'*42} {'─'*16} {'─'*8} {'─'*22}\n")
+            ("class:colhead", f"   {'Model Identifier':<40} {'Tag':<15} {'Ctx':<7} Status\n"),
+            ("class:dim", f"   {'─'*40} {'─'*15} {'─'*7} {'─'*26}\n")
         ]
 
         total = len(filtered)
@@ -352,15 +370,20 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
                 prefix = "   "
                 line_style = ""
 
-            status_str = "← currently in use" if is_active else ""
+            if m.status == "active":
+                health_label = "● Aktif"
+            else:
+                health_label = "○ Belum dicek"
+            status_str = f"{health_label} ← in use" if is_active else health_label
             tag_str = f"[{m.tag}]"
-            row_str = f"{prefix}{m.id:<40} {tag_str:<16} {m.context:<8} {status_str}\n"
+            row_str = f"{prefix}{m.id:<40} {tag_str:<15} {m.context:<7} {status_str}\n"
             lines.append((line_style, row_str))
 
+        hint_base = "↑/↓ move • type to filter • Ctrl+R re-check • Enter select • Esc cancel"
         if total > max_rows:
-            hint = f"   [Showing {start_idx + 1}-{end_idx} of {total} • ↑/↓ move • type to filter • Enter select • Esc cancel]"
+            hint = f"   [Showing {start_idx + 1}-{end_idx} of {total} • {hint_base}]"
         else:
-            hint = f"   [↑/↓ move • type to filter • Enter select • Esc cancel]"
+            hint = f"   [{hint_base}]"
         lines.append(("class:dim", f"\n{hint}\n"))
 
         return lines
@@ -374,6 +397,9 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
         "title": "bold #38bdf8",
         "provider": "bold #f59e0b",
         "filter-active": "bold #00ffd7",
+        "status-ok": "bold #22c55e",
+        "status-unk": "#eab308",
+        "status-down": "#ef4444",
         "cursor": "bold #11111b bg:#00ffd7",
         "active": "bold #22c55e",
         "colhead": "bold #94a3b8",
@@ -384,8 +410,14 @@ async def _run_arrow_key_model_picker(models: List[ModelInfo], active_model: str
     await app.run_async()
     return result[0]
 
-async def interactive_select_model(session: PromptSession, current_llm, env_path: Path, provider_override: Optional[ProviderProfile] = None):
-    """Interactive model selector with live catalog and arrow-key selection."""
+async def interactive_select_model(
+    session: PromptSession,
+    current_llm,
+    env_path: Path,
+    provider_override: Optional[ProviderProfile] = None,
+    force_check: bool = False,
+):
+    """Interactive model selector with live health check (aktif / belum dicek / down excluded)."""
     provider = provider_override or ProviderManager.detect_active_provider(config.API_BASE)
 
     # Check if provider is connected and authenticated before listing models
@@ -411,15 +443,46 @@ async def interactive_select_model(session: PromptSession, current_llm, env_path
             return
 
     console.print(f"\n  [bold #00ffd7]◈ Active Provider:[/bold #00ffd7] [bold #f59e0b]{provider.name}[/bold #f59e0b] [dim]({config.API_BASE})[/dim]")
-    with console.status(f"[bold cyan]  Fetching live model catalog from {provider.name}...[/bold cyan]"):
-        models = await ProviderManager.get_models_for_provider(provider, api_key=config.API_KEY, api_base=config.API_BASE)
 
-    active_model = config.MODEL
+    force = force_check
+    while True:
+        status_msg = (
+            f"[bold cyan]  Re-checking model health from {provider.name}...[/bold cyan]"
+            if force else
+            f"[bold cyan]  Fetching & checking live model health from {provider.name}...[/bold cyan]"
+        )
+        with console.status(status_msg):
+            models, health_stats = await ProviderManager.get_models_with_health(
+                provider,
+                api_key=config.API_KEY,
+                api_base=config.API_BASE,
+                check_health=True,
+                force_refresh=force,
+            )
 
-    try:
-        selected_model_id = await _run_arrow_key_model_picker(models, active_model, provider.name)
-    except Exception:
-        selected_model_id = None
+        down_cnt = int(health_stats.get("down_excluded", 0))
+        if down_cnt > 0:
+            down_preview = ", ".join(health_stats.get("down_models", [])[:4])
+            more = f" (+{down_cnt - 4} more)" if down_cnt > 4 else ""
+            console.print(
+                f"  [dim red]✖ Excluded {down_cnt} down/mati model(s):[/dim red] [dim]{down_preview}{more} (auto re-check tomorrow)[/dim]"
+            )
+
+        if not models:
+            console.print("  [bold red]✖ No active models available today from this provider (all returned down).[/bold red]")
+            console.print("  [dim]Run `/models check` to force re-check or check again tomorrow.[/dim]\n")
+            return
+
+        active_model = config.MODEL
+        try:
+            selected_model_id = await _run_arrow_key_model_picker(models, active_model, provider.name, health_stats)
+        except Exception:
+            selected_model_id = None
+
+        if selected_model_id == "__REFRESH__":
+            force = True
+            continue
+        break
 
     if not selected_model_id:
         console.print("  [dim]Kept current active model.[/dim]\n")
