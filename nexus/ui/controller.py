@@ -3,9 +3,11 @@ import time
 import asyncio
 from typing import Dict, Any, Optional
 from rich.console import Console
+from rich.live import Live
 from rich.markdown import Markdown
 
 from .tui import (
+    build_nexus_mascot_renderable,
     render_tool_call,
     render_tool_result,
     render_subagent_event,
@@ -13,12 +15,13 @@ from .tui import (
 )
 
 class AgentUIController:
-    """Coordinates live output, animated status spinners with live timers, and streaming tokens without stdout collisions."""
+    """Coordinates live output, animated Nexus Mascot thinking/loading indicator, and streaming tokens without stdout collisions."""
 
     def __init__(self, model_name: str, console_instance: Optional[Console] = None):
         self.console = console_instance or console
         self.model_name = model_name
         self.status = None
+        self.live: Optional[Live] = None
         self.stream_started = False
         self.header_printed = False
         self.has_content = False
@@ -30,18 +33,32 @@ class AgentUIController:
     def update_model(self, new_model_name: str):
         self.model_name = new_model_name
 
+    def _render_mascot(self, frame_idx: int, elapsed: float):
+        return build_nexus_mascot_renderable(
+            frame_idx=frame_idx,
+            elapsed=elapsed,
+            message=self._current_message,
+            model_name=self.model_name,
+            width=getattr(self.console, "width", 100) or 100,
+        )
+
     def start_thinking(self, message: str = "Thinking & coordinating..."):
-        """Start an animated spinner with a live ticking elapsed timer."""
+        """Start the animated Nexus Mascot with a live ticking elapsed timer."""
         self.stop_status()
         self._thinking_active = True
         self._start_time = time.perf_counter()
         self._current_message = message
 
-        self.status = self.console.status(
-            f"[bold #00ffd7]⠋[/bold #00ffd7] [bold #38bdf8]Nexus Thinking[/bold #38bdf8] [dim]· {message} (0.0s · Ctrl+C/Esc to stop)[/dim]",
-            spinner="dots"
-        )
-        self.status.start()
+        try:
+            self.live = Live(
+                self._render_mascot(0, 0.0),
+                console=self.console,
+                refresh_per_second=12,
+                transient=True,
+            )
+            self.live.start()
+        except Exception:
+            self.live = None
 
         try:
             loop = asyncio.get_running_loop()
@@ -50,27 +67,30 @@ class AgentUIController:
             pass
 
     async def _thinking_ticker(self):
-        """Background coroutine that smoothly pulses the spinner and updates elapsed seconds."""
-        spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        idx = 0
-        while self._thinking_active and self.status:
+        """Background coroutine that smoothly animates the Nexus Mascot frames and updates elapsed seconds."""
+        idx = 1
+        while self._thinking_active and self.live:
             elapsed = time.perf_counter() - self._start_time
-            spin = spinners[idx % len(spinners)]
             try:
-                self.status.update(
-                    f"[bold #00ffd7]{spin}[/bold #00ffd7] [bold #38bdf8]Nexus Thinking[/bold #38bdf8] [dim]· {self._current_message} ({elapsed:.1f}s · Ctrl+C/Esc to stop)[/dim]"
-                )
+                self.live.update(self._render_mascot(idx, elapsed))
             except Exception:
                 break
             idx += 1
-            await asyncio.sleep(0.08)
+            await asyncio.sleep(0.09)
 
     def stop_status(self):
-        """Immediately terminate background ticker and spinner so stdout is completely free."""
+        """Immediately terminate background ticker and transient mascot live view so stdout is completely free."""
         self._thinking_active = False
         if self._timer_task and not self._timer_task.done():
             self._timer_task.cancel()
             self._timer_task = None
+
+        if self.live:
+            try:
+                self.live.stop()
+            except Exception:
+                pass
+            self.live = None
 
         if self.status:
             try:

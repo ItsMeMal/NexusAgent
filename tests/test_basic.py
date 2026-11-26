@@ -536,6 +536,26 @@ async def run_tests():
 
     print("   [OK] Model health classification (aktif/unchecked/down) + next-day recovery verified.")
 
+    print("13. Testing Nexus Mascot Thinking/Loading Animation...")
+    import io
+    from rich.console import Console
+    from nexus.ui import AgentUIController, build_nexus_mascot_renderable
+
+    buf_console = Console(file=io.StringIO(), width=96, legacy_windows=False)
+    ui_ctrl = AgentUIController(model_name="nexus/test-model", console_instance=buf_console)
+    for f_idx, msg in [(0, "Thinking & coordinating..."), (2, "Executing write_file..."), (5, "Synthesizing next step...")]:
+        rend = build_nexus_mascot_renderable(f_idx, 1.2, msg, "nexus/test-model", 96)
+        buf_console.print(rend)
+    rendered = buf_console.file.getvalue()
+    assert "NEXUS CORE" in rendered and "THINKING" in rendered and "EXECUTING" in rendered and "SYNTHESIZING" in rendered
+    compact_rend = build_nexus_mascot_renderable(0, 0.5, "Thinking...", "m", width=48)
+    buf_console.print(compact_rend)
+    assert "Thinking" in buf_console.file.getvalue()
+    ui_ctrl.start_thinking("Thinking...")
+    await asyncio.sleep(0.15)
+    ui_ctrl.stop_status()
+    print("   [OK] Animated Nexus Mascot thinking/tool/compact lifecycle verified.")
+
     # Cleanup
     import gc
     gc.collect()

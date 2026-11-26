@@ -5,6 +5,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
+from rich.table import Table
 from rich.markdown import Markdown
 from typing import Dict, Any, Optional
 
@@ -94,6 +95,161 @@ def render_banner(
 
     if update_info and update_info.get("update_available"):
         render_update_alert(update_info)
+
+
+_MASCOT_THINKING_FRAMES = [
+    # (crown, bracket_L, bracket_R, eyes, mouth, flare)
+    ("  ∘─◈─∘  ", " ‹ ", " › ", " ◉   ◉ ", "──═══──", False),
+    ("  ∘─◈─∘  ", " ‹ ", " › ", " ◉   ◉ ", "──═◈═──", False),
+    ("  ✦─◈─✦  ", "<  ", "  >", " ◈   ◈ ", "─═◈═◈═─", True),
+    ("  ∘─◎─∘  ", " ‹ ", " › ", "  ◉   ◉", "──▬═▬──", False),
+    ("  ∘─◈─∘  ", " ‹ ", " › ", " ─   ─ ", "──═══──", False),
+    ("  ∘─◎─∘  ", " ‹ ", " › ", "◉   ◉  ", "──▬═▬──", False),
+    ("  ✦─◈─✦  ", "<  ", "  >", " ✦   ✦ ", "─═◈═◈═─", True),
+    ("  ∘─◈─∘  ", " ‹ ", " › ", " ◈   ◉ ", "──═◈═──", False),
+]
+
+_MASCOT_TOOL_FRAMES = [
+    ("  ▲─◈─▲  ", "<  ", "  >", " ▸   ▸ ", "─▓▒░▒▓─", True),
+    ("  ∘─◈─∘  ", " ‹ ", " › ", " ◈   ▸ ", "─▒▓█▓▒─", False),
+    ("  ▼─◈─▼  ", "<  ", "  >", " ▸   ◈ ", "─░▒▓▒░─", True),
+    ("  ∘─✦─∘  ", " ‹ ", " › ", " ◈   ◈ ", "─▒▓█▓▒─", False),
+]
+
+_MASCOT_SPINNERS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+
+def build_nexus_mascot_renderable(
+    frame_idx: int,
+    elapsed: float,
+    message: str = "Thinking & coordinating...",
+    model_name: str = "",
+    width: int = 100,
+):
+    """Build a crisp 4-line animated Nexus Mascot + live telemetry widget for Rich Live."""
+    msg_low = (message or "").lower()
+    is_tool = msg_low.startswith("executing") or "tool" in msg_low
+    is_synth = "synth" in msg_low
+
+    frames = _MASCOT_TOOL_FRAMES if is_tool else _MASCOT_THINKING_FRAMES
+    crown, br_l, br_r, eyes, mouth, flare = frames[frame_idx % len(frames)]
+    spin = _MASCOT_SPINNERS[frame_idx % len(_MASCOT_SPINNERS)]
+
+    # Compact 1-line fallback for ultra-narrow terminals
+    if width < 64:
+        t = Text()
+        t.append("  ")
+        t.append("<◈" if flare else "‹◈", style="bold #f59e0b" if is_tool else "bold #00ffd7")
+        t.append(f"[{eyes.strip()}]", style="bold #ffffff")
+        t.append("◈>" if flare else "◈›", style="bold #f59e0b" if is_tool else "bold #38bdf8")
+        t.append(f" {spin} {message[:26]} ", style="bold #38bdf8")
+        t.append(f"({elapsed:.1f}s)", style="dim")
+        return t
+
+    # Color choreography matched to mode
+    if is_tool:
+        shell_c = "bold #f59e0b"
+        crown_c = "bold #fbbf24"
+        eye_c = "bold #ffffff"
+        br_c = "bold #00ffd7" if flare else "#f59e0b"
+        mouth_c = "bold #fbbf24"
+        badge_text = " EXECUTING "
+        badge_style = "bold #11111b on #f59e0b"
+        bar_head = "#fbbf24"
+        bar_mid = "#f59e0b"
+        bar_tail = "#00ffd7"
+    elif is_synth:
+        shell_c = "bold #a78bfa"
+        crown_c = "bold #00ffd7"
+        eye_c = "bold #ffffff" if flare else "bold #00ffd7"
+        br_c = "bold #00ffd7" if flare else "#818cf8"
+        mouth_c = "bold #c4b5fd"
+        badge_text = " SYNTHESIZING "
+        badge_style = "bold #11111b on #a78bfa"
+        bar_head = "#ffffff"
+        bar_mid = "#a78bfa"
+        bar_tail = "#00ffd7"
+    else:
+        shell_c = "bold #38bdf8"
+        crown_c = "bold #00ffd7" if flare else "#818cf8"
+        eye_c = "bold #ffffff" if flare else "bold #00ffd7"
+        br_c = "bold #00ffd7" if flare else "#38bdf8"
+        mouth_c = "bold #00ffd7" if flare else "#60a5fa"
+        badge_text = " THINKING "
+        badge_style = "bold #11111b on #00ffd7"
+        bar_head = "#ffffff"
+        bar_mid = "#00ffd7"
+        bar_tail = "#38bdf8"
+
+    # Column 1: 4-line fixed 19-char wide Nexus Mascot
+    mascot = Text()
+    mascot.append("     ")
+    mascot.append(crown, style=crown_c)
+    mascot.append("     \n")
+
+    mascot.append("  ")
+    mascot.append(br_l, style=br_c)
+    mascot.append("╭───────╮", style=shell_c)
+    mascot.append(br_r, style=br_c)
+    mascot.append("  \n")
+
+    mascot.append("  ")
+    mascot.append(br_l, style=br_c)
+    mascot.append("│", style=shell_c)
+    mascot.append(eyes, style=eye_c)
+    mascot.append("│", style=shell_c)
+    mascot.append(br_r, style=br_c)
+    mascot.append("  \n")
+
+    mascot.append("     ")
+    mascot.append("╰", style=shell_c)
+    mascot.append(mouth, style=mouth_c)
+    mascot.append("╯", style=shell_c)
+    mascot.append("     ")
+
+    # Column 2: 4-line telemetry + shimmer bar aligned alongside mascot
+    model_short = (model_name.split("/")[-1] if "/" in model_name else model_name) or "nexus"
+    if len(model_short) > 28:
+        model_short = model_short[:25] + "..."
+
+    bar_len = 24
+    # Smooth ping-pong shimmer head across the 24-cell neural wave
+    cycle = bar_len * 2 - 2
+    pos = frame_idx % cycle
+    if pos >= bar_len:
+        pos = cycle - pos
+
+    info = Text()
+    info.append("◈ NEXUS CORE ", style="bold #00ffd7")
+    info.append(badge_text, style=badge_style)
+    info.append(f"  {model_short}\n", style="dim #94a3b8")
+
+    clean_msg = message if len(message) <= 44 else message[:41] + "..."
+    info.append(f"{spin} ", style="bold #00ffd7" if not is_tool else "bold #f59e0b")
+    info.append(f"{clean_msg}\n", style="bold white")
+
+    info.append("[", style="dim #475569")
+    for i in range(bar_len):
+        dist = abs(i - pos)
+        if dist == 0:
+            info.append("◈", style=f"bold {bar_head}")
+        elif dist == 1:
+            info.append("━", style=f"bold {bar_mid}")
+        elif dist <= 3:
+            info.append("━", style=bar_tail)
+        else:
+            info.append("─", style="#334155")
+    info.append("]\n", style="dim #475569")
+
+    info.append(f"◷ {elapsed:4.1f}s", style="bold #38bdf8")
+    info.append("  ·  ", style="dim")
+    info.append("Esc / Ctrl+C to interrupt", style="dim #94a3b8")
+
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(no_wrap=True)
+    grid.add_column(no_wrap=True)
+    grid.add_row(mascot, info)
+    return grid
 
 def render_tool_call(tool_name: str, arguments: Dict[str, Any]):
     """Compact, high-signal single-line tool call indicator."""

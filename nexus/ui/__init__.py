@@ -1,5 +1,6 @@
 from .tui import (
     render_banner,
+    build_nexus_mascot_renderable,
     render_tool_call,
     render_tool_result,
     render_subagent_event,
@@ -32,6 +33,7 @@ from .interactive import (
 
 __all__ = [
     "render_banner",
+    "build_nexus_mascot_renderable",
     "render_tool_call",
     "render_tool_result",
     "render_subagent_event",
