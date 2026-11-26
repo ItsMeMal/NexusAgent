@@ -2,13 +2,14 @@ import sys
 import os
 import json
 import uuid
+import inspect
 import asyncio
 import datetime
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
-from .llm import LLMClient
+from .llm import LLMClient, sanitize_messages
 from .modes import get_mode, AgentMode
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
@@ -30,6 +31,7 @@ class NexusAgent:
         on_token: Optional[Callable[[str], None]] = None,
         on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_tool_result: Optional[Callable[[str, str, float], None]] = None,
+        on_retry: Optional[Callable[[int, int, str], None]] = None,
     ):
         self.llm = llm_client
         self.memory = memory
@@ -45,6 +47,7 @@ class NexusAgent:
         self.on_token = on_token
         self.on_tool_call = on_tool_call
         self.on_tool_result = on_tool_result
+        self.on_retry = on_retry
 
         # Ensure session exists in SQLite
         self.memory.create_session(self.session_id, title=f"Session {self.session_id}")
@@ -99,8 +102,9 @@ class NexusAgent:
 
 ## Tool & Skill Usage Rules
 - **MANDATORY SKILL-FIRST PROTOCOL**: Whenever the user's request involves a real task (coding, UI/frontend, design, architecture, debugging, data analysis, DevOps, security, writing, automation, video/typography, etc.), you **MUST** check the `## Learned Skills (.skills)` catalog above first!
-  - If ANY skill matches or can improve your work, you **MUST call `read_skill(skill_name)` BEFORE** planning, writing files, or executing other tools, and **strictly apply** the instructions, conventions, and standards inside that skill.
+  - Call `read_skill(skill_name)` on the **1–2 most relevant skills** BEFORE planning, writing files, or executing other tools, and **strictly apply** their instructions and standards. (Avoid loading 4+ large skills at once to keep context lean.)
   - Only skip `read_skill` for casual greetings/banter or when no listed skill is relevant.
+- **DECISIVE ACTION RULE**: When the user asks to build/make/create something — even phrased casually like *"bisa buat website X?"*, *"can you make X?"*, *"bebas"*, or *"use your skills"* — treat it as an execution order (unless in `PLAN` or `ASK` mode). Do NOT ask questionnaires ("what tech stack? what vibe? ready to proceed?"): inspect the workspace briefly, pick strong modern defaults informed by your skills, execute with `write_file`/`patch_file`/`run_command`, and deliver working results!
 - For simple greetings, identity questions ("who are you"), banter, or small talk (e.g., "yo", "hello", "lol", "hey"), DO NOT call any tools.
 - Only call tools when the user's prompt actually requires action, web search, system execution, or specific memory recall.
 - When you execute a tool, inspect its result carefully before taking your next step.
@@ -111,6 +115,55 @@ class NexusAgent:
             system_prompt += "\n" + mode_spec.system_directive + "\n"
         return system_prompt.strip()
 
+    def _heal_history(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Repair poisoned history (dangling tool_calls or missing/null content) before sending to LLM."""
+        healed: List[Dict[str, Any]] = []
+        answered_ids = {
+            m.get("tool_call_id") for m in history if m.get("role") == "tool" and m.get("tool_call_id")
+        }
+        for msg in history:
+            healed.append(msg)
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                for tc in msg["tool_calls"]:
+                    tid = tc.get("id")
+                    if tid and tid not in answered_ids:
+                        repair_msg = {
+                            "role": "tool",
+                            "tool_call_id": tid,
+                            "content": "[Recovered from aborted previous turn]",
+                        }
+                        healed.append(repair_msg)
+                        answered_ids.add(tid)
+                        try:
+                            self.memory.save_message(
+                                session_id=self.session_id,
+                                role="tool",
+                                content=repair_msg["content"],
+                                tool_call_id=tid,
+                            )
+                        except Exception:
+                            pass
+        return sanitize_messages(healed)
+
+    async def _call_llm(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]],
+        on_token: Optional[Callable[[str], None]],
+    ) -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {
+            "messages": messages,
+            "tools": tools,
+            "on_token": on_token,
+        }
+        try:
+            sig = inspect.signature(self.llm.chat_completion)
+            if "on_retry" in sig.parameters and self.on_retry is not None:
+                kwargs["on_retry"] = self.on_retry
+        except Exception:
+            pass
+        return await self.llm.chat_completion(**kwargs)
+
     async def run(self, user_prompt: str) -> str:
         """Run the autonomous ReAct cycle for the given user prompt."""
         mode_spec = get_mode(self.mode)
@@ -118,8 +171,8 @@ class NexusAgent:
         if mode_spec.max_steps_cap is not None:
             effective_max_steps = min(effective_max_steps, mode_spec.max_steps_cap)
 
-        # 1. Load existing session history
-        history = self.memory.get_session_history(self.session_id)
+        # 1. Load & heal existing session history
+        history = self._heal_history(self.memory.get_session_history(self.session_id))
         
         # 2. Append new user message
         self.memory.save_message(session_id=self.session_id, role="user", content=user_prompt)
@@ -130,16 +183,16 @@ class NexusAgent:
 
         # Lightweight skill auto-detection hint injected cleanly into system prompt (zero SQLite pollution)
         if self.registry.get("read_skill") is not None and hasattr(self.skill_manager, "match_skills"):
-            matched_skills = self.skill_manager.match_skills(user_prompt, top_k=4)
+            matched_skills = self.skill_manager.match_skills(user_prompt, top_k=3)
             if matched_skills:
                 skill_list = ", ".join(f"`{s.name}`" for s in matched_skills)
                 system_prompt += (
                     f"\n\n## Active Task Skill Match\n"
                     f"Relevant skill(s) detected for the user's request: {skill_list}.\n"
-                    f"You MUST call `read_skill` on the applicable skill(s) FIRST before planning, coding, or executing other tools."
+                    f"You MUST call `read_skill` on the top 1-2 applicable skill(s) FIRST before planning, coding, or executing other tools."
                 )
 
-        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}] + history
+        messages: List[Dict[str, Any]] = sanitize_messages([{"role": "system", "content": system_prompt}] + history)
         all_schemas = self.registry.to_openai_schemas()
         if mode_spec.blocked_tools:
             tools_schema = [
@@ -163,11 +216,10 @@ class NexusAgent:
         try:
             for step in range(effective_max_steps):
                 try:
-                    # Provide on_token for real-time live streaming
-                    response_msg = await self.llm.chat_completion(
+                    response_msg = await self._call_llm(
                         messages=messages,
                         tools=tools_schema if tools_schema else None,
-                        on_token=self.on_token
+                        on_token=self.on_token,
                     )
                 except Exception as e:
                     err_text = f"Agent Error during LLM completion: {str(e)}"
@@ -185,18 +237,23 @@ class NexusAgent:
                             tc["id"] = str(uuid.uuid4())
                     pending_tc_ids = [tc["id"] for tc in tool_calls]
 
+                safe_content = content if (content is not None and str(content).strip()) else (
+                    "[calling tools]" if tool_calls else ""
+                )
+                normalized_msg = dict(response_msg)
+                normalized_msg["content"] = safe_content
+
                 # Save assistant message to memory and context
                 self.memory.save_message(
                     session_id=self.session_id,
                     role="assistant",
-                    content=content,
-                    tool_calls=tool_calls
+                    content=safe_content,
+                    tool_calls=tool_calls,
                 )
-                messages.append(response_msg)
+                messages.append(normalized_msg)
 
-                if content:
+                if content and str(content).strip() and content != "[calling tools]":
                     final_response_text = content
-                    # If non-streaming was used and on_thought is provided
                     if self.on_thought and not self.on_token and not tool_calls:
                         self.on_thought(content)
 
@@ -246,21 +303,49 @@ class NexusAgent:
                     if self.on_tool_result:
                         self.on_tool_result(tool_name, result, elapsed)
 
-                    # Append tool result to conversation history
+                    safe_result = result if (result is not None and str(result).strip()) else "(empty tool output)"
                     tool_msg = {
                         "role": "tool",
                         "tool_call_id": tc_id,
-                        "content": result
+                        "content": safe_result,
                     }
                     self.memory.save_message(
                         session_id=self.session_id,
                         role="tool",
-                        content=result,
-                        tool_call_id=tc_id
+                        content=safe_result,
+                        tool_call_id=tc_id,
                     )
                     if tc_id in pending_tc_ids:
                         pending_tc_ids.remove(tc_id)
                     messages.append(tool_msg)
+
+            # Guarantee user never receives a silent blank output after tools/empty LLM turn
+            if not (final_response_text or "").strip():
+                try:
+                    synth_payload = sanitize_messages(
+                        messages + [{
+                            "role": "user",
+                            "content": "Provide your clear final response or execute summary directly now (do not call tools or return empty text).",
+                        }],
+                        force_non_empty=True,
+                    )
+                    synth_resp = await self._call_llm(
+                        messages=synth_payload,
+                        tools=None,
+                        on_token=self.on_token,
+                    )
+                    synth_text = (synth_resp.get("content") or "").strip()
+                    if synth_text:
+                        final_response_text = synth_text
+                        self.memory.save_message(
+                            session_id=self.session_id,
+                            role="assistant",
+                            content=synth_text,
+                        )
+                        if self.on_thought and not self.on_token:
+                            self.on_thought(synth_text)
+                except Exception:
+                    pass
         except asyncio.CancelledError:
             # Close out any unanswered tool calls so SQLite history remains schema-valid
             for pid in pending_tc_ids:

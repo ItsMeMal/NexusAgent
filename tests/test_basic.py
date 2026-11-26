@@ -620,6 +620,86 @@ async def run_tests():
         assert "Shift+Tab" in bar_txt and "CODE" in bar_txt
     print("   [OK] Agent modes, PLAN read-only guard, and prompt HUD verified.")
 
+    print("15. Testing LLM Auto-Retry (502), Content Sanitization (400), & Empty-Output Synthesis...")
+    import nexus.core.llm as llm_mod
+    from nexus.core.llm import sanitize_messages
+
+    san = sanitize_messages([
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "1", "type": "function", "function": {"name": "list_dir", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "1", "content": ""},
+    ])
+    assert san[0]["content"] == "[calling tools]"
+    assert san[1]["content"] == "(empty tool output)"
+
+    retry_state = {"calls": 0, "saw_non_empty_assistant_content": False}
+
+    class RetryMockHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length).decode("utf-8", errors="replace")
+            req = json.loads(raw) if raw else {}
+            for m in req.get("messages", []):
+                if m.get("role") == "assistant" and m.get("tool_calls") and m.get("content"):
+                    retry_state["saw_non_empty_assistant_content"] = True
+            retry_state["calls"] += 1
+            if retry_state["calls"] == 1:
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error": {"message": "All eligible upstream providers failed"}}')
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"choices": [{"message": {"role": "assistant", "content": "Recovered after 502 retry!"}}]}).encode("utf-8"))
+
+    r_srv = HTTPServer(("127.0.0.1", 0), RetryMockHandler)
+    r_port = r_srv.server_address[1]
+    threading.Thread(target=r_srv.serve_forever, daemon=True).start()
+    orig_delays = llm_mod._DEFAULT_RETRY_DELAYS
+    llm_mod._DEFAULT_RETRY_DELAYS = (0.01, 0.01, 0.01)
+    try:
+        retry_events = []
+        r_llm = LLMClient(api_key="k", api_base=f"http://127.0.0.1:{r_port}/v1", model="test", max_retries=2)
+        res_msg = await r_llm.chat_completion(
+            messages=[
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": None, "tool_calls": [{"id": "tc_1", "type": "function", "function": {"name": "read_skill", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "tc_1", "content": "ok"},
+            ],
+            on_retry=lambda a, m, e: retry_events.append((a, m, e)),
+        )
+        assert res_msg["content"] == "Recovered after 502 retry!"
+        assert retry_state["calls"] == 2 and len(retry_events) == 1
+        assert retry_state["saw_non_empty_assistant_content"]
+    finally:
+        llm_mod._DEFAULT_RETRY_DELAYS = orig_delays
+        r_srv.shutdown()
+        r_srv.server_close()
+
+    # Test poisoned SQLite history auto-healing + blank-output synthesis fallback
+    memory.create_session("heal-sess", title="Heal")
+    memory.save_message("heal-sess", "assistant", None, tool_calls=[{"id": "dangling_1", "type": "function", "function": {"name": "list_dir", "arguments": "{}"}}])
+
+    class BlankThenSynthLLM:
+        def __init__(self):
+            self.calls = 0
+        async def chat_completion(self, messages, tools=None, on_token=None):
+            self.calls += 1
+            # Verify poisoned history was healed before reaching LLM
+            assert any(m.get("tool_call_id") == "dangling_1" for m in messages), "Dangling tool call not healed!"
+            if tools is not None:
+                return {"role": "assistant", "content": ""}  # simulates model returning empty text
+            return {"role": "assistant", "content": "Synthesized non-blank response."}
+
+    heal_agent = NexusAgent(llm_client=BlankThenSynthLLM(), memory=memory, skill_manager=skill_mgr, registry=registry, session_id="heal-sess")
+    heal_out = await heal_agent.run("build it")
+    assert "Synthesized non-blank response" in heal_out
+    print("   [OK] Auto-retry (502), content sanitization (400), history healing, & blank-output synthesis verified.")
+
     # Cleanup
     import gc
     gc.collect()

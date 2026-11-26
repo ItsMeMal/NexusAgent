@@ -165,6 +165,10 @@ class AgentUIController:
         self.stop_status()
         render_subagent_event(event_type, message)
 
+    def on_retry(self, attempt: int, max_retries: int, err_summary: str):
+        """Update the animated Nexus Mascot when retrying a transient API error."""
+        self.start_thinking(f"API retry {attempt}/{max_retries} ({err_summary})...")
+
     def finish_stream(self):
         """Conclude the turn, stop all spinners, and ensure clean terminal spacing."""
         self.stop_status()

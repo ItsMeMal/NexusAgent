@@ -233,7 +233,8 @@ async def main_async():
         on_thought=ui_controller.on_thought,
         on_token=ui_controller.on_token,
         on_tool_call=ui_controller.on_tool_call,
-        on_tool_result=ui_controller.on_tool_result
+        on_tool_result=ui_controller.on_tool_result,
+        on_retry=ui_controller.on_retry,
     )
 
     # Headless Messaging Gateway Daemon Mode (`nexus --gateway` / `nexus gateway`)

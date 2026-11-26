@@ -12,7 +12,11 @@ def get_skill_tools(skill_manager: SkillManager):
         skill = skill_manager.get_skill(skill_name)
         if not skill:
             return f"Error: Skill '{skill_name}' not found."
-        return skill.content
+        content = skill.content or ""
+        max_chars = 12000
+        if len(content) > max_chars:
+            content = content[:max_chars] + "\n\n... [truncated to stay within context limits — apply core guidelines above]"
+        return content
 
     def create_skill(name: str, description: str, instructions: str) -> str:
         """Create and save a new skill for future reuse (self-improving loop)."""
