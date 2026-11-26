@@ -309,6 +309,125 @@ async def run_tests():
     assert any(m.get("role") == "tool" and m.get("tool_call_id") == "tc_interrupt_1" and "Interrupted" in (m.get("content") or "") for m in hist), f"Dangling tool call not cleaned up: {hist}"
     print("   [OK] Gateway /stop cancellation and dangling tool_call memory cleanup verified.")
 
+    print("11. Testing Real AI-Team Orchestrator (Board + Tools + Dashboard API)...")
+    from nexus.team import TeamManager, dashboard_state
+    from nexus.team.server import api_state, api_read_file
+    from fastapi import HTTPException
+
+    class TeamMockLLM:
+        model = "mock-team-model"
+        def __init__(self):
+            self.step_map = {}
+
+        async def chat_completion(self, messages, tools=None, on_token=None):
+            sys_txt = messages[0].get("content", "")
+            last_role = messages[-1].get("role")
+            if "Team Lead" in sys_txt and "Plan this mission" in messages[1].get("content", ""):
+                if last_role == "user":
+                    return {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "lead_t1",
+                                "type": "function",
+                                "function": {
+                                    "name": "team_create_task",
+                                    "arguments": json.dumps({
+                                        "title": "Build hello.txt",
+                                        "description": "Write hello.txt with 'hello team'",
+                                        "assigned_to": "coder",
+                                        "depends_on": []
+                                    })
+                                }
+                            },
+                            {
+                                "id": "lead_t2",
+                                "type": "function",
+                                "function": {
+                                    "name": "team_create_task",
+                                    "arguments": json.dumps({
+                                        "title": "Verify hello.txt",
+                                        "description": "Read hello.txt and confirm content",
+                                        "assigned_to": "reviewer",
+                                        "depends_on": ["T1"]
+                                    })
+                                }
+                            },
+                        ]
+                    }
+                return {"role": "assistant", "content": "Board planned cleanly."}
+
+            if "Code Writer" in sys_txt:
+                if last_role == "user":
+                    return {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{
+                            "id": "coder_w1",
+                            "type": "function",
+                            "function": {
+                                "name": "write_file",
+                                "arguments": json.dumps({"path": "hello.txt", "content": "hello team"})
+                            }
+                        }]
+                    }
+                return {"role": "assistant", "content": "Wrote hello.txt."}
+
+            if "Code Reviewer" in sys_txt:
+                if last_role == "user":
+                    return {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{
+                            "id": "rev_r1",
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": json.dumps({"path": "hello.txt"})
+                            }
+                        }]
+                    }
+                return {"role": "assistant", "content": "Verified hello.txt contains 'hello team'."}
+
+            return {"role": "assistant", "content": "Mission complete: hello.txt created and verified."}
+
+    with tempfile.TemporaryDirectory() as team_tmp:
+        team_root = Path(team_tmp)
+        team_llm = TeamMockLLM()
+        dashboard_state.configure(
+            llm_client=team_llm,
+            memory=memory,
+            skill_manager=skill_mgr,
+            root_dir=team_root,
+            parent_registry=registry,
+        )
+        team_run = await dashboard_state.run_team(
+            task="Create hello.txt and verify it",
+            preset="custom",
+            roles=["coder", "reviewer"],
+            mode_override="team",
+        )
+        assert team_run is not None and team_run.board is not None
+        assert (team_root / "hello.txt").read_text(encoding="utf-8") == "hello team"
+        assert len(team_run.board.tasks) == 2
+        assert all(t.status == "completed" for t in team_run.board.tasks)
+        assert any(f["path"] == "hello.txt" and f["by"] == "coder" for f in team_run.board.files_touched)
+        assert len(team_run.board.tool_events) >= 4
+
+        # Check Dashboard REST endpoints & path traversal protection
+        st_resp = await api_state()
+        assert st_resp.status_code == 200
+        f_resp = await api_read_file(path="hello.txt")
+        assert json.loads(f_resp.body.decode())["content"] == "hello team"
+        blocked = False
+        try:
+            await api_read_file(path="../secret.txt")
+        except HTTPException as he:
+            blocked = (he.status_code == 403)
+        assert blocked, "Path traversal outside workspace must be blocked"
+    print("   [OK] Real AI-Team Lead + Shared Task Board + Real File Tools + Dashboard API verified.")
+
     # Cleanup
     import gc
     gc.collect()

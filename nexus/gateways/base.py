@@ -348,7 +348,15 @@ class BaseGateway(ABC):
             async def _team_send(t):
                 replies.append(t)
             team_args = text.split()[1:]
-            await handle_team_command(team_args, _team_send, self.llm)
+            await handle_team_command(
+                team_args,
+                _team_send,
+                self.llm,
+                memory=self.memory,
+                skill_manager=self.skill_manager,
+                root_dir=config.ROOT_DIR,
+                parent_registry=self.registry,
+            )
             return "\n\n".join(replies) if replies else TEAM_HELP
 
         lock = self._get_lock(msg.chat_id)

@@ -219,8 +219,15 @@ async def main_async():
     # Always-on AI-Team dashboard server (background)
     try:
         from nexus.team.server import start_dashboard_server
-        await start_dashboard_server(llm, port=7891)
-        console.print("  [dim]👥 AI-Team dashboard → [bold #00ffd7]http://localhost:7891[/bold #00ffd7][/dim]\n")
+        dash_port = await start_dashboard_server(
+            llm,
+            port=7891,
+            memory=memory,
+            skill_manager=skill_manager,
+            root_dir=config.ROOT_DIR,
+            parent_registry=registry,
+        )
+        console.print(f"  [dim]👥 AI-Team dashboard → [bold #00ffd7]http://127.0.0.1:{dash_port}[/bold #00ffd7][/dim]\n")
     except Exception:
         pass  # Dashboard is optional, don't block CLI
 
@@ -251,6 +258,11 @@ async def main_async():
             if text.lower() in ("exit", "quit", "q"):
                 await gateway_manager.stop_gateway("all")
                 await mcp_manager.stop_all()
+                try:
+                    from nexus.team.server import stop_dashboard_server
+                    await stop_dashboard_server()
+                except Exception:
+                    pass
                 console.print("\n  [dim cyan]⠋ Preserving orchestrator session & persistent memory (FTS5)...[/dim cyan]")
                 await asyncio.sleep(0.25)
                 console.print("  [bold #00ffd7]✔ Session preserved.[/bold #00ffd7] [dim]Nexus Orchestrator offline. Goodbye![/dim]\n")
@@ -377,9 +389,24 @@ async def main_async():
                     if sub_t == "presets":
                         console.print("\n  [bold #00ffd7]🎭 Preset Teams[/bold #00ffd7]\n")
                         for name, roles in PRESET_TEAMS.items():
-                            mode_hint = "pipeline" if name in {"dev", "fulldev"} else "parallel"
-                            console.print(f"    [bold #38bdf8]{name:<12}[/bold #38bdf8] [dim]→[/dim]  {' → '.join(roles)}  [dim]({mode_hint})[/dim]")
+                            mode_hint = auto_mode(name, [])
+                            console.print(f"    [bold #38bdf8]{name:<12}[/bold #38bdf8] [dim]→[/dim]  {', '.join(roles)}  [dim]({mode_hint})[/dim]")
                         console.print()
+                        continue
+
+                    if sub_t == "open":
+                        import webbrowser
+                        from nexus.team.server import state as _dash_state
+                        url = f"http://127.0.0.1:{_dash_state.port}"
+                        webbrowser.open(url)
+                        console.print(f"\n  [bold #14f1d9]Opened AI-Team dashboard:[/bold #14f1d9] {url}\n")
+                        continue
+
+                    if sub_t == "stop":
+                        from nexus.team.server import state as _dash_state
+                        stopped = await _dash_state.stop_active_run()
+                        msg = "Stopped active AI-Team mission." if stopped else "No active AI-Team mission running."
+                        console.print(f"\n  [yellow]{msg}[/yellow]\n")
                         continue
 
                     if sub_t == "ask":
@@ -392,8 +419,14 @@ async def main_async():
                             console.print(f"  [red]Unknown role `{role_id}`. Run /team roles.[/red]\n")
                             continue
                         role = BUILTIN_ROLES_BY_ID[role_id]
-                        console.print(f"\n  {role.emoji} [bold cyan]{role.name}[/bold cyan] is thinking…\n")
-                        _tm = TeamManager(llm)
+                        console.print(f"\n  {role.emoji} [bold cyan]{role.name}[/bold cyan] working with tools…\n")
+                        _tm = TeamManager(
+                            llm_client=llm,
+                            memory=memory,
+                            skill_manager=skill_manager,
+                            root_dir=config.ROOT_DIR,
+                            parent_registry=registry,
+                        )
                         _run = await _tm.run_single(task_text, role_id)
                         result = _run.results.get(role_id, "No output.")
                         console.rule(f"{role.emoji} [bold #38bdf8]{role.name}[/bold #38bdf8]", style="#334155")
@@ -407,7 +440,7 @@ async def main_async():
                         mode_override = None   # None = auto-detect
                         custom_roles = []
                         task_parts = []
-                        use_web = True         # default: open web dashboard
+                        use_web = True
                         i = 0
                         while i < len(rest):
                             tok = rest[i].lower()
@@ -417,11 +450,11 @@ async def main_async():
                             elif tok == "--parallel":
                                 mode_override = "parallel"
                                 i += 1
-                            elif tok == "--pipeline":
-                                mode_override = "pipeline"
+                            elif tok in ("--pipeline", "--sequential"):
+                                mode_override = "sequential"
                                 i += 1
                             elif tok == "--roles" and i + 1 < len(rest):
-                                custom_roles = [r.strip() for r in rest[i + 1].split(",")]
+                                custom_roles = [r.strip() for r in rest[i + 1].split(",") if r.strip()]
                                 i += 2
                             elif tok == "--no-web":
                                 use_web = False
@@ -444,17 +477,20 @@ async def main_async():
                             if not roles_to_run:
                                 console.print(f"  [red]Unknown preset `{preset}`. Available: {', '.join(PRESET_TEAMS)}[/red]\n")
                                 continue
-                        # Auto-detect mode if not forced
+
                         mode = mode_override or auto_mode(preset, custom_roles)
-                        if use_web:
-                            # Trigger via always-on dashboard server
-                            from nexus.team.server import state as _dash_state
-                            console.print(f"\n  [bold #00ffd7]👥 AI-Team[/bold #00ffd7]  [dim]running → [bold]http://localhost:7891[/bold][/dim]\n")
-                            asyncio.create_task(_dash_state.run_team(task_text, preset, roles_to_run, mode))
-                            # Also show terminal TUI
-                            await run_team_with_ui(task_text, roles_to_run, mode, llm)
-                        else:
-                            await run_team_with_ui(task_text, roles_to_run, mode, llm)
+                        await run_team_with_ui(
+                            task=task_text,
+                            roles=roles_to_run,
+                            mode=mode,
+                            llm_client=llm,
+                            preset=preset,
+                            memory=memory,
+                            skill_manager=skill_manager,
+                            root_dir=config.ROOT_DIR,
+                            parent_registry=registry,
+                            use_dashboard_state=use_web,
+                        )
                         continue
 
                     # Unknown subcommand — show help

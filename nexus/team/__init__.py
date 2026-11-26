@@ -1,17 +1,32 @@
 # nexus/team/__init__.py
-"""AI-Team — spawn and orchestrate a team of specialized AI sub-agents."""
+"""AI-Team — Lead-coordinated multi-agent workspace orchestration."""
 
-from .manager import TeamManager, PRESET_TEAMS
-from .agent import TeamAgent, AgentRole
-from .commands import handle_team_command, HELP_TEXT
-from .server import start_dashboard_server, stop_dashboard_server
+from .agent import AgentRole, BUILTIN_ROLES, BUILTIN_ROLES_BY_ID, LEAD_ROLE, TeamAgent
+from .board import TeamBoard, TeamMessage, TeamTask, TeamToolEvent
+from .commands import HELP_TEXT, handle_team_command
+from .manager import PRESET_TEAMS, TeamManager, TeamRun, auto_mode
+from .server import start_dashboard_server, state as dashboard_state, stop_dashboard_server
 
-# Alias used by cli.py import
 PRESET_TEAMS_REF = PRESET_TEAMS
 
 __all__ = [
-    "TeamManager", "TeamAgent", "AgentRole",
-    "handle_team_command", "HELP_TEXT",
-    "PRESET_TEAMS", "PRESET_TEAMS_REF",
-    "start_dashboard_server", "stop_dashboard_server",
+    "AgentRole",
+    "BUILTIN_ROLES",
+    "BUILTIN_ROLES_BY_ID",
+    "LEAD_ROLE",
+    "TeamAgent",
+    "TeamBoard",
+    "TeamTask",
+    "TeamMessage",
+    "TeamToolEvent",
+    "TeamManager",
+    "TeamRun",
+    "PRESET_TEAMS",
+    "PRESET_TEAMS_REF",
+    "auto_mode",
+    "handle_team_command",
+    "HELP_TEXT",
+    "dashboard_state",
+    "start_dashboard_server",
+    "stop_dashboard_server",
 ]
