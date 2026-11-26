@@ -216,6 +216,14 @@ async def main_async():
         except Exception:
             pass
 
+    # Always-on AI-Team dashboard server (background)
+    try:
+        from nexus.team.server import start_dashboard_server
+        await start_dashboard_server(llm, port=7891)
+        console.print("  [dim]👥 AI-Team dashboard → [bold #00ffd7]http://localhost:7891[/bold #00ffd7][/dim]\n")
+    except Exception:
+        pass  # Dashboard is optional, don't block CLI
+
     completer = NexusCommandCompleter()
     session = PromptSession(
         history=InMemoryHistory(),
@@ -439,9 +447,12 @@ async def main_async():
                         # Auto-detect mode if not forced
                         mode = mode_override or auto_mode(preset, custom_roles)
                         if use_web:
-                            from nexus.team.dashboard import run_team_with_dashboard
-                            console.print(f"\n  [bold #00ffd7]👥 AI-Team[/bold #00ffd7]  [dim]opening dashboard at http://localhost:7891[/dim]\n")
-                            await run_team_with_dashboard(task_text, roles_to_run, mode, llm)
+                            # Trigger via always-on dashboard server
+                            from nexus.team.server import state as _dash_state
+                            console.print(f"\n  [bold #00ffd7]👥 AI-Team[/bold #00ffd7]  [dim]running → [bold]http://localhost:7891[/bold][/dim]\n")
+                            asyncio.create_task(_dash_state.run_team(task_text, preset, roles_to_run, mode))
+                            # Also show terminal TUI
+                            await run_team_with_ui(task_text, roles_to_run, mode, llm)
                         else:
                             await run_team_with_ui(task_text, roles_to_run, mode, llm)
                         continue
