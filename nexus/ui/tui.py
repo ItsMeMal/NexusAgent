@@ -473,7 +473,8 @@ def render_plugins_table(plugins: list):
         console.print("  [dim]Create a plugin folder with [plugin.json] to load custom tools & agents.[/dim]\n")
         return
     for p in plugins:
-        console.print(f"  [bold #22c55e]● {p.name}[/bold #22c55e] [dim]v{p.version} by {p.author}[/dim]")
+        extra = f" · [cyan]{p.skills_count} skills[/cyan]" if getattr(p, "skills_count", 0) else ""
+        console.print(f"  [bold #22c55e]● {p.name}[/bold #22c55e] [dim]v{p.version} by {p.author}[/dim]{extra}")
         console.print(f"    [white]{p.description}[/white]\n")
 
 def render_security_card():

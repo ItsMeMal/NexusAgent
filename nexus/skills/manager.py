@@ -25,15 +25,23 @@ def _default_skill_search_paths() -> List[Path]:
     home = Path.home()
     nexus_home = home / ".nexus"
     agents_home = home / ".agents"
+    codebase_root = Path(__file__).resolve().parent.parent.parent
 
-    candidates = [
+    candidates: List[Optional[Path]] = [
         Path.cwd() / ".skills",
         Path(os.getenv("NEXUS_SKILLS_DIR", "")) if os.getenv("NEXUS_SKILLS_DIR") else None,
         nexus_home / "skills",
         agents_home / "skills",
         agents_home / "nexus" / "skills",
-        Path(__file__).resolve().parent.parent.parent / ".skills",  # codebase root
+        codebase_root / ".skills",  # bundled core skills (incl. vercel-labs/agent-skills)
     ]
+
+    # Auto-discover skills bundled inside plugins (e.g., plugins/superpowers/skills)
+    for plugin_root in (Path.cwd() / "plugins", nexus_home / "plugins", codebase_root / "plugins"):
+        if plugin_root.exists() and plugin_root.is_dir():
+            for p_sub in sorted(plugin_root.iterdir()):
+                if p_sub.is_dir() and (p_sub / "skills").is_dir():
+                    candidates.append(p_sub / "skills")
     # Deduplicate while preserving order
     seen = set()
     result = []
@@ -75,11 +83,19 @@ class SkillManager:
         for directory in self.all_search_dirs():
             if not directory.exists():
                 continue
-            # Support both flat *.md files and subdirectory SKILL.md convention (like Antigravity)
+            # Support flat *.md skills and subdirectory SKILL.md convention without picking up AGENTS.md/README.md
             md_files: List[Path] = []
             md_files.extend(directory.glob("*.md"))
-            md_files.extend(directory.glob("*/SKILL.md"))
-            md_files.extend(directory.glob("*/*.md"))
+            for sub in sorted(directory.iterdir()):
+                if not sub.is_dir():
+                    continue
+                skill_md = sub / "SKILL.md"
+                if skill_md.exists():
+                    md_files.append(skill_md)
+                else:
+                    named_md = sub / f"{sub.name}.md"
+                    if named_md.exists():
+                        md_files.append(named_md)
 
             for file in sorted(md_files):
                 try:

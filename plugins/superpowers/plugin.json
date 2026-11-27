@@ -1,0 +1,8 @@
+{
+  "name": "superpowers",
+  "version": "7.0.2",
+  "author": "Jesse Vincent (obra)",
+  "description": "Core agentic skills library (obra/superpowers): brainstorming, using-superpowers, TDD, systematic-debugging, writing-plans, subagent-driven-development, and verification.",
+  "repository": "https://github.com/obra/superpowers",
+  "skills": "skills"
+}

@@ -753,6 +753,28 @@ async def run_tests():
 
     print("   [OK] Streaming null/repeated tool_call coding & workspace path resolution verified.")
 
+    print("17. Testing Bundled Plugins (obra/superpowers) & Bundled Skills (vercel-labs/agent-skills)...")
+    bundled_plugins = [p.name for p in pm.list_plugins()]
+    assert "superpowers" in bundled_plugins, f"superpowers plugin missing: {bundled_plugins}"
+    sp_plugin = pm.plugins["superpowers"]
+    assert sp_plugin.skills_count >= 15
+
+    all_loaded_skills = {s.name for s in skill_mgr.load_all_skills()}
+    for expected in (
+        "brainstorming",
+        "using-superpowers",
+        "systematic-debugging",
+        "test-driven-development",
+        "react-best-practices",
+        "web-design-guidelines",
+        "composition-patterns",
+        "deploy-to-vercel",
+    ):
+        assert expected in all_loaded_skills, f"Missing bundled skill: {expected}"
+        assert skill_mgr.get_skill(expected) is not None, f"get_skill failed for {expected}"
+    assert "AGENTS" not in all_loaded_skills and "README" not in all_loaded_skills
+    print("   [OK] Bundled superpowers plugin (15 skills) & Vercel agent-skills verified cleanly.")
+
     # Cleanup
     import gc
     gc.collect()

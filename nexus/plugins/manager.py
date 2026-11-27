@@ -15,6 +15,7 @@ class PluginInfo:
     author: str = ""
     enabled: bool = True
     tools_count: int = 0
+    skills_count: int = 0
 
 class PluginManager:
     """Discovers and manages modular plugins located in plugins/ or .plugins/ directory."""
@@ -34,23 +35,41 @@ class PluginManager:
         for pdir in self.plugin_dirs:
             if not pdir.exists() or not pdir.is_dir():
                 continue
-            for item in pdir.iterdir():
-                if item.is_dir():
-                    manifest_path = item / "plugin.json"
-                    if manifest_path.exists():
-                        try:
-                            meta = json.loads(manifest_path.read_text(encoding="utf-8"))
-                            p_name = meta.get("name", item.name)
-                            self.plugins[p_name] = PluginInfo(
-                                name=p_name,
-                                version=meta.get("version", "1.0.0"),
-                                description=meta.get("description", "Nexus Agent Extension Plugin"),
-                                path=item,
-                                author=meta.get("author", "Community"),
-                                enabled=True
-                            )
-                        except Exception:
-                            pass
+            for item in sorted(pdir.iterdir()):
+                if not item.is_dir():
+                    continue
+                manifest_path = item / "plugin.json"
+                if not manifest_path.exists():
+                    manifest_path = item / ".claude-plugin" / "plugin.json"
+                if manifest_path.exists():
+                    try:
+                        meta = json.loads(manifest_path.read_text(encoding="utf-8"))
+                        p_name = meta.get("name", item.name)
+                        if p_name in self.plugins:
+                            continue
+                        raw_author = meta.get("author", "Community")
+                        if isinstance(raw_author, dict):
+                            author_str = raw_author.get("name", "Community")
+                        else:
+                            author_str = str(raw_author or "Community")
+
+                        skills_rel = meta.get("skills", "skills")
+                        skills_sub = item / skills_rel if isinstance(skills_rel, str) else item / "skills"
+                        skills_cnt = 0
+                        if skills_sub.exists() and skills_sub.is_dir():
+                            skills_cnt = len(list(skills_sub.glob("*/SKILL.md")) + list(skills_sub.glob("*.md")))
+
+                        self.plugins[p_name] = PluginInfo(
+                            name=p_name,
+                            version=meta.get("version", "1.0.0"),
+                            description=meta.get("description", "Nexus Agent Extension Plugin"),
+                            path=item,
+                            author=author_str,
+                            enabled=True,
+                            skills_count=skills_cnt,
+                        )
+                    except Exception:
+                        pass
 
     def list_plugins(self) -> List[PluginInfo]:
         return list(self.plugins.values())
