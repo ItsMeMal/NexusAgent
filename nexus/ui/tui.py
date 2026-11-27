@@ -100,47 +100,6 @@ def render_banner(
         render_update_alert(update_info)
 
 
-_PRISM_THINK_PALETTE = [
-    "#00ffd7", "#22d3ee", "#38bdf8", "#818cf8", "#a78bfa", "#e879f9", "#f472b6", "#fb7185",
-    "#f472b6", "#e879f9", "#a78bfa", "#818cf8", "#38bdf8", "#22d3ee",
-]
-_PRISM_TOOL_PALETTE = [
-    "#fbbf24", "#f59e0b", "#fb7185", "#f472b6", "#c084fc", "#38bdf8", "#00ffd7", "#22c55e",
-    "#00ffd7", "#38bdf8", "#c084fc", "#f472b6", "#fb7185", "#f59e0b",
-]
-_SPARK_COLORS = ["#fbbf24", "#f472b6", "#00ffd7", "#a78bfa", "#38bdf8", "#fb7185"]
-
-# Piko-Core: squishy, bouncing, multi-color chibi cyber-mochi mascot (every row strictly 19 cells)
-_PIKO_THINK_FRAMES = [
-    # (row0_aura, l_pad, dome_dashes, paw_l, inner_face_parts, paw_r, bot_mid, r_pad)
-    # inner_face_parts: (l_cheek, eye_l, mouth, eye_r, r_cheek)
-    ("     ·  ✦  ✧ ·     ", 4, 9, "╭┤", (" ", "◉", "  ◡  ", "◉", " "), "├╮", "───◈───", 4),
-    ("    ✧  ·   ✦  ·    ", 4, 9, "╭┤", (" ", "◉", "  ◡  ", "◉", " "), "├╮", "──◈─◈──", 4),
-    ("      ✦  ∘  ✧      ", 5, 9, "╭┤", (" ", "◉", " ◡ ", "◉", "  *"), "├╮", "──◈──◈─", 3),  # sway right
-    ("                   ", 3, 11, "╭┤", (" ", "•", "   ◡   ", "•", " "), "├╮", "────◈────", 3),  # squish bounce!
-    ("    ✦   ·   ✧ ·    ", 4, 9, "╰┤", ("*", "^", "  ◡  ", "^", "*"), "├╯", "──◈─◈──", 4),  # happy blink + blush
-    ("      ✧  ∘  ✦      ", 3, 9, "╭┤", ("*  ", "◉", " ◡ ", "◉", " "), "├╮", "─◈──◈──", 5),  # sway left
-    ("   ✦   ✧ ◈ ✧   ✦   ", 4, 9, "╰┤", (" ", "✦", "  ▽  ", "✦", " "), "├╯", "──═══──", 4),  # eureka jump!
-    ("     ·  ✧  ✦ ·     ", 4, 9, "╭┤", (" ", "◉", "  ω  ", "◉", " "), "├╮", "──═◈═──", 4),
-]
-
-_PIKO_TOOL_FRAMES = [
-    ("    ▲  ✦ ◈ ✦  ▲    ", 4, 9, "╰┤", (" ", "▸", "  ◡  ", "▸", " "), "├╯", "─▓▒◈▒▓─", 4),
-    ("                   ", 3, 11, "╭┤", (" ", "◈", "   ▽   ", "◈", " "), "├╮", "─▒▓█◈█▓▒─", 3),  # squish bounce
-    ("    ▼  ✧ ◈ ✧  ▼    ", 4, 9, "╰┤", ("*", "▸", "  ω  ", "▸", "*"), "├╯", "─░▒▓▒░─", 4),
-    ("      ✦  ◈  ✦      ", 4, 9, "╭┤", (" ", "◈", "  ◡  ", "◈", " "), "├╮", "─▓▒█▒▓─", 4),
-]
-
-_MASCOT_SPINNERS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-
-
-def _append_prism_chars(txt: Text, s: str, palette: list, offset: int, bold: bool = True) -> None:
-    """Append a string with flowing multi-color gradient across characters."""
-    for idx, ch in enumerate(s):
-        color = palette[(idx + offset) % len(palette)]
-        txt.append(ch, style=f"bold {color}" if bold else color)
-
-
 def build_nexus_mascot_renderable(
     frame_idx: int,
     elapsed: float,
@@ -149,137 +108,16 @@ def build_nexus_mascot_renderable(
     width: int = 100,
     mode_id: str = "auto",
 ):
-    """Build a vibrant multi-color animated Piko-Core Mascot + live telemetry widget for Rich Live."""
-    msg_low = (message or "").lower()
-    is_tool = msg_low.startswith("executing") or "tool" in msg_low
-    is_synth = "synth" in msg_low
-
-    frames = _PIKO_TOOL_FRAMES if is_tool else _PIKO_THINK_FRAMES
-    row0, l_pad, dash_cnt, paw_l, face_parts, paw_r, bot_mid, r_pad = frames[frame_idx % len(frames)]
-    l_cheek, eye_l, mouth, eye_r, r_cheek = face_parts
-    spin = _MASCOT_SPINNERS[frame_idx % len(_MASCOT_SPINNERS)]
-    palette = _PRISM_TOOL_PALETTE if is_tool else _PRISM_THINK_PALETTE
-
-    # Compact 1-line multi-color fallback for ultra-narrow terminals
-    if width < 64:
-        t = Text()
-        t.append("  ")
-        t.append(paw_l, style="bold #f472b6")
-        t.append(eye_l, style="bold #00ffd7")
-        t.append(mouth.strip(), style="bold #fbbf24")
-        t.append(eye_r, style="bold #00ffd7")
-        t.append(paw_r, style="bold #a78bfa")
-        t.append(f" {spin} {message[:26]} ", style="bold #38bdf8")
-        t.append(f"({elapsed:.1f}s)", style="dim")
-        return t
-
-    if is_tool:
-        badge_text = " EXECUTING "
-        badge_style = "bold #11111b on #f59e0b"
-        eye_c = "bold #fef08a"
-        mouth_c = "bold #fb7185"
-        paw_l_c = "bold #fb923c"
-        paw_r_c = "bold #f472b6"
-    elif is_synth:
-        badge_text = " SYNTHESIZING "
-        badge_style = "bold #11111b on #c084fc"
-        eye_c = "bold #ffffff"
-        mouth_c = "bold #f472b6"
-        paw_l_c = "bold #00ffd7"
-        paw_r_c = "bold #a78bfa"
-    else:
-        badge_text = " THINKING "
-        badge_style = "bold #11111b on #00ffd7"
-        eye_c = "bold #ffffff" if eye_l in ("✦", "^") else "bold #67e8f9"
-        mouth_c = "bold #fbbf24" if "▽" in mouth else "bold #f472b6"
-        paw_l_c = "bold #f472b6"
-        paw_r_c = "bold #38bdf8"
-
-    # Column 1: 4-line fixed 19-char wide Multi-Color Piko-Core Mascot
-    mascot = Text()
-
-    # Row 0: twinkling multi-color aura stars
-    for i, ch in enumerate(row0):
-        if ch == " ":
-            mascot.append(" ")
-        elif ch == "◈":
-            mascot.append(ch, style="bold #00ffd7")
-        elif ch in ("✦", "✧", "▲", "▼"):
-            mascot.append(ch, style=f"bold {_SPARK_COLORS[(i + frame_idx) % len(_SPARK_COLORS)]}")
-        else:
-            mascot.append(ch, style=_SPARK_COLORS[(i + frame_idx + 2) % len(_SPARK_COLORS)])
-    mascot.append("\n")
-
-    # Row 1: flowing holographic dome
-    mascot.append(" " * l_pad)
-    _append_prism_chars(mascot, "╭" + ("─" * dash_cnt) + "╮", palette, frame_idx)
-    mascot.append(" " * r_pad + "\n")
-
-    # Row 2: pastel paws + glowing eyes + rosy cheeks + cute mouth
-    mascot.append(" " * max(0, l_pad - 1))
-    mascot.append(paw_l, style=paw_l_c)
-    mascot.append(l_cheek, style="bold #fb7185" if "*" in l_cheek else "")
-    mascot.append(eye_l, style=eye_c)
-    mascot.append(mouth, style=mouth_c)
-    mascot.append(eye_r, style=eye_c)
-    mascot.append(r_cheek, style="bold #fb7185" if "*" in r_cheek else "")
-    mascot.append(paw_r, style=paw_r_c)
-    mascot.append(" " * max(0, r_pad - 1) + "\n")
-
-    # Row 3: prism belly + rainbow core + cute feet
-    mascot.append(" " * l_pad)
-    mascot.append("╰┴", style=f"bold {palette[frame_idx % len(palette)]}")
-    _append_prism_chars(mascot, bot_mid, palette, frame_idx + 3)
-    mascot.append("┴╯", style=f"bold {palette[(frame_idx + 6) % len(palette)]}")
-    mascot.append(" " * r_pad)
-
-    # Column 2: 4-line telemetry + prism wave bar aligned alongside Piko-Core
-    model_short = (model_name.split("/")[-1] if "/" in model_name else model_name) or "nexus"
-    if len(model_short) > 28:
-        model_short = model_short[:25] + "..."
-
-    bar_len = 24
-    cycle = bar_len * 2 - 2
-    pos = frame_idx % cycle
-    if pos >= bar_len:
-        pos = cycle - pos
-
-    from ..core.modes import get_mode
-    mode_spec = get_mode(mode_id)
-
-    info = Text()
-    info.append("◈ NEXUS ", style="bold #00ffd7")
-    info.append("PIKO ", style="bold #f472b6")
-    info.append(badge_text, style=badge_style)
-    info.append(f"  {mode_spec.icon} {mode_spec.label}", style=f"bold {mode_spec.color}")
-    info.append(f"  ·  {model_short}\n", style="dim #94a3b8")
-
-    clean_msg = message if len(message) <= 44 else message[:41] + "..."
-    info.append(f"{spin} ", style=f"bold {_SPARK_COLORS[frame_idx % len(_SPARK_COLORS)]}")
-    info.append(f"{clean_msg}\n", style="bold white")
-
-    info.append("[", style="dim #475569")
-    for i in range(bar_len):
-        dist = abs(i - pos)
-        if dist == 0:
-            info.append("✦", style="bold #ffffff")
-        elif dist <= 2:
-            info.append("━", style=f"bold {palette[(i + frame_idx) % len(palette)]}")
-        elif dist <= 5:
-            info.append("━", style=palette[(i + frame_idx) % len(palette)])
-        else:
-            info.append("─", style="#334155")
-    info.append("]\n", style="dim #475569")
-
-    info.append(f"◷ {elapsed:4.1f}s", style="bold #38bdf8")
-    info.append("  ·  ", style="dim")
-    info.append("Esc / Ctrl+C to interrupt", style="dim #94a3b8")
-
-    grid = Table.grid(padding=(0, 2))
-    grid.add_column(no_wrap=True)
-    grid.add_column(no_wrap=True)
-    grid.add_row(mascot, info)
-    return grid
+    """Render Piko True-Color Pixel Sprite + live telemetry widget for Rich Live."""
+    from .mascot import build_piko_renderable
+    return build_piko_renderable(
+        frame_idx=frame_idx,
+        elapsed=elapsed,
+        message=message,
+        model_name=model_name,
+        width=width,
+        mode_id=mode_id,
+    )
 
 def render_tool_call(tool_name: str, arguments: Dict[str, Any]):
     """Compact, high-signal single-line tool call indicator."""

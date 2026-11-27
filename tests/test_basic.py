@@ -904,6 +904,27 @@ async def run_tests():
     assert len(memory.get_session_history("long-sess")) == 30  # Raw DB intact!
     print("   [OK] Real Cron Runner execution & Auto Context Compaction verified.")
 
+    print("21. Testing True-Color Pixel Sprite Mascot, Kitty/iTerm2/Sixel Encoders, & Win Proactor Fix...")
+    from nexus.ui.mascot import (
+        detect_graphics_protocol,
+        encode_iterm2_image,
+        encode_kitty_image,
+        encode_sixel_image,
+        render_mascot_png_bytes,
+    )
+    from nexus.cli import _install_win_proactor_pipe_fix
+
+    assert detect_graphics_protocol("pixel") == "pixel"
+    assert detect_graphics_protocol("kitty") == "kitty"
+    png_data = render_mascot_png_bytes(0, 1.0, "think", scale=3)
+    assert png_data.startswith(b"\x89PNG\r\n\x1a\n") and len(png_data) > 100
+    assert encode_kitty_image(png_data).startswith("\x1b_Ga=T,f=100")
+    assert encode_iterm2_image(png_data).startswith("\x1b]1337;File=inline=1")
+    sixel_str = encode_sixel_image(0, 1.0, "tool", scale=2)
+    assert sixel_str.startswith("\x1bPq") and sixel_str.endswith("\x1b\\")
+    _install_win_proactor_pipe_fix()
+    print("   [OK] Pixel sprite, Kitty/iTerm2/Sixel encoders, & Proactor shutdown guard verified.")
+
     # Cleanup
     import gc
     gc.collect()

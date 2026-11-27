@@ -1,5 +1,6 @@
 ﻿import sys
 import os
+import gc
 import signal
 import asyncio
 import argparse
@@ -430,7 +431,9 @@ async def main_async():
                 except Exception:
                     pass
                 console.print("\n  [dim cyan]⠋ Preserving orchestrator session & persistent memory (FTS5)...[/dim cyan]")
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(0.15)
+                gc.collect()
+                await asyncio.sleep(0.05)
                 console.print("  [bold #00ffd7]✔ Session preserved.[/bold #00ffd7] [dim]Nexus Orchestrator offline. Goodbye![/dim]\n")
                 break
 
@@ -757,6 +760,34 @@ async def main_async():
                     else:
                         await perform_update(console)
                     continue
+                elif cmd in ("/mascot",):
+                    from .ui.mascot import (
+                        build_piko_renderable,
+                        detect_graphics_protocol,
+                        encode_iterm2_image,
+                        encode_kitty_image,
+                        encode_sixel_image,
+                        render_mascot_png_bytes,
+                    )
+                    parts = text.strip().split()
+                    sub = parts[1].lower() if len(parts) > 1 else ""
+                    if sub in ("auto", "pixel", "kitty", "iterm2", "sixel"):
+                        os.environ["NEXUS_MASCOT_MODE"] = sub
+                        console.print(f"\n  [bold #22c55e]✔ Mascot renderer mode:[/bold #22c55e] [bold #00ffd7]{sub}[/bold #00ffd7] (active: {detect_graphics_protocol(sub)})\n")
+                    else:
+                        proto = detect_graphics_protocol()
+                        console.print(f"\n  [bold #00ffd7]◈ Piko Pixel Mascot Preview[/bold #00ffd7] [dim](mode: {proto})[/dim]\n")
+                        if proto in ("kitty", "iterm2", "sixel") and sub == "native":
+                            png = render_mascot_png_bytes(0, 0.0, "think", scale=5)
+                            seq = encode_kitty_image(png) if proto == "kitty" else (encode_iterm2_image(png) if proto == "iterm2" else encode_sixel_image(0, 0.0, "think", scale=3))
+                            sys.stdout.write("  " + seq + "\n")
+                            sys.stdout.flush()
+                        else:
+                            console.print(build_piko_renderable(0, 1.2, "Thinking & coordinating...", llm.model, getattr(console, "width", 100) or 100, agent.mode))
+                            console.print()
+                            console.print(build_piko_renderable(4, 3.5, "Executing write_file...", llm.model, getattr(console, "width", 100) or 100, agent.mode))
+                            console.print("  [dim]Tip: /mascot [auto|pixel|kitty|iterm2|sixel] · /mascot native[/dim]\n")
+                    continue
                 elif cmd in ("/clear", "/cls"):
                     os.system("cls" if os.name == "nt" else "clear")
                     active_provider = ProviderManager.detect_active_provider(config.API_BASE)
@@ -900,7 +931,27 @@ async def _run_interruptible_agent(agent: NexusAgent, text: str, ui_controller: 
                 pass
 
 
+def _install_win_proactor_pipe_fix() -> None:
+    """Suppress benign CPython Windows ProactorEventLoop closed-pipe __del__ ValueError at interpreter shutdown."""
+    if sys.platform != "win32":
+        return
+    try:
+        from asyncio import proactor_events
+        orig_del = getattr(proactor_events._ProactorBasePipeTransport, "__del__", None)
+        if orig_del and not getattr(orig_del, "_nexus_safe", False):
+            def _safe_del(self, _orig=orig_del):
+                try:
+                    _orig(self)
+                except (ValueError, RuntimeError):
+                    pass
+            _safe_del._nexus_safe = True
+            proactor_events._ProactorBasePipeTransport.__del__ = _safe_del
+    except Exception:
+        pass
+
+
 def main():
+    _install_win_proactor_pipe_fix()
     asyncio.run(main_async())
 
 if __name__ == "__main__":

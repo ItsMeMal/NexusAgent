@@ -59,6 +59,12 @@ def get_terminal_tools(root_dir: Path):
             return res
         except Exception as e:
             return f"Error running command '{command}': {str(e)}"
+        finally:
+            try:
+                if "process" in locals() and getattr(process, "_transport", None) is not None:
+                    process._transport.close()
+            except Exception:
+                pass
 
     return [
         Tool(

@@ -42,6 +42,7 @@ SLASH_COMMANDS = [
     ("/resume", "Browse and resume past conversation session (interactive arrow-key menu)", "Session"),
     ("/rename", "Rename current conversation session (/rename <title>)", "Session"),
     ("/config", "View active runtime settings and configuration", "Utility"),
+    ("/mascot", "Preview or configure Piko mascot mode (auto|pixel|kitty|iterm2|sixel)", "Utility"),
     ("/new", "Start a new clean session context", "Session"),
     ("/clear", "Clear terminal screen and show banner", "Utility"),
     ("/help", "Display command palette", "Utility"),
