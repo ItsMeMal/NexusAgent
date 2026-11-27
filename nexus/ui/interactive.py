@@ -42,6 +42,8 @@ SLASH_COMMANDS = [
     ("/resume", "Browse and resume past conversation session (interactive arrow-key menu)", "Session"),
     ("/rename", "Rename current conversation session (/rename <title>)", "Session"),
     ("/config", "View active runtime settings and configuration", "Utility"),
+    ("/setup", "Interactive onboarding wizard (provider, model, mode, sandbox, gateway)", "Utility"),
+    ("/sandbox", "Switch execution backend: local, docker, or ssh (/sandbox status)", "Security"),
     ("/mascot", "Preview or configure Piko mascot mode (auto|pixel|kitty|iterm2|sixel)", "Utility"),
     ("/new", "Start a new clean session context", "Session"),
     ("/clear", "Clear terminal screen and show banner", "Utility"),
@@ -643,9 +645,11 @@ async def interactive_resume_session(memory, current_session: list, agent) -> Op
 async def _run_arrow_key_gateway_picker() -> Optional[str]:
     """Interactive arrow-key selector for messaging gateway platform."""
     platforms = [
-        ("telegram", "Telegram Bot", "BotFather token · Long-polling · Typing indicator"),
+        ("telegram", "Telegram Bot", "BotFather token · Long-polling · Voice transcription"),
         ("discord", "Discord Bot", "Gateway v10 WebSocket · DMs, @mentions & channels"),
         ("whatsapp", "WhatsApp Bridge", "Meta Cloud API or Baileys/Evolution webhook"),
+        ("slack", "Slack Workspace", "Bot Token (xoxb-) · Web API channel polling"),
+        ("email", "Email (IMAP/SMTP)", "IMAP inbox polling & SMTP replies"),
     ]
     selected_idx = [0]
     result = [None]
@@ -801,6 +805,41 @@ async def interactive_gateway_setup(session: PromptSession, env_path: Path) -> O
         wnums = (await session.prompt_async(f"  WHATSAPP_ALLOWED_NUMBERS (e.g. 62812xxx) [{cur_nums or 'empty=deny unknown'}] ❯ ", is_password=False)).strip()
         if wnums:
             updates["WHATSAPP_ALLOWED_NUMBERS"] = wnums
+
+    elif choice == "slack":
+        console.print("\n  [bold #00ffd7]#️⃣ Slack Bot Gateway Setup[/bold #00ffd7]")
+        try:
+            tok = (await session.prompt_async("  SLACK_BOT_TOKEN (xoxb-..., Enter to keep) ❯ ", is_password=True)).strip()
+        finally:
+            session.is_password = False
+        if tok:
+            updates["SLACK_BOT_TOKEN"] = tok
+        chans = (await session.prompt_async(f"  SLACK_CHANNEL_IDS (optional comma IDs) [{os.getenv('SLACK_CHANNEL_IDS', '')}] ❯ ", is_password=False)).strip()
+        if chans:
+            updates["SLACK_CHANNEL_IDS"] = chans
+        allowed = (await session.prompt_async(f"  SLACK_ALLOWED_USERS (comma user IDs) [{os.getenv('SLACK_ALLOWED_USERS', '')}] ❯ ", is_password=False)).strip()
+        if allowed:
+            updates["SLACK_ALLOWED_USERS"] = allowed
+
+    elif choice == "email":
+        console.print("\n  [bold #00ffd7]📧 Email IMAP/SMTP Gateway Setup[/bold #00ffd7]")
+        for key, prompt_txt in [
+            ("EMAIL_IMAP_HOST", "  EMAIL_IMAP_HOST (e.g. imap.gmail.com) ❯ "),
+            ("EMAIL_SMTP_HOST", "  EMAIL_SMTP_HOST (e.g. smtp.gmail.com) ❯ "),
+            ("EMAIL_USER", "  EMAIL_USER (address) ❯ "),
+        ]:
+            val = (await session.prompt_async(prompt_txt, is_password=False)).strip()
+            if val:
+                updates[key] = val
+        try:
+            pw = (await session.prompt_async("  EMAIL_PASS (App Password, Enter to keep) ❯ ", is_password=True)).strip()
+        finally:
+            session.is_password = False
+        if pw:
+            updates["EMAIL_PASS"] = pw
+        allowed = (await session.prompt_async(f"  EMAIL_ALLOWED_SENDERS (comma emails) [{os.getenv('EMAIL_ALLOWED_SENDERS', '')}] ❯ ", is_password=False)).strip()
+        if allowed:
+            updates["EMAIL_ALLOWED_SENDERS"] = allowed
 
     # Ask about allow-all policy if no allow-list was provided
     allow_all_ans = (await session.prompt_async("  Allow ALL users (skip allow-list)? [y/N] ❯ ", is_password=False)).strip().lower()
@@ -1152,6 +1191,53 @@ async def interactive_select_mode(agent, env_path: Path, requested_mode: Optiona
         f"[dim]— {spec.short_desc}[/dim]\n"
     )
     return spec.id
+
+
+async def interactive_onboarding_setup(session: PromptSession, current_llm, agent, env_path: Path) -> None:
+    """Unified first-run onboarding wizard (`nexus setup` / `/setup`)."""
+    console.print("\n  [bold #00ffd7]🚀 Nexus Agent Unified Setup Wizard[/bold #00ffd7]")
+    console.print("  [dim]Configure provider, active model, default mode, execution sandbox, and messaging gateways.[/dim]\n")
+
+    console.print("  [bold #38bdf8]Step 1/4 · Provider & Model[/bold #38bdf8]")
+    ans_p = (await session.prompt_async("  Configure inference router/API key now? [Y/n] ❯ ", is_password=False)).strip().lower()
+    if ans_p in ("", "y", "yes"):
+        await interactive_select_provider(session, current_llm, env_path)
+
+    console.print("\n  [bold #38bdf8]Step 2/4 · Default Agent Mode[/bold #38bdf8]")
+    ans_m = (await session.prompt_async(f"  Pick default AI mode (current: {agent.mode})? [Y/n] ❯ ", is_password=False)).strip().lower()
+    if ans_m in ("", "y", "yes"):
+        await interactive_select_mode(agent, env_path)
+
+    console.print("\n  [bold #38bdf8]Step 3/4 · Terminal Execution Sandbox[/bold #38bdf8]")
+    cur_sb = getattr(config, "EXEC_BACKEND", "local")
+    sb_ans = (await session.prompt_async(f"  Execution backend [local/docker/ssh] [{cur_sb}] ❯ ", is_password=False)).strip().lower()
+    if sb_ans in ("local", "docker", "ssh"):
+        updates: Dict[str, str] = {"NEXUS_EXEC_BACKEND": sb_ans}
+        config.EXEC_BACKEND = sb_ans
+        os.environ["NEXUS_EXEC_BACKEND"] = sb_ans
+        if sb_ans == "docker":
+            img = (await session.prompt_async(f"  Docker image [{config.DOCKER_IMAGE}] ❯ ", is_password=False)).strip()
+            if img:
+                config.DOCKER_IMAGE = img
+                updates["NEXUS_DOCKER_IMAGE"] = img
+        elif sb_ans == "ssh":
+            host = (await session.prompt_async(f"  SSH host [{config.SSH_HOST}] ❯ ", is_password=False)).strip()
+            user = (await session.prompt_async(f"  SSH user [{config.SSH_USER}] ❯ ", is_password=False)).strip()
+            if host:
+                config.SSH_HOST = host
+                updates["NEXUS_SSH_HOST"] = host
+            if user:
+                config.SSH_USER = user
+                updates["NEXUS_SSH_USER"] = user
+        ProviderManager.update_env_file(updates, env_path)
+
+    console.print("\n  [bold #38bdf8]Step 4/4 · Messaging Gateways (Optional)[/bold #38bdf8]")
+    ans_g = (await session.prompt_async("  Configure Telegram / Discord / WhatsApp / Slack / Email gateway? [y/N] ❯ ", is_password=False)).strip().lower()
+    if ans_g in ("y", "yes"):
+        await interactive_gateway_setup(session, env_path)
+
+    console.print(f"\n  [bold #22c55e]✔ Setup complete![/bold #22c55e] [dim]Saved to {env_path}[/dim]\n")
+
 
 
 

@@ -162,6 +162,27 @@ class BaseGateway(ABC):
             self._chat_locks[chat_id] = asyncio.Lock()
         return self._chat_locks[chat_id]
 
+    async def transcribe_audio(self, audio_bytes: bytes, filename: str = "voice.ogg") -> Optional[str]:
+        """Transcribe voice memos via OpenAI-compatible /audio/transcriptions endpoint."""
+        if not audio_bytes or not config.API_KEY or config.API_KEY == "your_api_key_here":
+            return None
+        try:
+            import httpx
+            whisper_model = os.getenv("NEXUS_WHISPER_MODEL", "whisper-1")
+            url = f"{config.API_BASE.rstrip('/')}/audio/transcriptions"
+            headers = {"Authorization": f"Bearer {config.API_KEY}"}
+            files = {"file": (filename, audio_bytes, "audio/ogg")}
+            data = {"model": whisper_model}
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                resp = await client.post(url, headers=headers, files=files, data=data)
+                if resp.status_code == 200:
+                    j = resp.json()
+                    txt = (j.get("text") or "").strip()
+                    return txt or None
+        except Exception as exc:
+            self.log("WARN", f"Voice transcription failed: {exc}")
+        return None
+
     async def process_message(self, msg: GatewayMessage) -> Optional[str]:
         """Authorize, normalize, execute NexusAgent reasoning, and return formatted reply."""
         if not self.is_authorized(msg.user_id, msg.username):

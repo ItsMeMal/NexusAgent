@@ -2,6 +2,8 @@ from .base import BaseGateway, GatewayMessage, GatewayStatus, chunk_text, parse_
 from .telegram import TelegramGateway
 from .discord import DiscordGateway
 from .whatsapp import WhatsAppGateway
+from .slack import SlackGateway
+from .email_gw import EmailGateway
 from .manager import GatewayManager, create_gateway_send_tool
 
 __all__ = [
@@ -11,6 +13,8 @@ __all__ = [
     "TelegramGateway",
     "DiscordGateway",
     "WhatsAppGateway",
+    "SlackGateway",
+    "EmailGateway",
     "GatewayManager",
     "create_gateway_send_tool",
     "chunk_text",

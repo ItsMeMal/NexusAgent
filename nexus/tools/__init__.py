@@ -6,9 +6,11 @@ from .terminal import get_terminal_tools
 from .memory_tools import get_memory_tools
 from .skill_tools import get_skill_tools
 from .web import get_web_tools
+from .browser import get_browser_tools
 from .cron_tools import get_cron_tools
 from .delegate import get_orchestration_tools
 from .vision import get_vision_tools
+from .media import get_media_tools
 from .computer import get_computer_tools
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
@@ -41,8 +43,10 @@ def create_default_registry(
     for t in get_skill_tools(skill_manager):
         registry.register(t)
 
-    # 5. Web Tools (web_search, web_extract)
+    # 5. Web & Native Browser Automation Tools
     for t in get_web_tools():
+        registry.register(t)
+    for t in get_browser_tools(root_dir):
         registry.register(t)
 
     # 6. Cron / Background Scheduling Tools
@@ -55,10 +59,16 @@ def create_default_registry(
         for t in get_orchestration_tools(subagent_manager, session_id_getter):
             registry.register(t)
 
-    # 8. Multimodal Vision Tools (view_image)
+    # 8. Multimodal Vision & Media Output Tools (view_image, image_generate, text_to_speech)
     if llm_client:
         for t in get_vision_tools(llm_client, root_dir):
             registry.register(t)
+    for t in get_media_tools(
+        root_dir=root_dir,
+        api_key=getattr(llm_client, "api_key", "") if llm_client else "",
+        api_base=getattr(llm_client, "api_base", "") if llm_client else "",
+    ):
+        registry.register(t)
 
     # 9. Computer Use Tools (GUI automation: screenshot, mouse, keyboard, hotkey, scroll, app_launch)
     for t in get_computer_tools(llm_client):

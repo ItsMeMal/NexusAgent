@@ -49,6 +49,7 @@ from .ui import (
     interactive_resume_session,
     interactive_gateway_setup,
     interactive_mcp_add,
+    interactive_onboarding_setup,
     console
 )
 
@@ -150,11 +151,14 @@ async def main_async():
     parser.add_argument("-m", "--model", type=str, help="Model override", default=None)
     parser.add_argument("-M", "--mode", type=str, help="Agent mode override (auto|plan|code|ask|turbo)", default=None)
     parser.add_argument("-s", "--session", type=str, help="Session ID to resume or use", default=None)
-    parser.add_argument("-g", "--gateway", nargs="?", const="all", default=None, help="Run messaging gateway daemon (all|telegram|discord|whatsapp)")
+    parser.add_argument("--setup", action="store_true", help="Run interactive Nexus setup wizard")
+    parser.add_argument("-g", "--gateway", nargs="?", const="all", default=None, help="Run messaging gateway daemon (all|telegram|discord|whatsapp|slack|email)")
     parser.add_argument("subcommand", nargs="*", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
-    # Support `nexus gateway [all|telegram|discord|whatsapp]` positional syntax
+    run_setup_wizard = bool(args.setup or (args.subcommand and args.subcommand[0].lower() == "setup"))
+
+    # Support `nexus gateway [all|telegram|discord|whatsapp|slack|email]` positional syntax
     gateway_target = args.gateway
     if not gateway_target and args.subcommand and args.subcommand[0].lower() == "gateway":
         gateway_target = args.subcommand[1].lower() if len(args.subcommand) > 1 else "all"
@@ -297,6 +301,13 @@ async def main_async():
             await gateway_manager.stop_gateway("all")
             await mcp_manager.stop_all()
             console.print("  [bold #00ffd7]✔ Gateways offline.[/bold #00ffd7]\n")
+        return
+
+    # Unified Onboarding Wizard (`nexus setup` or `nexus --setup`)
+    if run_setup_wizard:
+        setup_sess = PromptSession(history=InMemoryHistory())
+        await interactive_onboarding_setup(setup_sess, llm, agent, env_path)
+        await mcp_manager.stop_all()
         return
 
     # If single-shot prompt provided
@@ -759,6 +770,26 @@ async def main_async():
                         render_update_card(up_info)
                     else:
                         await perform_update(console)
+                    continue
+                elif cmd in ("/setup", "/onboarding"):
+                    await interactive_onboarding_setup(session, llm, agent, env_path)
+                    ui_controller.update_model(llm.model)
+                    ui_controller.update_mode(agent.mode)
+                    continue
+                elif cmd in ("/sandbox",):
+                    parts = text.strip().split()
+                    sub = parts[1].lower() if len(parts) > 1 else "status"
+                    if sub in ("local", "docker", "ssh"):
+                        config.EXEC_BACKEND = sub
+                        os.environ["NEXUS_EXEC_BACKEND"] = sub
+                        ProviderManager.update_env_file({"NEXUS_EXEC_BACKEND": sub}, env_path)
+                        console.print(f"\n  [bold #22c55e]✔ Execution sandbox backend set to:[/bold #22c55e] [bold #00ffd7]{sub}[/bold #00ffd7]\n")
+                    else:
+                        console.print(f"\n  [bold #00ffd7]🛡 Terminal Execution Sandbox[/bold #00ffd7]")
+                        console.print(f"    Backend:      [bold #22c55e]{config.EXEC_BACKEND}[/bold #22c55e]")
+                        console.print(f"    Docker Image: [white]{config.DOCKER_IMAGE}[/white]")
+                        console.print(f"    SSH Host:     [white]{config.SSH_HOST or '(not set)'}[/white]")
+                        console.print("    [dim]Usage: /sandbox [local|docker|ssh][/dim]\n")
                     continue
                 elif cmd in ("/mascot",):
                     from .ui.mascot import (

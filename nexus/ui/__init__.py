@@ -30,7 +30,8 @@ from .interactive import (
     interactive_select_mode,
     interactive_resume_session,
     interactive_gateway_setup,
-    interactive_mcp_add
+    interactive_mcp_add,
+    interactive_onboarding_setup
 )
 
 __all__ = [
@@ -63,5 +64,6 @@ __all__ = [
     "interactive_select_mode",
     "interactive_resume_session",
     "interactive_gateway_setup",
-    "interactive_mcp_add"
+    "interactive_mcp_add",
+    "interactive_onboarding_setup",
 ]

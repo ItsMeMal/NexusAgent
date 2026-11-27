@@ -82,6 +82,24 @@ class TelegramGateway(BaseGateway):
         is_group = chat.get("type") in ("group", "supergroup")
         text = msg.get("text") or msg.get("caption") or ""
 
+        # Voice-note / audio message auto-transcription
+        if not text and (msg.get("voice") or msg.get("audio")) and client is not None:
+            voice_obj = msg.get("voice") or msg.get("audio") or {}
+            file_id = voice_obj.get("file_id")
+            if file_id:
+                try:
+                    f_resp = await client.get(self._api_url("getFile"), params={"file_id": file_id}, timeout=10.0)
+                    file_path = f_resp.json().get("result", {}).get("file_path") if f_resp.status_code == 200 else None
+                    if file_path:
+                        dl_url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+                        audio_r = await client.get(dl_url, timeout=30.0)
+                        if audio_r.status_code == 200:
+                            transcript = await self.transcribe_audio(audio_r.content, filename=file_path.split("/")[-1])
+                            if transcript:
+                                text = f"[Voice transcript]: {transcript}"
+                except Exception:
+                    pass
+
         if not text or not chat_id:
             return
 

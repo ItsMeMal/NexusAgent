@@ -11,6 +11,8 @@ from .base import BaseGateway, GatewayStatus
 from .telegram import TelegramGateway
 from .discord import DiscordGateway
 from .whatsapp import WhatsAppGateway
+from .slack import SlackGateway
+from .email_gw import EmailGateway
 
 
 def create_gateway_send_tool(manager: "GatewayManager") -> Tool:
@@ -18,7 +20,7 @@ def create_gateway_send_tool(manager: "GatewayManager") -> Tool:
     async def gateway_send(platform: str, target: str, message: str) -> str:
         gw = manager.gateways.get(platform.lower())
         if not gw:
-            return f"Unknown gateway platform '{platform}'. Available: telegram, discord, whatsapp."
+            return f"Unknown gateway platform '{platform}'. Available: telegram, discord, whatsapp, slack, email."
         if not gw.is_configured():
             return f"Gateway '{platform}' is not configured in .env. Run /gateway setup first."
         ok = await gw.send_text(target, message)
@@ -29,15 +31,15 @@ def create_gateway_send_tool(manager: "GatewayManager") -> Tool:
     return Tool(
         name="gateway_send",
         description=(
-            "Send a proactive message to a user, channel, or phone number via configured messaging gateways "
-            "(telegram, discord, whatsapp). Useful for notifications, alerts, or cross-platform replies."
+            "Send a proactive message to a user, channel, or address via configured messaging gateways "
+            "(telegram, discord, whatsapp, slack, email). Useful for notifications, alerts, or cross-platform replies."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "platform": {
                     "type": "string",
-                    "enum": ["telegram", "discord", "whatsapp"],
+                    "enum": ["telegram", "discord", "whatsapp", "slack", "email"],
                     "description": "Target messaging platform."
                 },
                 "target": {
@@ -73,6 +75,8 @@ class GatewayManager:
             "telegram": TelegramGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
             "discord": DiscordGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
             "whatsapp": WhatsAppGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
+            "slack": SlackGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
+            "email": EmailGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
         }
         self._tasks: Dict[str, asyncio.Task] = {}
 

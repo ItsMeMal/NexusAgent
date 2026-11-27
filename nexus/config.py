@@ -98,6 +98,13 @@ class Config:
     SCREENSHOTS_DIR: Path = NEXUS_HOME / "screenshots"
     AUTO_APPROVE: bool = os.getenv("NEXUS_AUTO_APPROVE", "false").lower() in ("true", "1", "yes")
 
+    # Execution Sandbox Backend (local | docker | ssh)
+    EXEC_BACKEND: str = os.getenv("NEXUS_EXEC_BACKEND", "local").strip().lower()
+    DOCKER_IMAGE: str = os.getenv("NEXUS_DOCKER_IMAGE", "python:3.12-slim").strip()
+    SSH_HOST: str = os.getenv("NEXUS_SSH_HOST", "").strip()
+    SSH_USER: str = os.getenv("NEXUS_SSH_USER", "").strip()
+    SSH_KEY_PATH: str = os.getenv("NEXUS_SSH_KEY_PATH", "").strip()
+
     # GitHub App integration
     GITHUB_APP_ID: str = os.getenv("GITHUB_APP_ID", "")
     GITHUB_INSTALLATION_ID: str = os.getenv("GITHUB_INSTALLATION_ID", "")

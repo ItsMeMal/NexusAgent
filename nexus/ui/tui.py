@@ -217,10 +217,10 @@ def render_tools_table(tools: list):
     groups = {
         "📁 File Operations": ["read_file", "write_file", "append_file", "patch_file", "list_dir", "search_files"],
         "💻 Shell & Terminal": ["run_command"],
-        "👁️ Multimodal Vision": ["view_image"],
+        "👁️ Multimodal Vision & Media": ["view_image", "image_generate", "text_to_speech"],
         "🧠 Memory & Knowledge": ["store_memory", "recall_memory", "list_all_memories", "session_search"],
         "⚡ Dynamic Skills": ["list_skills", "read_skill", "create_skill"],
-        "🌐 Web & Live Research": ["web_search", "web_extract"],
+        "🌐 Web & Browser Automation": ["web_search", "web_extract", "browser"],
         "⏰ Background Automations": ["schedule_task", "list_scheduled_tasks", "cancel_scheduled_task"],
         "🤖 Multi-Agent Orchestration": ["delegate_task"]
     }
@@ -422,9 +422,9 @@ def render_update_card(update_info: Optional[Dict[str, Any]]):
         console.print("  [dim]You are running the latest version from GitHub main.[/dim]\n")
 
 def render_gateway_card(statuses: list):
-    """Render unified messaging gateway status card (Telegram, Discord, WhatsApp)."""
+    """Render unified messaging gateway status card (Telegram, Discord, WhatsApp, Slack, Email)."""
     console.print("\n  [bold #00ffd7]🌐 Nexus Messaging Gateways (Hermes-Style Bridge)[/bold #00ffd7]\n")
-    icons = {"telegram": "✈️", "discord": "🎮", "whatsapp": "💬"}
+    icons = {"telegram": "✈️", "discord": "🎮", "whatsapp": "💬", "slack": "#️⃣", "email": "📧"}
     for st in statuses:
         icon = icons.get(st.platform.lower(), "📡")
         name = st.platform.capitalize()

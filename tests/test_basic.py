@@ -925,6 +925,32 @@ async def run_tests():
     _install_win_proactor_pipe_fix()
     print("   [OK] Pixel sprite, Kitty/iTerm2/Sixel encoders, & Proactor shutdown guard verified.")
 
+    print("22. Testing Browser Tool, Docker/SSH Sandbox, Slack/Email Gateways, Voice/Media & Setup...")
+    from nexus.tools.terminal import build_sandboxed_command
+    from nexus.gateways import SlackGateway, EmailGateway
+
+    assert registry.get("browser") is not None
+    assert registry.get("image_generate") is not None
+    assert registry.get("text_to_speech") is not None
+
+    dk_cmd, dk_err = build_sandboxed_command("pytest -q", config.ROOT_DIR, backend="docker")
+    assert dk_err is None and "docker run --rm -v" in dk_cmd and "pytest -q" in dk_cmd
+    orig_ssh = config.SSH_HOST
+    config.SSH_HOST = "dev.example.com"
+    config.SSH_USER = "mallss"
+    try:
+        ssh_cmd, ssh_err = build_sandboxed_command("ls -la", config.ROOT_DIR, backend="ssh")
+        assert ssh_err is None and "ssh -o BatchMode=yes" in ssh_cmd and "mallss@dev.example.com" in ssh_cmd
+    finally:
+        config.SSH_HOST = orig_ssh
+
+    gw_platforms = {st.platform for st in gw_mgr.get_statuses()}
+    assert {"telegram", "discord", "whatsapp", "slack", "email"}.issubset(gw_platforms), f"Missing gateways: {gw_platforms}"
+    assert await gw_mgr.gateways["telegram"].transcribe_audio(b"", "test.ogg") is None
+    br_bad = await registry.execute_tool("browser", {"action": "unknown_act"})
+    assert "Unknown browser action" in br_bad
+    print("   [OK] Browser, Docker/SSH sandbox, Slack/Email gateways, voice/media, & setup verified.")
+
     # Cleanup
     import gc
     gc.collect()
