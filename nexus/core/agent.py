@@ -170,6 +170,74 @@ class NexusAgent:
             pass
         return await self.llm.chat_completion(**kwargs)
 
+    async def _compact_history(
+        self,
+        history: List[Dict[str, Any]],
+        msg_threshold: int = 24,
+        char_threshold: int = 22000,
+        keep_recent: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """Auto-compact long session histories into a concise summary while preserving recent turns & raw DB."""
+        total_chars = sum(len(str(m.get("content") or "")) for m in history)
+        if len(history) <= msg_threshold and total_chars <= char_threshold:
+            return history
+
+        # Split at a safe 'user' message boundary so we never separate tool_calls from tool results
+        target_split = max(1, len(history) - keep_recent)
+        split_idx = None
+        for idx in range(target_split, -1, -1):
+            if history[idx].get("role") == "user":
+                split_idx = idx
+                break
+        if not split_idx or split_idx < 4:
+            return history
+
+        older = history[:split_idx]
+        recent = history[split_idx:]
+        summary_text = ""
+
+        # Reuse cached checkpoint summary if no new older messages crossed boundary
+        sess_meta = self.memory.get_session(self.session_id) if hasattr(self.memory, "get_session") else None
+        if sess_meta and sess_meta.get("summary") and int(sess_meta.get("summary_msg_count") or 0) == len(older):
+            summary_text = str(sess_meta["summary"])
+
+        if not summary_text:
+            transcript_lines: List[str] = []
+            for m in older:
+                r = m.get("role", "user")
+                c = str(m.get("content") or "").strip()
+                if r in ("user", "assistant") and c and c != "[calling tools]":
+                    transcript_lines.append(f"{r.upper()}: {c[:350]}")
+            compact_input = "\n".join(transcript_lines[-40:])[:12000]
+            try:
+                resp = await self._call_llm(
+                    messages=sanitize_messages([
+                        {"role": "system", "content": "Summarize key user goals, decisions, files created/modified, and pending context from this conversation in concise bullet points (<=200 words)."},
+                        {"role": "user", "content": compact_input or "Earlier tool/conversation turns."},
+                    ]),
+                    tools=None,
+                    on_token=None,
+                )
+                summary_text = (resp.get("content") or "").strip()
+            except Exception:
+                summary_text = ""
+
+            if not summary_text:
+                # Deterministic fallback summary if offline
+                summary_text = "\n".join(transcript_lines[-8:])[:1200] or f"Earlier conversation ({len(older)} messages)."
+
+            if hasattr(self.memory, "set_session_summary"):
+                try:
+                    self.memory.set_session_summary(self.session_id, summary_text, len(older))
+                except Exception:
+                    pass
+
+        compacted_msg = {
+            "role": "user",
+            "content": f"[Compacted Earlier Session Context ({len(older)} messages)]:\n{summary_text}",
+        }
+        return [compacted_msg] + recent
+
     async def run(self, user_prompt: str) -> str:
         """Run the autonomous ReAct cycle for the given user prompt."""
         mode_spec = get_mode(self.mode)
@@ -177,8 +245,12 @@ class NexusAgent:
         if mode_spec.max_steps_cap is not None:
             effective_max_steps = min(effective_max_steps, mode_spec.max_steps_cap)
 
-        # 1. Load & heal existing session history
+        # 1. Load & heal existing session history, then auto-compact if oversized
         history = self._heal_history(self.memory.get_session_history(self.session_id))
+        if hasattr(self.memory, "set_session_summary") and (
+            len(history) > 24 or sum(len(str(m.get("content") or "")) for m in history) > 22000
+        ):
+            history = await self._compact_history(history)
         
         # 2. Append new user message
         self.memory.save_message(session_id=self.session_id, role="user", content=user_prompt)

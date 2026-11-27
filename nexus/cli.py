@@ -31,6 +31,7 @@ from .ui import (
     render_status_card,
     render_config_table,
     render_sessions_table,
+    render_resumed_history,
     render_mcp_table,
     render_plugins_table,
     render_security_card,
@@ -237,20 +238,61 @@ async def main_async():
         on_retry=ui_controller.on_retry,
     )
 
+    async def _cron_executor(job: dict) -> str:
+        mode = (job.get("mode") or "agent").lower()
+        instr = job.get("instruction") or ""
+        if mode == "shell":
+            cmd_tool = registry.get("run_command")
+            if cmd_tool:
+                return await cmd_tool.execute(command=instr)
+            return "Error: run_command tool unavailable."
+        cron_agent = NexusAgent(
+            llm_client=llm,
+            memory=memory,
+            skill_manager=skill_manager,
+            registry=registry,
+            soul_path=config.SOUL_PATH,
+            max_steps=min(config.MAX_STEPS, 15),
+            session_id=f"cron-{job['id']}",
+            mode="auto",
+        )
+        return await cron_agent.run(instr)
+
+    async def _cron_notify(job: dict, result_text: str):
+        preview = (result_text or "").strip().splitlines()[0][:120] if result_text else "Done"
+        if not ui_controller.stream_started and not ui_controller._thinking_active:
+            console.print(
+                f"\n  [bold #38bdf8]⏰ Cron #{job['id']} ({job['name']}):[/bold #38bdf8] [white]{preview}[/white]"
+            )
+        target = (job.get("target") or "").lower()
+        if target in ("telegram", "discord", "whatsapp"):
+            gw_tool = registry.get("gateway_send")
+            if gw_tool:
+                try:
+                    await gw_tool.execute(
+                        platform=target,
+                        message=f"⏰ *Cron #{job['id']} — {job['name']}*\n\n{(result_text or '')[:1200]}",
+                    )
+                except Exception:
+                    pass
+
     # Headless Messaging Gateway Daemon Mode (`nexus --gateway` / `nexus gateway`)
     if gateway_target:
         console.print(f"\n  [bold #00ffd7]🌐 Starting Nexus Gateway Daemon[/bold #00ffd7] [dim](target: {gateway_target})[/dim]")
         started = await gateway_manager.start_gateway(gateway_target)
+        cron_scheduler.start_runner(_cron_executor, on_complete=_cron_notify, poll_interval=5.0)
         render_gateway_card(gateway_manager.get_statuses())
         if not any(v in ("started", "already_running") for v in started.values()):
+            await cron_scheduler.stop_runner()
             console.print("  [bold yellow]⚠ No configured gateways found for target.[/bold yellow] Run `nexus` and type `/gateway setup` first.\n")
             return
-        console.print("  [bold #22c55e]✔ Gateway daemon active.[/bold #22c55e] [dim]Listening for Telegram/Discord/WhatsApp messages (Ctrl+C to stop)...[/dim]\n")
+        console.print("  [bold #22c55e]✔ Gateway daemon + Cron runner active.[/bold #22c55e] [dim]Listening (Ctrl+C to stop)...[/dim]\n")
         try:
             while True:
                 await asyncio.sleep(1.0)
         except (KeyboardInterrupt, asyncio.CancelledError):
-            console.print("\n  [dim cyan]⠋ Shutting down messaging gateways...[/dim cyan]")
+            console.print("\n  [dim cyan]⠋ Shutting down messaging gateways & cron runner...[/dim cyan]")
+            await cron_scheduler.stop_runner()
             await gateway_manager.stop_gateway("all")
             await mcp_manager.stop_all()
             console.print("  [bold #00ffd7]✔ Gateways offline.[/bold #00ffd7]\n")
@@ -296,6 +338,9 @@ async def main_async():
             await gateway_manager.start_gateway("all")
         except Exception:
             pass
+
+    # Start background Cron execution runner
+    cron_scheduler.start_runner(_cron_executor, on_complete=_cron_notify, poll_interval=5.0)
 
     # Always-on AI-Team dashboard server (background)
     try:
@@ -376,6 +421,7 @@ async def main_async():
                 continue
 
             if text.lower() in ("exit", "quit", "q"):
+                await cron_scheduler.stop_runner()
                 await gateway_manager.stop_gateway("all")
                 await mcp_manager.stop_all()
                 try:
@@ -456,9 +502,20 @@ async def main_async():
                         current_session[0] = target_id
                         agent.session_id = target_id
                         history = memory.get_session_history(target_id)
-                        console.print(f"\n  [bold #22c55e]✔ Resumed session:[/bold #22c55e] [bold #00ffd7]{target_id}[/bold #00ffd7] [dim]({len(history)} messages loaded)[/dim]\n")
+                        sess_meta = memory.get_session(target_id) if hasattr(memory, "get_session") else None
+                        sess_title = (sess_meta or {}).get("title") or ""
+                        render_resumed_history(history, target_id, title=sess_title)
                     else:
                         await interactive_resume_session(memory, current_session, agent)
+                    continue
+                elif cmd in ("/rename",):
+                    new_title = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
+                    if not new_title:
+                        console.print("  [yellow]Usage: /rename <session title>[/yellow]\n")
+                    elif memory.rename_session(agent.session_id, new_title):
+                        console.print(f"\n  [bold #22c55e]✔ Renamed session #{agent.session_id} →[/bold #22c55e] [bold #00ffd7]{new_title}[/bold #00ffd7]\n")
+                    else:
+                        console.print("  [red]Could not rename session.[/red]\n")
                     continue
                 elif cmd in ("/mcp", "/servers"):
                     parts = text.strip().split()
@@ -669,7 +726,27 @@ async def main_async():
                     render_memories_table(memory.get_all_memories(limit=25))
                     continue
                 elif cmd in ("/cron", "/tasks"):
-                    render_cron_table(cron_scheduler.list_tasks())
+                    parts = text.strip().split()
+                    sub = parts[1].lower() if len(parts) > 1 else ""
+                    if sub == "run" and len(parts) > 2 and parts[2].isdigit():
+                        tid = int(parts[2])
+                        console.print(f"\n  [dim cyan]⠋ Executing cron task #{tid} now...[/dim cyan]")
+                        res = await cron_scheduler.run_task_now(tid, _cron_executor, on_complete=_cron_notify)
+                        if res is None:
+                            console.print(f"  [red]Cron task #{tid} not found.[/red]\n")
+                        else:
+                            console.print(f"  [bold #22c55e]✔ Cron #{tid} complete:[/bold #22c55e]\n{res[:600]}\n")
+                    elif sub == "pause" and len(parts) > 2 and parts[2].isdigit():
+                        ok = cron_scheduler.pause_task(int(parts[2]))
+                        console.print(f"\n  {'[yellow]⏸ Paused[/yellow]' if ok else '[red]Not found[/red]'} task #{parts[2]}\n")
+                    elif sub == "resume" and len(parts) > 2 and parts[2].isdigit():
+                        ok = cron_scheduler.resume_task(int(parts[2]))
+                        console.print(f"\n  {'[green]▶ Resumed[/green]' if ok else '[red]Not found[/red]'} task #{parts[2]}\n")
+                    elif sub == "cancel" and len(parts) > 2 and parts[2].isdigit():
+                        ok = cron_scheduler.cancel_task(int(parts[2]))
+                        console.print(f"\n  {'[dim]✖ Cancelled[/dim]' if ok else '[red]Not found[/red]'} task #{parts[2]}\n")
+                    else:
+                        render_cron_table(cron_scheduler.list_tasks())
                     continue
                 elif cmd in ("/update", "/upgrade"):
                     parts = text.strip().split()
@@ -701,11 +778,17 @@ async def main_async():
                     continue
                 elif cmd.startswith("/new"):
                     new_id = os.urandom(4).hex()
+                    custom_title = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
                     current_session[0] = new_id
                     agent.session_id = new_id
+                    if custom_title:
+                        memory.create_session(new_id, title=custom_title)
+                    else:
+                        memory.create_session(new_id, title=f"Session {new_id}")
                     console.print("\n  [dim cyan]⠋ Initializing clean context session...[/dim cyan]")
                     await asyncio.sleep(0.2)
-                    console.print(f"  [bold #22c55e]✨ Fresh session activated:[/bold #22c55e] [bold #00ffd7]{new_id}[/bold #00ffd7] [dim](memory isolated)[/dim]\n")
+                    title_note = f" '{custom_title}'" if custom_title else " (auto-named on first prompt)"
+                    console.print(f"  [bold #22c55e]✨ Fresh session activated:[/bold #22c55e] [bold #00ffd7]{new_id}[/bold #00ffd7] [dim]{title_note}[/dim]\n")
                     continue
                 else:
                     console.print(f"  [red]Unknown command:[/red] {text}. Type [bold #00ffd7]/[/bold #00ffd7] for command palette.\n")
@@ -725,6 +808,7 @@ async def main_async():
 
         except (KeyboardInterrupt, EOFError):
             ui_controller.stop_status()
+            await cron_scheduler.stop_runner()
             await gateway_manager.stop_gateway("all")
             await mcp_manager.stop_all()
             console.print("\n  [yellow]Session interrupted. Goodbye![/yellow]\n")

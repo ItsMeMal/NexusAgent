@@ -31,6 +31,23 @@ def get_memory_tools(memory: SQLiteMemory):
             output.append(f"- [{r.get('category', 'general')}] {r.get('key')}: {r.get('content')}")
         return "\n".join(output)
 
+    def session_search(query: str, limit: int = 8) -> str:
+        """Search past conversations across all stored sessions using FTS5."""
+        if not hasattr(memory, "search_sessions"):
+            return "Cross-session search is not available."
+        hits = memory.search_sessions(query=query, limit=limit)
+        if not hits:
+            return f"No past conversation messages found matching '{query}'."
+        lines = [f"Found {len(hits)} past session match(es) for '{query}':"]
+        for h in hits:
+            sid = h.get("session_id", "?")
+            stitle = h.get("session_title") or sid
+            role = h.get("role", "user")
+            ts = str(h.get("created_at", ""))[:16]
+            snippet = str(h.get("content", "")).replace("\n", " ")[:220]
+            lines.append(f"- [{stitle} · #{sid} · {ts}] ({role}): {snippet}")
+        return "\n".join(lines)
+
     return [
         Tool(
             name="store_memory",
@@ -69,5 +86,18 @@ def get_memory_tools(memory: SQLiteMemory):
                 }
             },
             handler=list_all_memories
+        ),
+        Tool(
+            name="session_search",
+            description="Search across all past conversation sessions by keyword to recall earlier discussions, decisions, or solutions.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Topic, file name, error, or keyword to search across past sessions"},
+                    "limit": {"type": "integer", "description": "Maximum matching snippets to return", "default": 8}
+                },
+                "required": ["query"]
+            },
+            handler=session_search
         )
     ]

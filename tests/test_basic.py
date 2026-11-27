@@ -823,6 +823,87 @@ async def run_tests():
         assert (root18 / "app.txt").read_text(encoding="utf-8") == "line1\nline2\nline3"
     print("   [OK] Compact skills, bilingual skill match, append_file, & truncation recovery verified.")
 
+    print("19. Testing Session Auto-Naming, Resumed Chat Rendering, & Cross-Session FTS5 Search...")
+    from nexus.ui import render_resumed_history
+    from nexus.ui import tui as tui_mod
+
+    memory.create_session("empty_orphan", title="Session empty_orphan")
+    memory.create_session("auto_named_1", title="Session auto_named_1")
+    memory.save_message("auto_named_1", "user", "Build a REST API in FastAPI with JWT auth")
+    memory.save_message("auto_named_1", "assistant", "Created auth.py and routes.py with JWT middleware.")
+
+    sess_rows = memory.list_sessions(limit=50)
+    by_id = {s["id"]: s for s in sess_rows}
+    assert "empty_orphan" not in by_id, "Empty orphan sessions should be hidden from picker"
+    assert by_id["auto_named_1"]["title"].startswith("Build a REST API"), f"Auto-title failed: {by_id['auto_named_1']}"
+    assert "Created auth.py" in by_id["auto_named_1"]["preview"]
+
+    assert memory.rename_session("auto_named_1", "FastAPI JWT Auth Service")
+    assert memory.get_session("auto_named_1")["title"] == "FastAPI JWT Auth Service"
+
+    # Verify resumed chat rendering prints actual conversation instead of blank screen
+    res_buf = Console(file=io.StringIO(), width=100, legacy_windows=False)
+    orig_console = tui_mod.console
+    tui_mod.console = res_buf
+    try:
+        hist_res = memory.get_session_history("auto_named_1")
+        render_resumed_history(hist_res, "auto_named_1", title="FastAPI JWT Auth Service")
+    finally:
+        tui_mod.console = orig_console
+    res_txt = res_buf.file.getvalue()
+    assert "FastAPI JWT Auth Service" in res_txt and "You:" in res_txt and "Created auth.py" in res_txt
+
+    # Verify cross-session FTS5 search tool
+    ss_tool = registry.get("session_search")
+    assert ss_tool is not None
+    ss_out = await ss_tool.execute(query="FastAPI JWT")
+    assert "FastAPI JWT Auth Service" in ss_out and "auto_named_1" in ss_out
+    print("   [OK] Session auto-naming, rename, resumed history render, & session_search verified.")
+
+    print("20. Testing Real Cron Runner Execution & Auto Context Compaction...")
+    import time as _time
+    from nexus.cron.scheduler import compute_next_run
+
+    nxt_cron, once_cron = compute_next_run("*/5 * * * *", from_ts=1700000000.0)
+    assert nxt_cron is not None and nxt_cron > 1700000000.0 and not once_cron
+    nxt_in, once_in = compute_next_run("in 10m", from_ts=1700000000.0)
+    assert nxt_in == 1700000600.0 and once_in
+
+    due_id = cron.add_task("Instant Job", "every 5m", "echo cron-ok", mode="shell", next_run_override=_time.time() - 10)
+    once_id = cron.add_task("Once Job", "in 1m", "echo once-ok", mode="shell", next_run_override=_time.time() - 5)
+    executed_log = []
+
+    async def mock_cron_exec(job):
+        executed_log.append(job["id"])
+        return f"Executed {job['name']}"
+
+    ran_cnt = await cron.run_due_jobs(mock_cron_exec)
+    assert ran_cnt == 2 and due_id in executed_log and once_id in executed_log
+    assert cron.get_task(due_id)["run_count"] == 1 and cron.get_task(due_id)["status"] == "active"
+    assert cron.get_task(once_id)["status"] == "completed"
+
+    # Auto Context Compaction test on long 28-message session
+    memory.create_session("long-sess", title="Long Session")
+    for idx in range(14):
+        memory.save_message("long-sess", "user", f"Turn {idx}: discuss module architecture and database detail #{idx}")
+        memory.save_message("long-sess", "assistant", f"Answer {idx}: implemented module #{idx} cleanly.")
+
+    seen_prompt_counts = []
+    class CompactMockLLM:
+        async def chat_completion(self, messages, tools=None, on_token=None):
+            if tools is None:
+                return {"role": "assistant", "content": "• Built modules 0-9 with PostgreSQL."}
+            seen_prompt_counts.append(len(messages))
+            assert any("Compacted Earlier Session Context" in str(m.get("content", "")) for m in messages), "Compacted summary missing!"
+            return {"role": "assistant", "content": "Continuing from compacted context cleanly."}
+
+    c_agent = NexusAgent(llm_client=CompactMockLLM(), memory=memory, skill_manager=skill_mgr, registry=registry, session_id="long-sess")
+    c_out = await c_agent.run("Now summarize next step")
+    assert "Continuing from compacted" in c_out
+    assert seen_prompt_counts[0] < 20, f"History not compacted: {seen_prompt_counts}"
+    assert len(memory.get_session_history("long-sess")) == 30  # Raw DB intact!
+    print("   [OK] Real Cron Runner execution & Auto Context Compaction verified.")
+
     # Cleanup
     import gc
     gc.collect()

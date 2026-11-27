@@ -346,7 +346,8 @@ def render_skills_table(skills: list):
         console.print(f"    [white]{s.description}[/white]\n")
 
 def render_cron_table(tasks: list):
-    console.print("\n  [bold #38bdf8]⏰ Scheduled Automations[/bold #38bdf8] [dim](Background Cron)[/dim]\n")
+    import datetime as _dt
+    console.print("\n  [bold #38bdf8]⏰ Scheduled Automations[/bold #38bdf8] [dim](Background Cron Runner)[/dim]\n")
     if not tasks:
         console.print("  [dim]No automations currently scheduled.[/dim]\n")
         return
@@ -356,9 +357,22 @@ def render_cron_table(tasks: list):
         sched = t.get("schedule", "")
         instr = t.get("instruction", "")
         status = t.get("status", "active")
-        status_color = "#22c55e" if status == "active" else "dim"
-        console.print(f"  [bold white]#{tid} {name}[/bold white] [{status_color}][{status.upper()}][/{status_color}] [yellow]({sched})[/yellow]")
-        console.print(f"    [dim]Task:[/dim] [white]{instr}[/white]\n")
+        mode = t.get("mode", "agent")
+        run_cnt = t.get("run_count", 0) or 0
+        nxt = t.get("next_run")
+        nxt_str = ""
+        if nxt and status == "active":
+            try:
+                nxt_str = f" · next: {_dt.datetime.fromtimestamp(float(nxt)).strftime('%H:%M:%S')}"
+            except Exception:
+                pass
+        status_color = "#22c55e" if status == "active" else ("#38bdf8" if status == "completed" else "dim")
+        console.print(f"  [bold white]#{tid} {name}[/bold white] [{status_color}][{status.upper()}][/{status_color}] [yellow]({sched} · {mode})[/yellow] [dim]runs:{run_cnt}{nxt_str}[/dim]")
+        console.print(f"    [dim]Task:[/dim] [white]{instr}[/white]")
+        if t.get("last_result"):
+            preview = str(t["last_result"]).replace("\n", " ")[:100]
+            console.print(f"    [dim]Last:[/dim] [cyan]{preview}[/cyan]")
+        console.print()
 
 def render_tools_table(tools: list):
     """Render comprehensive grouped tool directory."""
@@ -366,7 +380,7 @@ def render_tools_table(tools: list):
         "📁 File Operations": ["read_file", "write_file", "append_file", "patch_file", "list_dir", "search_files"],
         "💻 Shell & Terminal": ["run_command"],
         "👁️ Multimodal Vision": ["view_image"],
-        "🧠 Memory & Knowledge": ["store_memory", "recall_memory", "list_all_memories"],
+        "🧠 Memory & Knowledge": ["store_memory", "recall_memory", "list_all_memories", "session_search"],
         "⚡ Dynamic Skills": ["list_skills", "read_skill", "create_skill"],
         "🌐 Web & Live Research": ["web_search", "web_extract"],
         "⏰ Background Automations": ["schedule_task", "list_scheduled_tasks", "cancel_scheduled_task"],
@@ -412,21 +426,56 @@ def render_config_table(cfg_dict: dict):
     console.print()
 
 def render_sessions_table(sessions: list, current_session: str):
-    """Render past conversation sessions stored in SQLite."""
+    """Render past conversation sessions stored in SQLite with readable titles."""
     console.print("\n  [bold #a78bfa]📂 Stored Conversation Sessions[/bold #a78bfa] [dim](SQLite)[/dim]\n")
     if not sessions:
         console.print("  [dim]No recorded sessions.[/dim]\n")
         return
     for s in sessions:
         sid = s.get("id", "")
+        title = s.get("title") or f"Session {sid}"
         msgs = s.get("message_count", 0)
-        updated = s.get("updated_at", "")
+        updated = str(s.get("updated_at", ""))[:19]
         is_cur = (sid == current_session)
         prefix = " ❯ " if is_cur else "   "
         style_cur = "bold #00ffd7" if is_cur else "bold white"
         tag = " [green][ACTIVE][/green]" if is_cur else ""
-        console.print(f"{prefix}[{style_cur}]{sid}[/{style_cur}]{tag} [dim]· {msgs} messages · updated: {updated}[/dim]")
+        console.print(f"{prefix}[{style_cur}]{title}[/{style_cur}] [dim](#{sid})[/dim]{tag} [dim]· {msgs} msgs · {updated}[/dim]")
     console.print()
+
+
+def render_resumed_history(history: list, session_id: str, title: str = "", max_turns: int = 12):
+    """Render recent conversation turns cleanly when resuming a session so chat context is visible."""
+    label = title or f"Session {session_id}"
+    console.print(f"\n  [bold #22c55e]✔ Resumed:[/bold #22c55e] [bold #00ffd7]{label}[/bold #00ffd7] [dim](#{session_id} · {len(history)} msgs)[/dim]")
+    visible = [
+        m for m in history
+        if m.get("role") in ("user", "assistant")
+    ]
+    if not visible:
+        console.print("  [dim](No chat messages recorded in this session yet.)[/dim]\n")
+        return
+
+    console.print("  [dim]─── Recent Conversation History ─────────────────────────────────────────[/dim]")
+    tail = visible[-max_turns:]
+    skipped = len(visible) - len(tail)
+    if skipped > 0:
+        console.print(f"  [dim]... ({skipped} earlier turn(s) omitted; Nexus still remembers full context)[/dim]\n")
+    for m in tail:
+        role = m.get("role")
+        content = (m.get("content") or "").strip()
+        tool_calls = m.get("tool_calls") or []
+        if role == "user":
+            snippet = content if len(content) <= 280 else content[:277] + "..."
+            console.print(f"  [bold #38bdf8]❯ You:[/bold #38bdf8] [white]{snippet}[/white]")
+        elif role == "assistant":
+            if content == "[calling tools]" or (not content and tool_calls):
+                names = ", ".join((tc.get("function") or {}).get("name", "tool") for tc in tool_calls[:4])
+                console.print(f"  [dim]  ⚙ Called tools: {names}[/dim]")
+            elif content:
+                snippet = content if len(content) <= 450 else content[:447] + "..."
+                console.print(f"  [bold #00ffd7]◈ Nexus:[/bold #00ffd7] [dim white]{snippet}[/dim white]\n")
+    console.print("  [dim]─────────────────────────────────────────────────────────────────────────[/dim]\n")
 
 def render_mcp_table(servers: list):
     """Render configured & running Model Context Protocol (MCP) servers."""

@@ -40,6 +40,7 @@ SLASH_COMMANDS = [
     ("/cron", "View scheduled background jobs and automations", "Background"),
     ("/sessions", "List past conversation sessions stored in SQLite", "Session"),
     ("/resume", "Browse and resume past conversation session (interactive arrow-key menu)", "Session"),
+    ("/rename", "Rename current conversation session (/rename <title>)", "Session"),
     ("/config", "View active runtime settings and configuration", "Utility"),
     ("/new", "Start a new clean session context", "Session"),
     ("/clear", "Clear terminal screen and show banner", "Utility"),
@@ -550,20 +551,23 @@ async def _run_arrow_key_session_picker(sessions: List[Dict[str, Any]], active_i
             return [("class:dim", "   No past sessions found.\n")]
 
         lines = [
-            ("class:colhead", f"   {'Session ID':<22} {'Messages':<12} Updated\n"),
-            ("class:dim", f"   {'─'*22} {'─'*12} {'─'*28}\n")
+            ("class:colhead", f"   {'Session Title / Topic':<36} {'ID':<12} {'Msgs':<8} Updated\n"),
+            ("class:dim", f"   {'─'*36} {'─'*12} {'─'*8} {'─'*22}\n")
         ]
 
-        max_rows = 12
+        max_rows = 11
         cur = selected_idx[0]
         start_idx = max(0, min(cur - max_rows // 2, total - max_rows))
         end_idx = min(total, start_idx + max_rows)
 
         for i in range(start_idx, end_idx):
             s = sessions[i]
-            sid = s.get("id", "")
+            sid = str(s.get("id", ""))
+            title = str(s.get("title") or f"Session {sid}")
+            if len(title) > 34:
+                title = title[:31] + "..."
             msgs = s.get("message_count", 0)
-            updated = str(s.get("updated_at", ""))[:19]
+            updated = str(s.get("updated_at", ""))[:16]
             is_active = (sid == active_id)
             is_sel = (i == cur)
 
@@ -578,17 +582,22 @@ async def _run_arrow_key_session_picker(sessions: List[Dict[str, Any]], active_i
                 line_style = ""
 
             status_str = "● ACTIVE" if is_active else ""
-            msg_str = f"{msgs} msgs"
-            row_str = f"{prefix}{sid:<20} {msg_str:<12} {updated:<20} {status_str}\n"
+            msg_str = f"{msgs}m"
+            short_id = sid[:10]
+            row_str = f"{prefix}{title:<36} {short_id:<12} {msg_str:<8} {updated:<18} {status_str}\n"
             lines.append((line_style, row_str))
 
-        hint = f"   [Showing {start_idx+1}-{end_idx} of {total} • ↑/↓ navigate • Enter resume • Esc cancel]\n"
-        lines.append(("class:dim", f"\n{hint}"))
+        # Live preview of currently highlighted session
+        if 0 <= cur < total:
+            prev = sessions[cur].get("preview") or "(empty)"
+            lines.append(("class:dim", f"\n   Preview: {prev[:84]}"))
+        hint = f"\n   [Showing {start_idx+1}-{end_idx} of {total} • ↑/↓ navigate • Enter resume • Esc cancel]\n"
+        lines.append(("class:dim", hint))
         return lines
 
     layout = Layout(HSplit([
         Window(FormattedTextControl(get_header), height=2),
-        Window(FormattedTextControl(get_content), height=16),
+        Window(FormattedTextControl(get_content), height=17),
     ]))
 
     style = Style.from_dict({
@@ -604,7 +613,8 @@ async def _run_arrow_key_session_picker(sessions: List[Dict[str, Any]], active_i
     return result[0]
 
 async def interactive_resume_session(memory, current_session: list, agent) -> Optional[str]:
-    """Interactive session resumer."""
+    """Interactive session resumer with title selection and visible chat history."""
+    from .tui import render_resumed_history
     sessions = memory.list_sessions(limit=30)
     if not sessions:
         console.print("  [dim]No previous sessions found to resume.[/dim]\n")
@@ -622,10 +632,10 @@ async def interactive_resume_session(memory, current_session: list, agent) -> Op
     current_session[0] = chosen_id
     agent.session_id = chosen_id
     history = memory.get_session_history(chosen_id)
+    sess_meta = memory.get_session(chosen_id) if hasattr(memory, "get_session") else None
+    sess_title = (sess_meta or {}).get("title") or next((s.get("title", "") for s in sessions if s.get("id") == chosen_id), "")
 
-    console.print(f"\n  [dim cyan]⠋ Loading conversation context from SQLite...[/dim cyan]")
-    await asyncio.sleep(0.2)
-    console.print(f"  [bold #22c55e]✔ Resumed session:[/bold #22c55e] [bold #00ffd7]{chosen_id}[/bold #00ffd7] [dim]({len(history)} messages loaded)[/dim]\n")
+    render_resumed_history(history, chosen_id, title=sess_title)
     return chosen_id
 
 
