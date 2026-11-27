@@ -951,6 +951,35 @@ async def run_tests():
     assert "Unknown browser action" in br_bad
     print("   [OK] Browser, Docker/SSH sandbox, Slack/Email gateways, voice/media, & setup verified.")
 
+    print("23. Testing Smart Install Timeout, Process-Tree Kill, Truncation Path Hint, & Stream Marker Guard...")
+    import contextlib
+    from nexus.tools.terminal import compute_effective_timeout
+    from nexus.core.agent import _extract_partial_tool_hint, _strip_calling_tools_marker
+
+    assert compute_effective_timeout("npm install prisma @prisma/client", 120) == 300
+    assert compute_effective_timeout("npm install prisma", 450) == 450
+    assert compute_effective_timeout("echo hello", 120) == 120
+
+    # Verify process-tree timeout kills child python process cleanly without hanging
+    t_out = await registry.execute_tool("run_command", {"command": f'"{sys.executable}" -c "import time; time.sleep(30)"', "timeout": 5})
+    assert "timed out after 5 seconds" in t_out and "process tree terminated cleanly" in t_out
+
+    # Verify truncated write_file hint extraction & stream [calling tools] suppression
+    hint = _extract_partial_tool_hint('{"path": "src/lib/db.ts", "content": "export const db = ...')
+    assert hint.get("path") == "src/lib/db.ts" and hint.get("_truncated") == "true"
+    assert _strip_calling_tools_marker("[calling tools]\nHello world") == "Hello world"
+
+    stream_buf = io.StringIO()
+    guard_ctrl = AgentUIController(model_name="test-model", console_instance=Console(file=stream_buf, width=80, legacy_windows=False))
+    with contextlib.redirect_stdout(stream_buf):
+        guard_ctrl.on_token("[calling ")
+        guard_ctrl.on_token("tools]\n")
+        guard_ctrl.on_token("Real answer.")
+        guard_ctrl.finish_stream()
+    captured_out = stream_buf.getvalue()
+    assert "[calling tools]" not in captured_out and "Real answer." in captured_out
+    print("   [OK] Smart timeout, process-tree kill, truncation path hint, & stream marker guard verified.")
+
     # Cleanup
     import gc
     gc.collect()

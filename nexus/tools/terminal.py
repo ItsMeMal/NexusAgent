@@ -1,10 +1,58 @@
 import asyncio
+import os
+import re
 import shlex
+import signal
+import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 from .base import Tool
 from ..config import config
 from ..security import SecurityGuard, RiskLevel
+
+_SLOW_CMD_RE = re.compile(
+    r"\b(?:npm\s+(?:install|i|ci|update|rebuild)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|"
+    r"bun\s+(?:install|add)|npx\s+create-|pip\s+install|uv\s+pip\s+install|cargo\s+(?:build|test)|"
+    r"next\s+build|docker\s+build|playwright\s+install|prisma\s+generate)\b",
+    re.IGNORECASE,
+)
+
+
+def compute_effective_timeout(command: str, requested_timeout: int) -> int:
+    """Resolve safe command timeout, auto-extending slow package installs/builds when default is used."""
+    base = max(5, min(int(requested_timeout or 120), 900))
+    if base <= 120 and _SLOW_CMD_RE.search(command or ""):
+        return 300
+    return base
+
+
+async def _terminate_process_tree(process: asyncio.subprocess.Process) -> None:
+    """Force-terminate the subprocess and all spawned child processes (fixes Windows npm/node file locks)."""
+    pid = getattr(process, "pid", None)
+    if pid is None:
+        return
+    try:
+        if sys.platform == "win32":
+            # taskkill /F /T /PID kills cmd.exe and any child npm/node/powershell processes
+            await asyncio.to_thread(
+                subprocess.run,
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+        else:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+    except Exception:
+        try:
+            process.kill()
+        except Exception:
+            pass
+    try:
+        await asyncio.wait_for(process.wait(), timeout=3.0)
+    except Exception:
+        pass
 
 
 def build_sandboxed_command(command: str, root_dir: Path, backend: Optional[str] = None) -> tuple[str, Optional[str]]:
@@ -46,33 +94,39 @@ def get_terminal_tools(root_dir: Path):
         if cfg_err:
             return cfg_err
 
+        eff_timeout = compute_effective_timeout(command, timeout)
+        popen_kwargs: Dict[str, Any] = {}
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        else:
+            popen_kwargs["start_new_session"] = True
+
+        process = None
         try:
-            # Run command using shell
+            # Run command using shell directly in root_dir
             process = await asyncio.create_subprocess_shell(
                 eff_cmd,
                 cwd=str(root_dir),
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                **popen_kwargs,
             )
 
             try:
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
                     process.communicate(),
-                    timeout=float(timeout)
+                    timeout=float(eff_timeout)
                 )
             except asyncio.CancelledError:
-                try:
-                    process.kill()
-                    await process.wait()
-                except Exception:
-                    pass
+                await _terminate_process_tree(process)
                 raise
             except asyncio.TimeoutError:
-                try:
-                    process.kill()
-                except ProcessLookupError:
-                    pass
-                return f"Error: Command timed out after {timeout} seconds."
+                await _terminate_process_tree(process)
+                return (
+                    f"Error: Command timed out after {eff_timeout} seconds (process tree terminated cleanly). "
+                    "Do NOT blindly retry the exact same command; for slow package installs pass timeout=360 with "
+                    "non-interactive flags (e.g. '--no-audit --no-fund --prefer-offline') or inspect existing files/locks first."
+                )
 
             stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
             stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
@@ -95,7 +149,7 @@ def get_terminal_tools(root_dir: Path):
             return f"Error running command '{command}': {str(e)}"
         finally:
             try:
-                if "process" in locals() and getattr(process, "_transport", None) is not None:
+                if process is not None and getattr(process, "_transport", None) is not None:
                     process._transport.close()
             except Exception:
                 pass
@@ -103,12 +157,15 @@ def get_terminal_tools(root_dir: Path):
     return [
         Tool(
             name="run_command",
-            description="Execute a shell command in the project workspace (supports local, docker, or ssh sandbox backends).",
+            description=(
+                f"Execute a shell command directly in workspace root ({root_dir}); do NOT prefix 'cd <workspace> &&'. "
+                "Supports local, docker, or ssh backends; slow installs/builds auto-extend from 120s to 300s (max 900s)."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "The exact shell command to execute"},
-                    "timeout": {"type": "integer", "description": "Timeout in seconds (default 120)", "default": 120},
+                    "command": {"type": "string", "description": "The exact shell command to execute (already in workspace root)"},
+                    "timeout": {"type": "integer", "description": "Timeout in seconds (default 120; auto-extended to 300 for installs/builds, max 900)", "default": 120},
                     "backend": {"type": "string", "enum": ["", "local", "docker", "ssh"], "description": "Optional backend override", "default": ""}
                 },
                 "required": ["command"]

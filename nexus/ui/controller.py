@@ -1,3 +1,4 @@
+import re
 import sys
 import time
 import asyncio
@@ -13,6 +14,10 @@ from .tui import (
     render_subagent_event,
     console
 )
+
+_CALLING_TOOLS_MARKER = "[calling tools]"
+_CALLING_TOOLS_RE = re.compile(r"^(?:\s*\[calling tools\]\s*)+", re.IGNORECASE)
+
 
 class AgentUIController:
     """Coordinates live output, animated Nexus Mascot thinking/loading indicator, and streaming tokens without stdout collisions."""
@@ -30,6 +35,8 @@ class AgentUIController:
         self._timer_task: Optional[asyncio.Task] = None
         self._start_time = 0.0
         self._current_message = "Thinking & coordinating..."
+        self._prefix_buf = ""
+        self._prefix_done = False
 
     def update_model(self, new_model_name: str):
         self.model_name = new_model_name
@@ -116,36 +123,75 @@ class AgentUIController:
             )
             self.header_printed = True
 
-    def on_token(self, token: str):
-        """Called as each streaming token arrives from the LLM."""
+    def _emit_stream_chunk(self, chunk: str):
         if not self.stream_started:
-            if not token.strip():
+            if not chunk.strip():
                 return
-            # 1. Stop the background spinner & timer immediately before writing to stdout
             self.stop_status()
             self.stream_started = True
             self.has_content = True
-
-            # 2. Print assistant header only once per turn
             self._print_assistant_header()
-
-        # 3. Stream token directly to stdout with immediate flush
-        sys.stdout.write(token)
+        sys.stdout.write(chunk)
         sys.stdout.flush()
+
+    def _flush_prefix_if_real(self):
+        if self._prefix_buf:
+            stripped = self._prefix_buf.strip().lower()
+            if stripped and not _CALLING_TOOLS_MARKER.startswith(stripped):
+                cleaned = _CALLING_TOOLS_RE.sub("", self._prefix_buf).lstrip("\r\n ")
+                self._prefix_buf = ""
+                if cleaned:
+                    self._emit_stream_chunk(cleaned)
+            else:
+                self._prefix_buf = ""
+        self._prefix_done = False
+
+    def on_token(self, token: str):
+        """Called as each streaming token arrives from the LLM."""
+        if not token:
+            return
+        if not self._prefix_done:
+            self._prefix_buf += token
+            stripped = self._prefix_buf.lstrip()
+            if not stripped:
+                return
+            low = stripped.lower()
+            if _CALLING_TOOLS_MARKER.startswith(low):
+                if low == _CALLING_TOOLS_MARKER:
+                    # Wait for trailing whitespace/next tokens; keep suppressed
+                    return
+                return
+            if low.startswith(_CALLING_TOOLS_MARKER):
+                remainder = _CALLING_TOOLS_RE.sub("", stripped).lstrip("\r\n ")
+                self._prefix_buf = ""
+                self._prefix_done = True
+                if not remainder:
+                    return
+                token = remainder
+            else:
+                token = self._prefix_buf
+                self._prefix_buf = ""
+                self._prefix_done = True
+
+        self._emit_stream_chunk(token)
 
     def on_thought(self, thought: str):
         """Fallback for non-streaming LLM responses."""
         if not thought or not thought.strip():
             return
+        cleaned = _CALLING_TOOLS_RE.sub("", thought).strip()
+        if not cleaned:
+            return
         self.stop_status()
         self._print_assistant_header()
-        self.console.print(Markdown(thought))
+        self.console.print(Markdown(cleaned))
         self.console.print()
         self.has_content = True
 
     def on_tool_call(self, tool_name: str, arguments: Dict[str, Any]):
         """Called when agent initiates a tool execution."""
         self.stop_status()
+        self._flush_prefix_if_real()
         if self.stream_started:
             sys.stdout.write("\n")
             sys.stdout.flush()
@@ -172,6 +218,7 @@ class AgentUIController:
     def finish_stream(self):
         """Conclude the turn, stop all spinners, and ensure clean terminal spacing."""
         self.stop_status()
+        self._flush_prefix_if_real()
         if self.stream_started:
             sys.stdout.write("\n\n")
             sys.stdout.flush()

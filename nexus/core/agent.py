@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import json
 import uuid
 import inspect
@@ -15,6 +16,29 @@ from ..memory import SQLiteMemory
 from ..skills import SkillManager
 from ..tools.base import ToolRegistry
 from ..config import config
+
+_CALLING_TOOLS_PREFIX_RE = re.compile(r"^(?:\s*\[calling tools\]\s*)+", re.IGNORECASE)
+
+
+def _strip_calling_tools_marker(text: Optional[str]) -> str:
+    """Remove echoed '[calling tools]' placeholder prefixes emitted by some models."""
+    if not text:
+        return ""
+    return _CALLING_TOOLS_PREFIX_RE.sub("", str(text)).strip()
+
+
+def _extract_partial_tool_hint(raw_args: str) -> Dict[str, Any]:
+    """Best-effort extraction of key identifier fields from truncated JSON tool arguments."""
+    hints: Dict[str, Any] = {}
+    if not raw_args:
+        return hints
+    for key in ("path", "command", "query", "skill_name", "url"):
+        m = re.search(rf'"{key}"\s*:\s*"([^"\r\n]{{1,120}})', raw_args)
+        if m:
+            hints[key] = m.group(1)
+            break
+    hints["_truncated"] = "true"
+    return hints
 
 class NexusAgent:
     def __init__(
@@ -109,7 +133,8 @@ class NexusAgent:
   - **IGNORE EXTERNAL-IDE GATES IN SKILLS**: Some skills were authored for other IDEs and mention unavailable tools (`ask_question`, `TodoWrite`, `$CLAUDE_PLUGIN_ROOT`) or tell you to *"STOP and present a design for approval before writing code"*. **NEVER** stop to ask approval when the user asked you to build/code — extract the design/engineering guidance and **write real workspace files directly** using `write_file`, `patch_file`, and `run_command`!
   - Only skip `read_skill` for casual greetings/banter or when no listed skill is relevant.
 - **DECISIVE ACTION RULE**: When the user asks to build/make/create something — even phrased casually like *"bisa buat website X?"*, *"can you make X?"*, *"bebas"*, or *"use your skills"* — treat it as an execution order (unless in `PLAN` or `ASK` mode). Do NOT ask questionnaires ("what tech stack? what vibe? ready to proceed?"): inspect the workspace briefly, pick strong modern defaults informed by your skills, execute with `write_file`/`patch_file`/`run_command`, and deliver working results!
-- **BATCH & CHUNK TOOL CALLS CLEANLY**: Emit 1–4 focused tool calls per step (NEVER 10+ giant file writes in one turn) and keep each `write_file` call compact (<= ~120 lines; use `append_file` to add remaining chunks) so JSON arguments never truncate mid-stream.
+- **CHUNKED FILE WRITES (PREVENT JSON TRUNCATION)**: Emit **at most ONE `write_file` call per step (<= 80 lines)** and use `append_file` for longer files — NEVER emit multiple large `write_file` calls in parallel in the same turn, because parallel file payloads truncate output JSON mid-stream. Read-only calls (`read_file`, `list_dir`, `search_files`) may run in parallel.
+- **SHELL & PACKAGE INSTALL DISCIPLINE**: Use `read_file` / `list_dir` instead of shelling out `type`/`dir`. `run_command` already runs in `{cwd_str}` (never prefix `cd <workspace> &&`). If a package install (`npm install`, `pip install`, etc.) fails or times out, inspect locks/files or adjust flags (`--no-audit --no-fund --prefer-offline`, higher `timeout`) — NEVER repeat the exact failing install blindly.
 - **NEVER STOP HALFWAY AFTER SCAFFOLD OR TRUNCATION**: Never stop after creating only `package.json`/configs or hitting a truncated tool call just to ask what to build next — continue writing the actual application code and verifying it until done.
 - For simple greetings, identity questions ("who are you"), banter, or small talk (e.g., "yo", "hello", "lol", "hey"), DO NOT call any tools.
 - Only call tools when the user's prompt actually requires action, web search, system execution, or specific memory recall.
@@ -335,10 +360,11 @@ class NexusAgent:
                 )
                 messages.append(normalized_msg)
 
-                if content and str(content).strip() and content != "[calling tools]":
-                    final_response_text = content
+                clean_visible_content = _strip_calling_tools_marker(content)
+                if clean_visible_content:
+                    final_response_text = clean_visible_content
                     if self.on_thought and not self.on_token and not tool_calls:
-                        self.on_thought(content)
+                        self.on_thought(clean_visible_content)
 
                 # If no tool calls, recover once if previous tool call truncated OR model pasted code in chat
                 if not tool_calls:
@@ -385,10 +411,11 @@ class NexusAgent:
                             if not isinstance(parsed, dict):
                                 arg_parse_err = f"Expected JSON object arguments for '{tool_name}', got {type(parsed).__name__}."
                         except Exception as je:
-                            args = {}
+                            args = _extract_partial_tool_hint(raw_args)
+                            target_hint = f" for '{args['path']}'" if args.get("path") else ""
                             arg_parse_err = (
-                                f"Error: Tool '{tool_name}' JSON arguments were invalid or truncated ({je}). "
-                                "Retry with valid JSON; if writing a large file, split into modular files or shorter `write_file` calls."
+                                f"Error: Tool '{tool_name}'{target_hint} JSON arguments were invalid or truncated ({je}). "
+                                "Emit ONLY 1 `write_file` call (<= 80 lines) per turn and use `append_file` for remaining sections."
                             )
                     else:
                         args = {}
@@ -396,10 +423,13 @@ class NexusAgent:
                     if self.on_tool_call:
                         self.on_tool_call(tool_name, args)
 
-                    # Generate signature for duplicate loop detection
-                    sig = f"{tool_name}:{json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args)}"
-                    same_call_count = recent_call_signatures.count(sig)
-                    recent_call_signatures.append(sig)
+                    # Generate signature for duplicate loop detection (skip malformed truncated JSON so distinct files don't collide)
+                    if not arg_parse_err:
+                        sig = f"{tool_name}:{json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args)}"
+                        same_call_count = recent_call_signatures.count(sig)
+                        recent_call_signatures.append(sig)
+                    else:
+                        same_call_count = 0
 
                     if arg_parse_err:
                         result = arg_parse_err
