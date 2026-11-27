@@ -65,7 +65,10 @@ class NexusAgent:
         else:
             soul_content = "You are Nexus Agent, an autonomous multi-agent AI orchestrator."
 
-        skills_summary = self.skill_manager.get_skills_summary()
+        try:
+            skills_summary = self.skill_manager.get_skills_summary(compact=True)
+        except TypeError:
+            skills_summary = self.skill_manager.get_skills_summary()
         
         # Recent persistent memories
         recent_memories = self.memory.get_all_memories(limit=8)
@@ -106,6 +109,8 @@ class NexusAgent:
   - **IGNORE EXTERNAL-IDE GATES IN SKILLS**: Some skills were authored for other IDEs and mention unavailable tools (`ask_question`, `TodoWrite`, `$CLAUDE_PLUGIN_ROOT`) or tell you to *"STOP and present a design for approval before writing code"*. **NEVER** stop to ask approval when the user asked you to build/code — extract the design/engineering guidance and **write real workspace files directly** using `write_file`, `patch_file`, and `run_command`!
   - Only skip `read_skill` for casual greetings/banter or when no listed skill is relevant.
 - **DECISIVE ACTION RULE**: When the user asks to build/make/create something — even phrased casually like *"bisa buat website X?"*, *"can you make X?"*, *"bebas"*, or *"use your skills"* — treat it as an execution order (unless in `PLAN` or `ASK` mode). Do NOT ask questionnaires ("what tech stack? what vibe? ready to proceed?"): inspect the workspace briefly, pick strong modern defaults informed by your skills, execute with `write_file`/`patch_file`/`run_command`, and deliver working results!
+- **BATCH & CHUNK TOOL CALLS CLEANLY**: Emit 1–4 focused tool calls per step (NEVER 10+ giant file writes in one turn) and keep each `write_file` call compact (<= ~120 lines; use `append_file` to add remaining chunks) so JSON arguments never truncate mid-stream.
+- **NEVER STOP HALFWAY AFTER SCAFFOLD OR TRUNCATION**: Never stop after creating only `package.json`/configs or hitting a truncated tool call just to ask what to build next — continue writing the actual application code and verifying it until done.
 - For simple greetings, identity questions ("who are you"), banter, or small talk (e.g., "yo", "hello", "lol", "hey"), DO NOT call any tools.
 - Only call tools when the user's prompt actually requires action, web search, system execution, or specific memory recall.
 - When you execute a tool, inspect its result carefully before taking your next step.
@@ -206,6 +211,11 @@ class NexusAgent:
         final_response_text = ""
         recent_call_signatures: List[str] = []
         pending_tc_ids: List[str] = []
+        files_written = 0
+        code_nudge_sent = False
+        trunc_nudge_sent = False
+        had_trunc_error = False
+        can_write_files = any(s.get("function", {}).get("name") == "write_file" for s in tools_schema)
 
         # Temporarily enforce mode temperature cap if applicable
         has_temp = hasattr(self.llm, "temperature")
@@ -258,8 +268,30 @@ class NexusAgent:
                     if self.on_thought and not self.on_token and not tool_calls:
                         self.on_thought(content)
 
-                # If no tool calls, task is finished!
+                # If no tool calls, recover once if previous tool call truncated OR model pasted code in chat
                 if not tool_calls:
+                    if can_write_files and had_trunc_error and not trunc_nudge_sent:
+                        trunc_nudge_sent = True
+                        had_trunc_error = False
+                        messages.append({
+                            "role": "user",
+                            "content": "Do NOT stop to report the truncated tool call. Immediately continue executing by splitting the file into smaller `write_file` + `append_file` calls (<=100 lines per call, 1-2 tool calls per step).",
+                        })
+                        continue
+                    if (
+                        can_write_files
+                        and files_written == 0
+                        and not code_nudge_sent
+                        and content
+                        and "```" in content
+                        and len(content) >= 220
+                    ):
+                        code_nudge_sent = True
+                        messages.append({
+                            "role": "user",
+                            "content": "You wrote code blocks in chat instead of saving files. Now call `write_file` to write the actual project files directly into the workspace.",
+                        })
+                        continue
                     break
 
                 # Process each tool call
@@ -276,7 +308,7 @@ class NexusAgent:
                         args = raw_args
                     elif isinstance(raw_args, str):
                         try:
-                            parsed = json.loads(raw_args)
+                            parsed = json.loads(raw_args, strict=False)
                             args = parsed if isinstance(parsed, dict) else {}
                             if not isinstance(parsed, dict):
                                 arg_parse_err = f"Expected JSON object arguments for '{tool_name}', got {type(parsed).__name__}."
@@ -299,6 +331,7 @@ class NexusAgent:
 
                     if arg_parse_err:
                         result = arg_parse_err
+                        had_trunc_error = True
                         elapsed = 0.001
                     elif same_call_count >= 2:
                         # Halt loop locally to avoid spinning and prevent upstream StalledToolLoopDetected
@@ -318,6 +351,9 @@ class NexusAgent:
                         start_t = time.perf_counter()
                         result = await self.registry.execute_tool(tool_name, args)
                         elapsed = time.perf_counter() - start_t
+                        if tool_name in ("write_file", "append_file", "patch_file") and str(result).startswith("Successfully"):
+                            files_written += 1
+                            had_trunc_error = False
 
                     if self.on_tool_result:
                         self.on_tool_result(tool_name, result, elapsed)

@@ -21,6 +21,7 @@ class AgentMode:
 
 MUTATING_TOOLS: Set[str] = {
     "write_file",
+    "append_file",
     "patch_file",
     "run_command",
     "computer",

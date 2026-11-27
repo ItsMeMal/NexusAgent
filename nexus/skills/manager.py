@@ -12,6 +12,48 @@ class Skill:
         self.file_path = file_path
 
 
+def _extract_skill_description(text: str) -> str:
+    """Extract single-line or multiline YAML frontmatter / heading description cleanly."""
+    lines = text.splitlines()
+    desc = ""
+
+    if lines and lines[0].strip() == "---":
+        in_desc = False
+        desc_parts: List[str] = []
+        for line in lines[1:35]:
+            stripped = line.strip()
+            if stripped == "---":
+                break
+            if not in_desc:
+                if line.lower().startswith("description:"):
+                    raw_val = line.split(":", 1)[1].strip().strip('"').strip("'")
+                    if raw_val in (">", "|", ">-", "|-", ""):
+                        in_desc = True
+                    else:
+                        desc = raw_val
+                        break
+            else:
+                # End multiline YAML value at next top-level key
+                if line and not line[0].isspace() and ":" in line:
+                    break
+                if stripped:
+                    desc_parts.append(stripped)
+        if not desc and desc_parts:
+            desc = " ".join(desc_parts)
+
+    if not desc or desc in (">", "|"):
+        for line in lines[:20]:
+            s = line.strip()
+            if s.startswith(("Description:", "> Description:")):
+                desc = s.split(":", 1)[1].strip()
+                break
+            elif s.startswith("# ") and not desc:
+                desc = s.lstrip("# ").strip()
+
+    desc = re.sub(r"\s+", " ", desc or "").strip()
+    return desc if desc else "No description"
+
+
 def _default_skill_search_paths() -> List[Path]:
     """
     Return all candidate directories to search for skills, in priority order:
@@ -100,26 +142,7 @@ class SkillManager:
             for file in sorted(md_files):
                 try:
                     text = file.read_text(encoding="utf-8")
-                    desc = "No description"
-                    lines = text.splitlines()
-
-                    # Parse YAML frontmatter description field
-                    if lines and lines[0].strip() == "---":
-                        for line in lines[1:20]:
-                            if line.strip() == "---":
-                                break
-                            if line.lower().startswith("description:"):
-                                desc = line.split(":", 1)[1].strip().strip('"').strip("'")
-                                break
-
-                    # Fallback: first heading or inline Description: field
-                    if desc == "No description":
-                        for line in lines[:15]:
-                            if line.startswith("Description:") or line.startswith("> Description:"):
-                                desc = line.split(":", 1)[1].strip()
-                                break
-                            elif line.startswith("# ") and desc == "No description":
-                                desc = line.lstrip("# ").strip()
+                    desc = _extract_skill_description(text)
 
                     # Skill name: use parent dir name for SKILL.md, otherwise file stem
                     if file.name == "SKILL.md":
@@ -168,29 +191,65 @@ class SkillManager:
         return None
 
     def match_skills(self, query: str, top_k: int = 5) -> List[Skill]:
-        """Return top skills matching keywords in query (fast lexical scoring)."""
-        tokens = set(re.findall(r"[a-z0-9]{3,}", (query or "").lower()))
-        # Filter ultra-common stopwords to avoid noisy matches
-        stopwords = {"the", "and", "for", "with", "this", "that", "from", "into", "buat", "yang", "dan", "untuk", "ini", "itu", "nya", "bisa", "tolong", "please", "make", "create", "build", "use", "using"}
-        tokens -= stopwords
-        if not tokens:
+        """Return top skills matching query keywords (with Indonesian/domain synonym expansion)."""
+        raw_tokens = set(re.findall(r"[a-z0-9]{2,}", (query or "").lower()))
+        stopwords = {
+            "the", "and", "for", "with", "this", "that", "from", "into", "can", "you",
+            "buat", "buatkan", "bikin", "bikinin", "yang", "dan", "untuk", "ini", "itu",
+            "nya", "bisa", "tolong", "please", "make", "create", "build", "use", "using",
+            "pakai", "pake", "dong", "bro", "brother", "nih", "gue", "gw", "aku", "mau",
+            "bebas", "full", "your", "skills", "skill",
+        }
+        tokens = {t for t in raw_tokens if len(t) >= 3 and t not in stopwords}
+
+        # Bilingual & domain synonym expansion so prompts like 'website portofolio interaktif' match frontend skills
+        synonym_groups = [
+            ({"portofolio", "porto", "portfolio", "website", "web", "situs", "halaman", "landing", "aplikasi", "tampilan", "ui", "ux", "frontend", "design", "desain", "css", "html", "tailwind"},
+             {"web", "frontend", "ui", "ux", "design", "react", "composition", "guidelines", "impeccable", "shadcn", "tailwind"}),
+            ({"interaktif", "interactive", "animasi", "animation", "motion", "gerak", "transisi", "transition"},
+             {"transitions", "view", "kinetic", "animation", "impeccable", "frontend"}),
+            ({"react", "nextjs", "next", "vite", "tsx", "jsx", "komponen", "component"},
+             {"react", "composition", "vercel", "best", "practices", "transitions"}),
+            ({"deploy", "hosting", "vercel", "publish"},
+             {"deploy", "vercel"}),
+            ({"bug", "error", "fix", "perbaiki", "rusak", "debug", "gagal"},
+             {"debugging", "systematic"}),
+            ({"test", "testing", "uji", "verifikasi", "tdd"},
+             {"test", "tdd", "verification"}),
+            ({"rencana", "plan", "arsitektur", "blueprint", "brainstorm"},
+             {"brainstorming", "writing", "plans"}),
+            ({"git", "commit", "branch", "worktree"},
+             {"git", "worktrees", "branch"}),
+        ]
+        expanded = set(tokens)
+        for triggers, adds in synonym_groups:
+            if raw_tokens & triggers:
+                expanded |= adds
+        if not expanded:
             return []
 
         scored: List[tuple[int, Skill]] = []
-        meta_gate_skills = {"brainstorming", "using-superpowers", "run-workflow", "swarm_monitor", "swarm_pane"}
+        meta_gate_skills = {"using-superpowers", "run-workflow", "swarm_monitor", "swarm_pane"}
+        explicit_plan_or_brainstorm = bool(raw_tokens & {"plan", "rencana", "brainstorm", "brainstorming", "superpowers"})
         for skill in self.load_all_skills():
             if skill.name in meta_gate_skills:
+                continue
+            if skill.name == "brainstorming" and not explicit_plan_or_brainstorm:
                 continue
             name_low = skill.name.lower()
             desc_low = (skill.description or "").lower()
             name_words = set(re.findall(r"[a-z0-9]{2,}", name_low))
             desc_words = set(re.findall(r"[a-z0-9]{3,}", desc_low))
             score = 0
-            for tok in tokens:
+            for tok in expanded:
                 if tok in name_words or tok in name_low:
                     score += 4
                 elif tok in desc_words:
                     score += 2
+            # Small tie-breaker boost for bundled repo / superpowers skills
+            fp_low = str(skill.file_path).lower()
+            if score > 0 and (".skills" in fp_low or "superpowers" in fp_low):
+                score += 1
             if score >= 3:
                 scored.append((score, skill))
 
@@ -205,15 +264,47 @@ class SkillManager:
         file_path.write_text(full_text, encoding="utf-8")
         return file_path
 
-    def get_skills_summary(self) -> str:
+    def get_skills_summary(self, compact: bool = False, query: str = "", max_chars: int = 4500) -> str:
         skills = self.load_all_skills()
         if not skills:
             dirs = [str(d) for d in self.all_search_dirs()]
             return f"No skills found. Searched: {', '.join(dirs)}"
-        lines = ["Available Skills:"]
-        for s in skills:
-            source = str(s.file_path.parent)
-            lines.append(f"- **{s.name}**: {s.description}  _(from {source})_")
+
+        if query and query.strip():
+            q = query.strip().lower()
+            skills = [s for s in skills if q in s.name.lower() or q in (s.description or "").lower()]
+            if not skills:
+                return f"No skills match query '{query}'."
+
+        if not compact:
+            lines = [f"Available Skills ({len(skills)}):"]
+            for s in skills:
+                source = str(s.file_path.parent)
+                lines.append(f"- **{s.name}**: {s.description}  _(from {source})_")
+            return "\n".join(lines)
+
+        # Compact system-prompt catalog: bundled/plugin skills first, truncated cleanly to keep token budget lean
+        total = len(skills)
+        def _priority_key(s: Skill):
+            fp = str(s.file_path).lower()
+            is_bundled = (str(self.skills_dir).lower() in fp or "superpowers" in fp or "nexusagentcliv2" in fp)
+            return (not is_bundled, s.name.lower())
+
+        ordered = sorted(skills, key=_priority_key)
+        lines = [f"Available Skills ({total} total — call `list_skills(query)` to search or `read_skill(name)` to load):"]
+        used_chars = len(lines[0])
+        shown = 0
+        for s in ordered:
+            short_desc = s.description if len(s.description) <= 72 else s.description[:69] + "..."
+            entry = f"- **{s.name}**: {short_desc}"
+            if used_chars + len(entry) + 1 > max_chars and shown >= 15:
+                break
+            lines.append(entry)
+            used_chars += len(entry) + 1
+            shown += 1
+
+        if shown < total:
+            lines.append(f"... (+{total - shown} more skills; call `list_skills(query='keyword')` to discover them)")
         return "\n".join(lines)
 
     def get_search_paths_summary(self) -> str:

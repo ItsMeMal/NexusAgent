@@ -363,7 +363,7 @@ def render_cron_table(tasks: list):
 def render_tools_table(tools: list):
     """Render comprehensive grouped tool directory."""
     groups = {
-        "📁 File Operations": ["read_file", "write_file", "patch_file", "list_dir", "search_files"],
+        "📁 File Operations": ["read_file", "write_file", "append_file", "patch_file", "list_dir", "search_files"],
         "💻 Shell & Terminal": ["run_command"],
         "👁️ Multimodal Vision": ["view_image"],
         "🧠 Memory & Knowledge": ["store_memory", "recall_memory", "list_all_memories"],

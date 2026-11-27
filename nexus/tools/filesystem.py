@@ -59,6 +59,22 @@ def get_filesystem_tools(root_dir: Path):
         except Exception as e:
             return f"Error writing file '{path}': {str(e)}"
 
+    def append_file(path: str, content: str) -> str:
+        """Append content to an existing file (or create if missing) for chunked writing of large files."""
+        file_path = _resolve_workspace_path(root_dir, path)
+        if not SecurityGuard.is_path_safe(file_path, root_dir):
+            return f"Security Guard: Appending to path '{path}' is blocked (system directory restriction)."
+        if SecurityGuard.is_secret_path(file_path):
+            return f"Security Guard: Modifying secret credential file '{path}' is prohibited."
+
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_path, "a", encoding="utf-8") as f:
+                f.write(content)
+            return f"Successfully appended {len(content)} characters to '{path}'."
+        except Exception as e:
+            return f"Error appending to file '{path}': {str(e)}"
+
     def patch_file(path: str, target: str, replacement: str) -> str:
         """Replace an exact string target in a file with replacement."""
         file_path = _resolve_workspace_path(root_dir, path)
@@ -149,7 +165,7 @@ def get_filesystem_tools(root_dir: Path):
         ),
         Tool(
             name="write_file",
-            description="Create or overwrite a file with full content.",
+            description="Create or overwrite a file with full content (keep under ~120 lines; use append_file to add more).",
             parameters={
                 "type": "object",
                 "properties": {
@@ -159,6 +175,19 @@ def get_filesystem_tools(root_dir: Path):
                 "required": ["path", "content"]
             },
             handler=write_file
+        ),
+        Tool(
+            name="append_file",
+            description="Append additional content to the end of a file (ideal for writing long files cleanly in chunks).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Relative path to the file"},
+                    "content": {"type": "string", "description": "Text chunk to append to the file"}
+                },
+                "required": ["path", "content"]
+            },
+            handler=append_file
         ),
         Tool(
             name="patch_file",

@@ -3,9 +3,11 @@ from .base import Tool
 from ..skills import SkillManager
 
 def get_skill_tools(skill_manager: SkillManager):
-    def list_skills() -> str:
-        """List all available skills learned or loaded in the agent."""
-        return skill_manager.get_skills_summary()
+    def list_skills(query: str = "") -> str:
+        """List or search available skills learned or loaded in the agent."""
+        if query and query.strip():
+            return skill_manager.get_skills_summary(compact=False, query=query.strip())
+        return skill_manager.get_skills_summary(compact=True, max_chars=6000)
 
     def read_skill(skill_name: str) -> str:
         """Read the full instruction set of a specific skill."""
@@ -13,7 +15,7 @@ def get_skill_tools(skill_manager: SkillManager):
         if not skill:
             return f"Error: Skill '{skill_name}' not found."
         content = skill.content or ""
-        max_chars = 12000
+        max_chars = 8000
         if len(content) > max_chars:
             content = content[:max_chars] + "\n\n... [truncated to stay within context limits — apply core guidelines above]"
         return content
@@ -29,8 +31,13 @@ def get_skill_tools(skill_manager: SkillManager):
     return [
         Tool(
             name="list_skills",
-            description="List all available skills from the .skills directory.",
-            parameters={"type": "object", "properties": {}},
+            description="List available skills or filter by keyword query (e.g. query='react' or 'debug').",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Optional search keyword to filter matching skills", "default": ""}
+                }
+            },
             handler=list_skills
         ),
         Tool(

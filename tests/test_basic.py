@@ -775,6 +775,54 @@ async def run_tests():
     assert "AGENTS" not in all_loaded_skills and "README" not in all_loaded_skills
     print("   [OK] Bundled superpowers plugin (15 skills) & Vercel agent-skills verified cleanly.")
 
+    print("18. Testing Compact Skill Catalog, Bilingual Matching, append_file, & Truncation Recovery...")
+    compact_sum = skill_mgr.get_skills_summary(compact=True)
+    assert len(compact_sum) <= 5500, f"Compact skill summary still too large: {len(compact_sum)}"
+    porto_matches = [s.name for s in skill_mgr.match_skills("buat website portofolio interaktif", top_k=5)]
+    assert len(porto_matches) > 0, f"Indonesian portfolio query failed to match any skill: {porto_matches}"
+
+    # Verify append_file + truncation recovery nudge + strict=False literal newline JSON args
+    with tempfile.TemporaryDirectory() as tdir18:
+        root18 = Path(tdir18)
+        reg18 = create_default_registry(root_dir=root18, memory=memory, skill_manager=skill_mgr)
+
+        class TruncRecoverMockLLM:
+            def __init__(self):
+                self.turn = 0
+            async def chat_completion(self, messages, tools=None, on_token=None):
+                self.turn += 1
+                if self.turn == 1:
+                    # Simulate truncated write_file JSON
+                    return {
+                        "role": "assistant",
+                        "content": "[calling tools]",
+                        "tool_calls": [{
+                            "id": "tr_1",
+                            "type": "function",
+                            "function": {"name": "write_file", "arguments": '{"path":"app.txt","content":"cut off'}
+                        }]
+                    }
+                if self.turn == 2:
+                    # Simulate model trying to apologize & stop instead of retrying -> agent must auto-nudge!
+                    return {"role": "assistant", "content": "Execution failed: truncated."}
+                if self.turn == 3:
+                    # After auto-nudge, write chunk 1 with literal newline (strict=False) + append chunk 2
+                    return {
+                        "role": "assistant",
+                        "content": "[calling tools]",
+                        "tool_calls": [
+                            {"id": "w_1", "type": "function", "function": {"name": "write_file", "arguments": '{"path":"app.txt","content":"line1\nline2\n"}'}},
+                            {"id": "a_1", "type": "function", "function": {"name": "append_file", "arguments": '{"path":"app.txt","content":"line3"}'}},
+                        ]
+                    }
+                return {"role": "assistant", "content": "Wrote app.txt cleanly in chunks."}
+
+        ag18 = NexusAgent(llm_client=TruncRecoverMockLLM(), memory=memory, skill_manager=skill_mgr, registry=reg18, session_id="trunc-rec-18")
+        out18 = await ag18.run("Create app.txt")
+        assert "Wrote app.txt cleanly" in out18
+        assert (root18 / "app.txt").read_text(encoding="utf-8") == "line1\nline2\nline3"
+    print("   [OK] Compact skills, bilingual skill match, append_file, & truncation recovery verified.")
+
     # Cleanup
     import gc
     gc.collect()
