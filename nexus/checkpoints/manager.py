@@ -33,6 +33,7 @@ class CheckpointManager:
         ".mypy_cache", ".ruff_cache", ".tox", ".idea", ".vscode", "node_modules",
         "bower_components", ".next", ".nuxt", ".output", ".turbo", "coverage",
         "dist", "build", "target", ".gradle", ".cache", "vendor",
+        ".ssh", ".aws", ".azure", ".gnupg", ".terraform",
     }
     EXCLUDED_FILE_NAMES = {
         ".netrc", ".npmrc", ".pypirc", "credentials.json", "secrets.json",
@@ -320,6 +321,23 @@ class CheckpointManager:
 
         with self._lock:
             safety_checkpoint = self.create_checkpoint(label=f"pre-restore-{checkpoint_id}")
+            _, safety_manifest = self._read_manifest(safety_checkpoint["id"])
+            safety_preserved = set(safety_manifest.get("preserved_paths", []))
+            target_paths = {
+                str(target.relative_to(self.workspace).as_posix())
+                for target, _, _ in restore_items
+            }
+            unprotected_targets = sorted(target_paths & safety_preserved)
+            if unprotected_targets:
+                raise CheckpointError(
+                    "Restore cancelled because the safety checkpoint could not capture files that would be overwritten: "
+                    + ", ".join(unprotected_targets[:5])
+                )
+            if restore_mode == "exact" and int(safety_manifest.get("skipped_count", 0) or 0) > 0:
+                raise CheckpointError(
+                    f"Exact restore cancelled because the pre-restore safety checkpoint {safety_checkpoint['id']} "
+                    "is incomplete; no workspace files were changed."
+                )
             staged: List[Tuple[Path, str, int]] = []
             try:
                 for target, data, mode_bits in restore_items:
