@@ -6,12 +6,13 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
-Write-Host "  ██  ██  ████  ██     ██████ ██  ██ ██████ █████   ████ " -ForegroundColor Cyan
-Write-Host "  ███ ██ ██  ██ ██       ██   ██  ██   ██   ██  ██ ██  ██" -ForegroundColor Cyan
-Write-Host "  ██████ ██  ██ ██       ██   ██████   ██   █████  ██████" -ForegroundColor Cyan
-Write-Host "  ██ ███ ██  ██ ██       ██   ██  ██   ██   ██ ██  ██  ██" -ForegroundColor Cyan
-Write-Host "  ██  ██ ██  ██ ██       ██   ██  ██   ██   ██  ██ ██  ██" -ForegroundColor Cyan
-Write-Host "  ██  ██  ████  ██████   ██   ██  ██ ██████ ██  ██ ██  ██" -ForegroundColor Cyan
+Write-Host "  ██  █  ███  █     █████ █   █ █████ ████   ███ " -ForegroundColor Cyan
+Write-Host "  ███ █ █   █ █       █   █   █   █   █   █ █   █" -ForegroundColor Cyan
+Write-Host "  █ ███ █   █ █       █   █   █   █   █   █ █   █" -ForegroundColor Cyan
+Write-Host "  █  ██ █   █ █       █   █████   █   ████  █████" -ForegroundColor Cyan
+Write-Host "  █   █ █   █ █       █   █   █   █   █ █   █   █" -ForegroundColor Cyan
+Write-Host "  █   █ █   █ █       █   █   █   █   █  █  █   █" -ForegroundColor Cyan
+Write-Host "  █   █  ███  █████   █   █   █ █████ █   █ █   █" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  ⚡ Nolthira Agent Orchestrator Installer" -ForegroundColor Green
 Write-Host "  Target OS: Windows · Home: $env:USERPROFILE\.nolthira" -ForegroundColor DarkGray
