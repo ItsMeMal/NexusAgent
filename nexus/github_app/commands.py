@@ -1,5 +1,5 @@
 """
-nexus/github_app/commands.py
+nolthira/github_app/commands.py
 CLI + gateway slash-command handler for GitHub App integration.
 
 Commands (all prefixed with /github in gateway; bare subcommands in CLI):
@@ -39,7 +39,7 @@ def _get_auth():
     if _auth_instance is not None:
         return _auth_instance
     try:
-        from nexus.github_app.auth import GitHubAppAuth
+        from nolthira.github_app.auth import GitHubAppAuth
         if GitHubAppAuth.available():
             _auth_instance = GitHubAppAuth.from_env()
     except Exception as exc:
@@ -52,7 +52,7 @@ def _get_client():
     auth = _get_auth()
     if auth is None:
         return None
-    from nexus.github_app.client import GitHubAppClient
+    from nolthira.github_app.client import GitHubAppClient
     return GitHubAppClient(auth)
 
 
