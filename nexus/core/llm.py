@@ -7,6 +7,41 @@ _RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 _DEFAULT_RETRY_DELAYS = (1.5, 3.0, 5.0)
 
 
+def normalize_token_usage(raw: Any) -> Optional[Dict[str, int]]:
+    """Normalize OpenAI-compatible token usage fields; None means not supplied."""
+    if not isinstance(raw, dict):
+        return None
+
+    def read_int(*keys: str) -> int:
+        for key in keys:
+            value = raw.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+                return int(value)
+        return 0
+
+    prompt = read_int("prompt_tokens", "input_tokens", "promptTokens", "inputTokens")
+    completion = read_int("completion_tokens", "output_tokens", "completionTokens", "outputTokens")
+    total = read_int("total_tokens", "totalTokens") or prompt + completion
+    if prompt == 0 and completion == 0 and total == 0:
+        return None
+    if prompt == 0 and total >= completion:
+        prompt = total - completion
+    if completion == 0 and total >= prompt:
+        completion = total - prompt
+    return {"input_tokens": prompt, "output_tokens": completion, "total_tokens": total}
+
+
+def _estimate_text_tokens(value: Any) -> int:
+    """Character-based estimate, displayed as estimated rather than provider-reported."""
+    if isinstance(value, str):
+        return (len(value) + 3) // 4
+    if isinstance(value, dict):
+        return sum(_estimate_text_tokens(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return sum(_estimate_text_tokens(item) for item in value)
+    return 0
+
+
 class _RetryableAPIError(RuntimeError):
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
@@ -54,12 +89,31 @@ def sanitize_messages(messages: List[Dict[str, Any]], force_non_empty: bool = Fa
 
 
 class LLMClient:
-    def __init__(self, api_key: str, api_base: str, model: str, temperature: float = 0.2, max_retries: int = 3):
+    def __init__(
+        self,
+        api_key: str,
+        api_base: str,
+        model: str,
+        temperature: float = 0.2,
+        max_retries: int = 3,
+        token_provider: Optional[Callable[[], Any]] = None,
+        on_usage: Optional[Callable[[Dict[str, Any]], None]] = None,
+        context_window: int = 0,
+    ):
         self.api_key = api_key
         self.api_base = api_base.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.max_retries = max_retries
+        self.token_provider = token_provider
+        self.on_usage = on_usage
+        self.context_window = max(0, int(context_window or 0))
+        self.last_usage: Dict[str, Any] = {
+            "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "source": "unavailable"
+        }
+        self.session_usage: Dict[str, int] = {
+            "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "requests": 0, "estimated_requests": 0
+        }
 
     async def chat_completion(
         self,
@@ -69,7 +123,12 @@ class LLMClient:
         on_token: Optional[Callable[[str], None]] = None,
         on_retry: Optional[Callable[[int, int, str], None]] = None,
     ) -> Dict[str, Any]:
-        """Send chat completion request with sanitization, SSE streaming, and automatic retry backoff."""
+        """Send chat completion request with token telemetry and refreshable credentials."""
+        if self.token_provider is not None:
+            refreshed_key = await self.token_provider()
+            if not isinstance(refreshed_key, str) or not refreshed_key.strip():
+                raise RuntimeError("Provider authentication returned an empty access token.")
+            self.api_key = refreshed_key
         url = f"{self.api_base}/chat/completions"
         headers = {
             "Content-Type": "application/json",
@@ -80,6 +139,40 @@ class LLMClient:
             headers["X-Title"] = "Nexus Agent CLI"
 
         clean_messages = sanitize_messages(messages)
+
+        async def _finalize(response_msg: Dict[str, Any]) -> Dict[str, Any]:
+            usage = normalize_token_usage(response_msg.pop("_nexus_usage", None))
+            source = "provider" if usage else "estimated"
+            if usage is None:
+                input_tokens = _estimate_text_tokens(clean_messages)
+                output_tokens = _estimate_text_tokens({
+                    "content": response_msg.get("content", ""),
+                    "tool_calls": response_msg.get("tool_calls", []),
+                })
+                usage = {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens,
+                }
+            for key in ("input_tokens", "output_tokens", "total_tokens"):
+                self.session_usage[key] += int(usage.get(key, 0))
+            self.session_usage["requests"] += 1
+            if source == "estimated":
+                self.session_usage["estimated_requests"] += 1
+            self.last_usage = {
+                **usage,
+                "source": source,
+                "model": self.model,
+                "context_window": self.context_window,
+                "session": dict(self.session_usage),
+            }
+            if self.on_usage:
+                try:
+                    self.on_usage(dict(self.last_usage))
+                except Exception:
+                    pass
+            return response_msg
+
         last_err: Optional[Exception] = None
         total_attempts = max(1, self.max_retries + 1)
 
@@ -94,15 +187,17 @@ class LLMClient:
                         on_token(tok)
 
                     try:
-                        return await self._stream_completion(
+                        streamed = await self._stream_completion(
                             url, headers, clean_messages, tools, tool_choice, _tracked_token
                         )
+                        return await _finalize(streamed)
                     except _RetryableAPIError as stream_retry_err:
                         if emitted[0]:
                             raise stream_retry_err
                         # On final attempt, give non-streaming one shot before failing
                         if attempt >= total_attempts - 1:
-                            return await self._standard_completion(url, headers, clean_messages, tools, tool_choice)
+                            standard = await self._standard_completion(url, headers, clean_messages, tools, tool_choice)
+                            return await _finalize(standard)
                         raise stream_retry_err
                     except (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError, httpx.TransportError):
                         if emitted[0]:
@@ -112,9 +207,11 @@ class LLMClient:
                         if emitted[0]:
                             raise stream_err
                         # Stream unsupported or returned 400 -> fallback immediately to non-streaming
-                        return await self._standard_completion(url, headers, clean_messages, tools, tool_choice)
+                        standard = await self._standard_completion(url, headers, clean_messages, tools, tool_choice)
+                        return await _finalize(standard)
 
-                return await self._standard_completion(url, headers, clean_messages, tools, tool_choice)
+                standard = await self._standard_completion(url, headers, clean_messages, tools, tool_choice)
+                return await _finalize(standard)
 
             except _RetryableAPIError as e:
                 last_err = e
@@ -201,6 +298,8 @@ class LLMClient:
             msg = dict(choice["message"])
             if msg.get("content") is None:
                 msg["content"] = ""
+            if isinstance(data.get("usage"), dict):
+                msg["_nexus_usage"] = data["usage"]
             return msg
 
     async def _stream_completion(
@@ -221,7 +320,10 @@ class LLMClient:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
+        if "ai-router.mallss-nexus.sbs" in self.api_base:
+            payload["stream_options"] = {"include_usage": True}
 
+        stream_usage: Optional[Dict[str, Any]] = None
         accumulated_content = ""
         tool_calls_dict: Dict[int, Dict[str, Any]] = {}
 
@@ -254,6 +356,8 @@ class LLMClient:
                                 err_msg = err_obj.get("message", str(err_obj)) if isinstance(err_obj, dict) else str(err_obj)
                                 raise _RetryableAPIError(502, err_msg)
 
+                            if isinstance(chunk.get("usage"), dict):
+                                stream_usage = chunk["usage"]
                             choices = chunk.get("choices", [])
                             if not choices:
                                 continue
@@ -334,5 +438,7 @@ class LLMClient:
         }
         if tool_calls_dict:
             final_msg["tool_calls"] = [tool_calls_dict[i] for i in sorted(tool_calls_dict.keys())]
+        if stream_usage:
+            final_msg["_nexus_usage"] = stream_usage
 
         return final_msg

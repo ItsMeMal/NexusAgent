@@ -37,6 +37,11 @@ class AgentUIController:
         self._current_message = "Thinking & coordinating..."
         self._prefix_buf = ""
         self._prefix_done = False
+        self.token_usage: Dict[str, Any] = {}
+
+    def on_usage(self, usage: Dict[str, Any]):
+        """Receive provider-reported or explicitly estimated token usage."""
+        self.token_usage = dict(usage or {})
 
     def update_model(self, new_model_name: str):
         self.model_name = new_model_name
@@ -227,3 +232,6 @@ class AgentUIController:
             self.console.print()
         self.has_content = False
         self.header_printed = False
+        if self.token_usage:
+            from .tui import render_token_usage
+            render_token_usage(self.token_usage)

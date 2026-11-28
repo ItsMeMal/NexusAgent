@@ -237,6 +237,44 @@ def render_tools_table(tools: list):
             console.print(f"    [bold #38bdf8]{name:<24}[/bold #38bdf8] [dim]→[/dim]  [white]{short_desc}[/white]")
         console.print()
 
+def render_token_usage(usage: Dict[str, Any]) -> None:
+    """Show provider usage or clearly labeled estimates and known context remaining."""
+    if not usage:
+        return
+
+    def fmt(value: Any) -> str:
+        try:
+            return f"{int(value):,}"
+        except (TypeError, ValueError):
+            return "—"
+
+    source = str(usage.get("source", "unavailable"))
+    label = "provider-reported" if source == "provider" else ("estimated" if source.startswith("estimated") else "unavailable")
+    input_tokens = int(usage.get("input_tokens", 0) or 0)
+    output_tokens = int(usage.get("output_tokens", 0) or 0)
+    total_tokens = int(usage.get("total_tokens", input_tokens + output_tokens) or 0)
+    context_window = int(usage.get("context_window", 0) or 0)
+    console.print(
+        f"  [dim]Tokens · {label}[/dim]  [white]Input {fmt(input_tokens)}[/white]  "
+        f"[white]Output {fmt(output_tokens)}[/white]  [bold #00ffd7]Total {fmt(total_tokens)}[/bold #00ffd7]"
+    )
+    if context_window:
+        remaining = max(0, context_window - total_tokens)
+        remaining_pct = max(0.0, 100.0 - (total_tokens / context_window * 100.0))
+        console.print(
+            f"  [dim]Context[/dim] [white]{fmt(total_tokens)} / {fmt(context_window)}[/white] "
+            f"[dim]· remaining {fmt(remaining)} ({remaining_pct:.1f}%)[/dim]"
+        )
+    else:
+        console.print("  [dim]Context window unavailable for this model; remaining tokens are not guessed.[/dim]")
+    session = usage.get("session")
+    if isinstance(session, dict):
+        console.print(
+            f"  [dim]Session · input {fmt(session.get('input_tokens'))} · output {fmt(session.get('output_tokens'))} · "
+            f"total {fmt(session.get('total_tokens'))} · {fmt(session.get('requests'))} request(s)[/dim]"
+        )
+
+
 def render_status_card(model_name: str, provider_name: str, session_id: str, tools_count: int, skills_count: int, mem_count: int, cron_count: int, mode_id: str = "auto"):
     """Render system diagnostics overview."""
     from ..core.modes import get_mode
