@@ -59,6 +59,10 @@ class CheckpointManager:
         if self.storage_root == self.workspace or self.workspace in self.storage_root.parents:
             raise CheckpointError("Checkpoint storage must be outside the workspace.")
         self.storage_root.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(self.storage_root, stat.S_IRWXU)
+        except OSError:
+            pass
         self._lock = threading.RLock()
 
     @staticmethod
@@ -119,8 +123,8 @@ class CheckpointManager:
         if not self.CHECKPOINT_ID_RE.fullmatch(str(checkpoint_id or "")):
             raise CheckpointError("Invalid checkpoint ID.")
         path = self.storage_root / f"{checkpoint_id}.zip"
-        if not path.is_file():
-            raise CheckpointError(f"Checkpoint '{checkpoint_id}' was not found.")
+        if path.is_symlink() or not path.is_file() or path.resolve().parent != self.storage_root:
+            raise CheckpointError(f"Checkpoint '{checkpoint_id}' was not found or is not a regular archive.")
         return path
 
     def create_checkpoint(self, label: str = "") -> Dict[str, Any]:
@@ -279,6 +283,11 @@ class CheckpointManager:
                 if total_bytes > self.MAX_TOTAL_BYTES:
                     raise CheckpointError("Checkpoint exceeds the total restore size limit.")
                 target = self.workspace.joinpath(*relative.parts)
+                current_parent = self.workspace
+                for part in relative.parts[:-1]:
+                    current_parent = current_parent / part
+                    if current_parent.is_symlink():
+                        raise CheckpointError(f"Refusing to restore through a symlink directory: '{name}'.")
                 resolved_parent = target.parent.resolve()
                 if not resolved_parent.is_relative_to(self.workspace):
                     raise CheckpointError(f"Restore path escapes the workspace: '{name}'.")
@@ -315,6 +324,12 @@ class CheckpointManager:
             try:
                 for target, data, mode_bits in restore_items:
                     target.parent.mkdir(parents=True, exist_ok=True)
+                    current_parent = self.workspace
+                    relative = target.relative_to(self.workspace)
+                    for part in relative.parts[:-1]:
+                        current_parent = current_parent / part
+                        if current_parent.is_symlink():
+                            raise CheckpointError(f"Restore destination changed through a symlink: '{target}'.")
                     resolved_parent = target.parent.resolve()
                     if not resolved_parent.is_relative_to(self.workspace) or target.is_symlink():
                         raise CheckpointError(f"Restore destination changed during operation: '{target}'.")
