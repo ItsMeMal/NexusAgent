@@ -232,7 +232,7 @@ def get_filesystem_tools(root_dir: Path):
                     "path": {"type": "string", "description": "Relative path to the file"},
                     "target": {"type": "string", "description": "Exact text to be replaced"},
                     "replacement": {"type": "string", "description": "Replacement text"},
-                    "replace_all": {"type": "boolean", "description": "Set true only when intentionally replacing every exact match", "default": false}
+                    "replace_all": {"type": "boolean", "description": "Set true only when intentionally replacing every exact match", "default": False}
                 },
                 "required": ["path", "target", "replacement"]
             },
