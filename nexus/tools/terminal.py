@@ -207,7 +207,7 @@ def get_terminal_tools(root_dir: Path):
                     "command": {"type": "string", "description": "The exact shell command to execute (already in workspace root)"},
                     "timeout": {"type": "integer", "description": "Timeout in seconds (default 120; auto-extended to 300 for installs/builds, max 900; ignored for background runs)", "default": 120},
                     "backend": {"type": "string", "enum": ["", "local", "docker", "ssh"], "description": "Optional backend override", "default": ""},
-                    "background": {"type": "boolean", "description": "Start a tracked background process instead of waiting for completion", "default": false}
+                    "background": {"type": "boolean", "description": "Start a tracked background process instead of waiting for completion", "default": False}
                 },
                 "required": ["command"]
             },
