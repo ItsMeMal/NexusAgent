@@ -100,6 +100,11 @@ class ToolsetManagerTests(unittest.TestCase):
         self.assertIsNotNone(registry.get("write_file"))
         self.assertIsNotNone(registry.get("run_command"))
 
+        self.manager.set_platform_profile("telegram", "coder")
+        gateways._apply_platform_profile("telegram")
+        self.assertIsNotNone(telegram_registry.get("write_file"))
+        self.assertIsNotNone(telegram_registry.get("run_command"))
+
     def test_unknown_profiles_and_toolsets_are_rejected(self):
         with self.assertRaises(ToolsetConfigError):
             self.manager.resolve_profile("does-not-exist")
