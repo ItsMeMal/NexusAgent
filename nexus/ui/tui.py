@@ -37,8 +37,10 @@ def render_banner(
     # 1. Cyberpunk laser shimmer wave across ASCII logo
     if animate:
         width = max(len(line) for line in RAW_LOGO)
+        target_sweep_frames = 30
+        wave_step = max(2, round((width + 16) / target_sweep_frames))
         with Live(console=console, refresh_per_second=30, transient=True) as live:
-            for wave in range(-6, width + 10, 2):
+            for wave in range(-6, width + 10, wave_step):
                 t = Text()
                 for row in RAW_LOGO:
                     for col_idx, char in enumerate(row.ljust(width)):
