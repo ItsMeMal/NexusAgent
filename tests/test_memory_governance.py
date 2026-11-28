@@ -45,6 +45,25 @@ class MemoryGovernanceTests(unittest.TestCase):
         self.assertEqual(self.memory.list_memory_proposals("pending"), [])
         self.assertEqual(self.memory.list_memory_proposals("approved")[0]["id"], proposal_id)
 
+    def test_concurrent_proposal_reviews_are_applied_exactly_once(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        proposal_id = self.memory.propose_memory(
+            key="reviewed_once",
+            content="This proposal should enter active memory once.",
+            category="learning",
+            evidence="Concurrent review regression test.",
+        )
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(
+                lambda _: self.memory.review_memory_proposal(proposal_id, "approve"),
+                range(2),
+            ))
+        self.assertEqual(sorted(results), [False, True])
+        active = [item for item in self.memory.get_all_memories() if item["key"] == "reviewed_once"]
+        self.assertEqual(len(active), 1)
+        self.assertEqual(self.memory.list_memory_proposals("approved")[0]["id"], proposal_id)
+
     def test_rejected_proposal_never_enters_active_memory(self):
         proposal_id = self.memory.propose_memory(
             key="assumed_preference",
