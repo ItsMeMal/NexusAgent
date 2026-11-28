@@ -287,7 +287,7 @@ def render_tool_call(tool_name: str, arguments: Dict[str, Any]):
     if normalized in {"write_file", "append_file"}:
         path = str(args.get("path") or "<unknown path>")
         source = str(args.get("content") or "")
-        title = "WRITE" if normalized == "write_file" else "APPEND"
+        title = "WRITE PREVIEW" if normalized == "write_file" else "APPEND PREVIEW"
         _render_activity_source(f"{title} · {path}", path, source, "green" if normalized == "write_file" else "cyan")
     elif normalized == "patch_file":
         path = str(args.get("path") or "<unknown path>")
