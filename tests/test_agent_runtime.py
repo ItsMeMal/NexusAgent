@@ -197,6 +197,72 @@ def command_tool_call(call_id, command, timeout=120):
     }
 
 
+class FakeEnvRecoveryRegistry:
+    def __init__(self, command_results):
+        self.command_results = list(command_results)
+        self.calls = []
+
+    def get(self, name):
+        return None
+
+    def to_openai_schemas(self):
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "run_command",
+                    "description": "Run a shell command.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {"type": "string"},
+                            "timeout": {"type": "integer"},
+                        },
+                        "required": ["command"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_env",
+                    "description": "Safely update selected environment variables.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "updates": {"type": "object"},
+                        },
+                        "required": ["updates"],
+                    },
+                },
+            },
+        ]
+
+    async def execute_tool(self, name, arguments):
+        self.calls.append((name, dict(arguments)))
+        if name == "update_env":
+            return "Successfully updated 1 environment variable(s) in '.env': DATABASE_URL. Existing values were not read or returned."
+        if name == "run_command":
+            return self.command_results.pop(0)
+        raise AssertionError(f"Unexpected tool: {name}")
+
+
+def env_update_tool_call(call_id, updates):
+    return {
+        "role": "assistant",
+        "content": "[calling tools]",
+        "tool_calls": [{
+            "id": call_id,
+            "type": "function",
+            "function": {
+                "name": "update_env",
+                "arguments": json.dumps({"path": ".env", "updates": updates}),
+            },
+        }],
+    }
+
+
 class AgentCommandRecoveryTests(unittest.IsolatedAsyncioTestCase):
     def make_agent(self, llm, registry, max_steps=8):
         memory = FakeMemory()
@@ -240,6 +306,31 @@ class AgentCommandRecoveryTests(unittest.IsolatedAsyncioTestCase):
             "was NOT executed" in str(message.get("content", ""))
             and "Changing only its timeout does not fix that failure" in str(message.get("content", ""))
             for message in guarded_turn
+        ))
+
+    async def test_same_command_can_retry_after_successful_environment_remediation(self):
+        command = "npx prisma migrate deploy"
+        llm = ScriptedLLM([
+            command_tool_call("cmd-fail", command, timeout=300),
+            env_update_tool_call("env-fix", {"DATABASE_URL": "postgresql://mock/db"}),
+            command_tool_call("cmd-retry", command, timeout=300),
+            {"role": "assistant", "content": "Database URL was updated securely and the migration then completed."},
+        ])
+        registry = FakeEnvRecoveryRegistry([
+            "[COMMAND FAILED: exit code 1]\nSTDERR:\nP1001: database server is unreachable.",
+            "Exit Code: 0\nSTDOUT:\nMigrations applied.",
+        ])
+        agent, _ = self.make_agent(llm, registry)
+
+        result = await agent.run("Configure the database connection and deploy migrations.")
+
+        self.assertIn("migration then completed", result)
+        self.assertEqual([name for name, _ in registry.calls], ["run_command", "update_env", "run_command"])
+        self.assertEqual(registry.calls[0][1]["command"], command)
+        self.assertEqual(registry.calls[2][1]["command"], command)
+        self.assertTrue(any(
+            "Successfully updated 1 environment variable" in str(message.get("content", ""))
+            for message in llm.calls[2]["messages"]
         ))
 
     async def test_explicit_timeout_allows_one_retry_with_a_longer_timeout(self):
