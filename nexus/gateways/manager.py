@@ -69,20 +69,31 @@ class GatewayManager:
         soul_path: Path = config.SOUL_PATH,
         max_steps: int = config.MAX_STEPS,
         on_log: Optional[Callable[[str, str], None]] = None,
+        toolset_manager: Optional[Any] = None,
     ):
         self.on_log = on_log
+        self.toolset_manager = toolset_manager
+
+        def _registry_for(platform: str) -> ToolRegistry:
+            if self.toolset_manager is None:
+                return registry
+            scoped = registry.clone()
+            profile = self.toolset_manager.profile_for_platform(platform)
+            self.toolset_manager.apply(scoped, profile=profile)
+            return scoped
+
         self.gateways: Dict[str, BaseGateway] = {
-            "telegram": TelegramGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
-            "discord": DiscordGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
-            "whatsapp": WhatsAppGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
-            "slack": SlackGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
-            "email": EmailGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
+            "telegram": TelegramGateway(llm_client, memory, skill_manager, _registry_for("telegram"), soul_path, max_steps, on_log=on_log),
+            "discord": DiscordGateway(llm_client, memory, skill_manager, _registry_for("discord"), soul_path, max_steps, on_log=on_log),
+            "whatsapp": WhatsAppGateway(llm_client, memory, skill_manager, _registry_for("whatsapp"), soul_path, max_steps, on_log=on_log),
+            "slack": SlackGateway(llm_client, memory, skill_manager, _registry_for("slack"), soul_path, max_steps, on_log=on_log),
+            "email": EmailGateway(llm_client, memory, skill_manager, _registry_for("email"), soul_path, max_steps, on_log=on_log),
         }
         self._tasks: Dict[str, asyncio.Task] = {}
         self._start_lock = asyncio.Lock()
 
     def register_tools(self, registry: ToolRegistry):
-        registry.register(create_gateway_send_tool(self))
+        registry.register(create_gateway_send_tool(self), toolset="gateway")
 
     def get_statuses(self) -> List[GatewayStatus]:
         return [gw.get_status() for gw in self.gateways.values()]
