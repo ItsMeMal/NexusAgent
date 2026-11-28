@@ -102,7 +102,7 @@ def _workspace_child_environment(root_dir: Path) -> Dict[str, str]:
 
 
 def get_terminal_tools(root_dir: Path):
-    process_manager = ProcessManager(config.NEXUS_HOME / "processes")
+    process_manager = ProcessManager(config.NOLTHIRA_HOME / "processes")
 
     async def run_command(
         command: str,
