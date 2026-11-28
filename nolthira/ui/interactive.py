@@ -11,7 +11,7 @@ from prompt_toolkit.layout import Layout, HSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
-from ..providers.manager import ProviderManager, ProviderProfile, ModelInfo, PROVIDERS
+from ..providers.manager import ProviderManager, ProviderProfile, ModelInfo, PROVIDERS, parse_context_window_tokens
 from ..providers.nexus_route_oauth import NexusRouteOAuth
 from ..core.modes import AGENT_MODES, MODE_ORDER, get_mode
 from ..config import config
@@ -267,6 +267,8 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
     config.API_KEY = target_key
     current_llm.api_base = target_base.rstrip("/")
     current_llm.api_key = target_key
+    # Do not carry a previous provider's model context into this new endpoint.
+    current_llm.context_window = 0
     os.environ["OPENAI_API_BASE"] = target_base
     updates = {"OPENAI_API_BASE": target_base}
     if is_nexus_oauth:
@@ -544,17 +546,8 @@ async def interactive_select_model(
         return
 
     selected_info = next((item for item in models if item.id == selected_model_id), None)
-    if selected_info:
-        context_value = str(selected_info.context or "").strip().lower()
-        try:
-            if context_value.endswith("m"):
-                current_llm.context_window = int(float(context_value[:-1]) * 1_000_000)
-            elif context_value.endswith("k"):
-                current_llm.context_window = int(float(context_value[:-1]) * 1_000)
-            elif context_value.isdigit():
-                current_llm.context_window = int(context_value)
-        except (ValueError, TypeError):
-            current_llm.context_window = 0
+    # ModelInfo.context originates from provider metadata; Auto/unknown resets to 0.
+    current_llm.context_window = parse_context_window_tokens(selected_info.context) if selected_info else 0
 
     # Update runtime config & LLM
     config.MODEL = selected_model_id
