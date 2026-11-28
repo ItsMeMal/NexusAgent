@@ -88,6 +88,22 @@ def _tool_call_signature(tool_name: str, arguments: Dict[str, Any]) -> str:
     return f"{tool_name}:{json.dumps(identity, sort_keys=True, ensure_ascii=False, default=str)}"
 
 
+_MUTATING_COMMAND_RE = re.compile(
+    r"\\b(?:npm|pnpm|yarn|bun)\\s+(?:install|add|remove|uninstall|update|rebuild|ci)\\b"
+    r"|\\b(?:npx\\s+)?prisma\\s+(?:generate|format|db\\s+push|migrate\\s+(?:deploy|dev|reset|resolve))\\b"
+    r"|\\bgit\\s+(?:checkout|switch|apply|merge|rebase|cherry-pick|pull|reset|restore)\\b"
+    r"|\\b(?:mkdir|md|touch|New-Item)\\b"
+    r"|\\b(?:Set-Content|Add-Content|Out-File|Copy-Item|Move-Item|Remove-Item)\\b"
+    r"|\\b(?:next\\s+build|npm\\s+run\\s+build|pnpm\\s+build|yarn\\s+build|bun\\s+run\\s+build)\\b"
+    r"|\\b(?:ruff|black|isort|prettier|eslint)\\b.*(?:--fix|--write)\\b",
+    re.IGNORECASE,
+)
+
+
+def _command_may_mutate_workspace(command: str) -> bool:
+    return bool(_MUTATING_COMMAND_RE.search(str(command or "")))
+
+
 def _classify_command_result(result: Any, requested_timeout: Any) -> Dict[str, Any]:
     """Remember the last run_command outcome so failed commands cannot be retried by changing timeout."""
     output = str(result or "")
@@ -474,6 +490,7 @@ class NexusAgent:
         recent_call_signatures: List[str] = []
         recent_command_outcomes: Dict[str, Dict[str, Any]] = {}
         timeout_retry_used: set[str] = set()
+        recovery_generation = 0
         pending_tc_ids: List[str] = []
         files_written = 0
         code_nudge_sent = False
@@ -624,10 +641,15 @@ class NexusAgent:
                             except (TypeError, ValueError):
                                 requested_timeout = 120
 
-                            if previous and previous.get("kind") == "failed":
+                            if previous and recovery_generation > int(previous.get("generation", 0)):
+                                # A successful file/env/config mutation happened after the failure,
+                                # so rerunning the same verification command is now meaningful.
+                                pass
+                            elif previous and previous.get("kind") == "failed":
                                 loop_guard_reason = (
                                     "The previous identical command returned a non-zero/error result. "
-                                    "Changing only its timeout does not fix that failure."
+                                    "Changing only its timeout does not fix that failure; first make and verify "
+                                    "a relevant workspace or environment change."
                                 )
                             elif previous and previous.get("kind") == "timeout":
                                 can_retry_timeout = (
@@ -639,7 +661,8 @@ class NexusAgent:
                                 else:
                                     loop_guard_reason = (
                                         "The previous identical command timed out. One retry with a longer timeout "
-                                        "has already been used or the requested timeout is not longer."
+                                        "has already been used or the requested timeout is not longer. "
+                                        "A verified workspace/environment change can also justify a retry."
                                     )
                             elif same_call_count >= 2:
                                 loop_guard_reason = "This exact command has already been attempted repeatedly."
@@ -679,11 +702,25 @@ class NexusAgent:
                             files_written += 1
                             had_trunc_error = False
 
-                    if sig and not arg_parse_err and str(tool_name or "").lower() in {"run_command", "terminal", "shell", "bash", "cmd"} and not loop_guard_reason:
-                        recent_command_outcomes[sig] = _classify_command_result(
+                    tool_result_text = str(result or "")
+                    if (
+                        not arg_parse_err
+                        and not loop_guard_reason
+                        and tool_result_text.startswith("Successfully")
+                        and tool_name in {"write_file", "append_file", "patch_file", "update_env"}
+                    ):
+                        recovery_generation += 1
+
+                    is_terminal_tool = str(tool_name or "").lower() in {"run_command", "terminal", "shell", "bash", "cmd"}
+                    if sig and not arg_parse_err and is_terminal_tool and not loop_guard_reason:
+                        command_outcome = _classify_command_result(
                             result,
                             args.get("timeout", 120) if isinstance(args, dict) else 120,
                         )
+                        if command_outcome.get("kind") == "success" and isinstance(args, dict) and _command_may_mutate_workspace(args.get("command", "")):
+                            recovery_generation += 1
+                        command_outcome["generation"] = recovery_generation
+                        recent_command_outcomes[sig] = command_outcome
 
                     if self.on_tool_result:
                         self.on_tool_result(tool_name, result, elapsed)
