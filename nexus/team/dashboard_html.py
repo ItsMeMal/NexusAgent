@@ -5,7 +5,7 @@ DASHBOARD_HTML = r'''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nexus AI-Team</title>
+<title>Nolthira AI Team</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -929,7 +929,7 @@ select.select:focus { outline: none; border-color: var(--accent); }
       <div class="brand-mark" aria-hidden="true">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       </div>
-      <span>Nexus AI-Team</span>
+      <span>Nolthira AI Team</span>
     </div>
 
     <div class="top-meta">
@@ -1013,7 +1013,7 @@ select.select:focus { outline: none; border-color: var(--accent); }
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
         <h1>Autonomous AI-Team Workspace</h1>
-        <p>Launch a mission from the sidebar or run <code style="font-family:var(--mono);background:var(--surface);padding:2px 6px;border-radius:4px">/team run</code> in Nexus CLI. The Team Lead plans a Shared Task Board, specialists execute with real workspace tools, and everything updates live here.</p>
+        <p>Launch a mission from the sidebar or run <code style="font-family:var(--mono);background:var(--surface);padding:2px 6px;border-radius:4px">/team run</code> in Nolthira CLI. The Team Lead plans a Shared Task Board, specialists execute with real workspace tools, and everything updates live here.</p>
         <div class="quick-prompts">
           <button type="button" class="quick-card" onclick="fillPrompt('Inspect the repository, find bugs or missing edge cases, and report concrete fixes.', 'audit')">
             <strong>Codebase & Security Audit</strong>
