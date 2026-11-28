@@ -17,6 +17,89 @@ from ..skills import SkillManager
 from ..tools.base import ToolRegistry
 from ..config import config
 
+_WEBSITE_TERMS_RE = re.compile(
+    r"\b(?:website|web\s*app|webapp|landing\s*page|frontend|front-end|homepage|"
+    r"web\s*site|situs|halaman\s+web|tampilan\s+web)\b",
+    re.IGNORECASE,
+)
+_WEBSITE_ACTION_RE = re.compile(
+    r"\b(?:build|create|make|develop|implement|design|redesign|code|"
+    r"buat(?:kan)?|bikin|bangun|kembang(?:kan)?|rancang|wujudkan)\b",
+    re.IGNORECASE,
+)
+_NEXT_STARTER_MARKERS = (
+    "to get started, edit the page.tsx file",
+    "looking for a starting point or more instructions",
+    "get started by editing app/page.tsx",
+)
+
+
+def _is_website_build_request(prompt: str) -> bool:
+    """Identify direct website-creation requests, not ordinary questions about websites."""
+    text = str(prompt or "")
+    terms = list(_WEBSITE_TERMS_RE.finditer(text))
+    actions = list(_WEBSITE_ACTION_RE.finditer(text))
+    for term in terms:
+        for action in actions:
+            if abs(term.start() - action.start()) <= 110:
+                nearby = text[min(term.start(), action.start()):max(term.end(), action.end())].lower()
+                if re.search(r"\b(?:prompt|ide|brainstorm)\b", nearby):
+                    continue
+                return True
+    return False
+
+
+def _nextjs_frontend_delivery_issues(root_dir: Path) -> List[str]:
+    """Detect an untouched Next.js starter homepage or a missing Next.js homepage route."""
+    root = Path(root_dir).resolve()
+    package_file = root / "package.json"
+    next_config = any((root / name).is_file() for name in (
+        "next.config.js", "next.config.mjs", "next.config.ts", "next.config.mts",
+    ))
+    has_next = next_config
+    if package_file.is_file():
+        try:
+            package = json.loads(package_file.read_text(encoding="utf-8", errors="replace"))
+            dependencies = {}
+            dependencies.update(package.get("dependencies") or {})
+            dependencies.update(package.get("devDependencies") or {})
+            has_next = has_next or "next" in dependencies
+        except (OSError, ValueError, TypeError):
+            pass
+    if not has_next:
+        return []
+
+    route_relatives = (
+        "app/page.tsx", "app/page.ts", "app/page.jsx", "app/page.js",
+        "src/app/page.tsx", "src/app/page.ts", "src/app/page.jsx", "src/app/page.js",
+        "pages/index.tsx", "pages/index.ts", "pages/index.jsx", "pages/index.js",
+        "src/pages/index.tsx", "src/pages/index.ts", "src/pages/index.jsx", "src/pages/index.js",
+    )
+    existing = []
+    for relative in route_relatives:
+        candidate = root / relative
+        try:
+            resolved = candidate.resolve(strict=True)
+            if resolved.is_relative_to(root) and resolved.is_file():
+                existing.append((relative, resolved))
+        except (OSError, RuntimeError):
+            continue
+
+    if not existing:
+        return ["Next.js project has no recognized homepage route (app/page.* or pages/index.*)."]
+
+    issues = []
+    for relative, path in existing:
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")[:240_000]
+        except OSError:
+            continue
+        normalized = re.sub(r"[\x60*_]", "", source.casefold())
+        if any(marker in normalized for marker in _NEXT_STARTER_MARKERS):
+            issues.append(relative + " still contains the untouched create-next-app starter screen.")
+    return issues
+
+
 _CALLING_TOOLS_PREFIX_RE = re.compile(r"^(?:\s*\[calling tools\]\s*)+", re.IGNORECASE)
 
 
@@ -268,6 +351,14 @@ class NolthiraAgent:
 - Verification must exercise the behavior changed, not merely check that files exist or that imports succeed. Report passed checks, failed checks, and unverified work separately.
 - When the execution budget is nearly exhausted, prioritize safe finalization: state what is complete, what was verified, and exactly what remains. Never describe an unfinished or unverified task as complete.
 
+## Website & Frontend Delivery Standard
+- A request to build/create a website, landing page, frontend, or web app requires a real implemented UI—not just a framework scaffold, package manifest, placeholder route, or explanation.
+- Treat create-next-app, Vite, and similar generators as bootstrap steps only. Replace the generated starter homepage with the user's requested product UI in the same task.
+- For Next.js, the primary route must contain a deliberate page structure and meaningful product-specific content. A generic starter screen (including the text "To get started, edit the page.tsx file" or the default Templates/Learning links) is never an acceptable deliverable.
+- When the brief is underspecified, choose a coherent visual direction and sensible content/interaction defaults instead of leaving starter UI or asking a long questionnaire.
+- Build responsive hierarchy: navigation, a clear hero or page heading, relevant content sections, and working primary actions. Do not claim interactions work unless implemented.
+- Inspect the final route source after edits and run the project's available build/typecheck/lint checks. A successful scaffold/install command is not proof that the website is complete.
+
 ## Tool & Skill Usage Rules
 - **MANDATORY SKILL-FIRST PROTOCOL**: Whenever the user's request involves a real task (coding, UI/frontend, design, architecture, debugging, data analysis, DevOps, security, writing, automation, video/typography, etc.), you **MUST** check the `## Learned Skills (.skills)` catalog above first!
   - Call `read_skill(skill_name)` on the **1–2 most relevant domain skills** BEFORE planning, writing files, or executing other tools, and **strictly apply** their technical, design, and coding standards. (Avoid loading 4+ giant skills at once.)
@@ -447,6 +538,15 @@ class NolthiraAgent:
 
         # 4. Assemble full messages payload with fresh system prompt
         system_prompt = self.build_system_prompt()
+        website_build_task = _is_website_build_request(user_prompt)
+        if website_build_task:
+            system_prompt += (
+                "\n\n## Active Website Build Acceptance Criteria\n"
+                "You are building the actual website now, not merely initializing its framework. "
+                "After any scaffold command, immediately inspect and replace the generated root page with the requested UI. "
+                "Do not leave create-next-app's starter copy, default links, or generic blank template in the homepage. "
+                "Implement useful sections and real primary actions, then inspect the homepage source and run the project's build check."
+            )
 
         # Inject only approved lessons that match this task; pending proposals never enter the prompt.
         if self.include_persistent_memory and hasattr(self.memory, "recall_relevant_learnings"):
@@ -497,6 +597,7 @@ class NolthiraAgent:
         pending_tc_ids: List[str] = []
         files_written = 0
         code_nudge_sent = False
+        website_placeholder_nudges = 0
         trunc_nudge_sent = False
         had_trunc_error = False
         can_write_files = any(s.get("function", {}).get("name") == "write_file" for s in tools_schema)
@@ -555,6 +656,35 @@ class NolthiraAgent:
                     final_response_text = clean_visible_content
                     if self.on_thought and not self.on_token:
                         self.on_thought(clean_visible_content)
+
+                # Do not let a website task finish while Next.js still serves its untouched starter page.
+                if not tool_calls and website_build_task:
+                    frontend_issues = _nextjs_frontend_delivery_issues(config.WORKSPACE_DIR)
+                    if frontend_issues:
+                        issue_text = "\n".join("- " + item for item in frontend_issues)
+                        if website_placeholder_nudges < 2 and step + 1 < effective_max_steps:
+                            website_placeholder_nudges += 1
+                            final_response_text = ""
+                            messages.append({
+                                "role": "user",
+                                "content": (
+                                    "Frontend completion check failed. The requested website is NOT finished. "
+                                    "Detected issue(s):\n" + issue_text + "\n"
+                                    "Inspect the existing Next.js app and its route, then implement the actual requested "
+                                    "homepage UI with complete source files. Do not rerun the scaffold generator and do not "
+                                    "leave the default starter text. After editing, inspect the route and run the available "
+                                    "build check. Continue using tools; do not send a completion message yet."
+                                ),
+                            })
+                            continue
+                        final_response_text = (
+                            "Website implementation is incomplete. The automatic frontend check still detects:\n"
+                            + issue_text + "\n"
+                            "The Next.js starter page has not been replaced, so this task must not be considered complete."
+                        )
+                        if self.on_thought and not self.on_token:
+                            self.on_thought(final_response_text)
+                        break
 
                 # If the provider returns an empty assistant turn after tool execution,
                 # give it one bounded continuation opportunity instead of silently ending.
