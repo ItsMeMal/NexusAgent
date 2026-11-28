@@ -71,11 +71,11 @@ def _default_skill_search_paths() -> List[Path]:
     """
     Return all candidate directories to search for skills, in priority order:
     1. Local workspace .skills/ (project-specific)
-    2. NEXUS_SKILLS_DIR env override
+    2. NOLTHIRA_SKILLS_DIR env override
     3. ~/.nolthira/skills/ (Nolthira global)
     4. ~/.agents/skills/ (shared agents convention — Linux/Mac/Windows)
     5. ~/.agents/nolthira/skills/ (Nolthira sub-namespace)
-    6. ~/.agents/nexus/skills/ (legacy shared-agent namespace)
+    6. ~/.agents/nolthira/skills/ (legacy shared-agent namespace)
     7. Codebase .skills/ (bundled)
     """
     agents_home = Path.home() / ".agents"
@@ -84,11 +84,11 @@ def _default_skill_search_paths() -> List[Path]:
 
     candidates: List[Optional[Path]] = [
         Path.cwd() / ".skills",
-        Path(os.getenv("NEXUS_SKILLS_DIR", "")) if os.getenv("NEXUS_SKILLS_DIR") else None,
+        Path(os.getenv("NOLTHIRA_SKILLS_DIR", "")) if os.getenv("NOLTHIRA_SKILLS_DIR") else None,
         nolthira_home / "skills",
         agents_home / "skills",
         agents_home / "nolthira" / "skills",
-        agents_home / "nexus" / "skills",  # legacy compatibility
+        agents_home / "nolthira" / "skills",  # legacy compatibility
         codebase_root / ".skills",  # bundled core skills (incl. vercel-labs/agent-skills)
     ]
 
