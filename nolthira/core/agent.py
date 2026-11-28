@@ -37,6 +37,8 @@ _NEXT_STARTER_MARKERS = (
 def _is_website_build_request(prompt: str) -> bool:
     """Identify direct website-creation requests, not ordinary questions about websites."""
     text = str(prompt or "")
+    if re.search(r"(?i)\\b(?:how\\s+(?:do|can|to)|cara\\s+(?:membuat|buat|bikin))\\b", text):
+        return False
     terms = list(_WEBSITE_TERMS_RE.finditer(text))
     actions = list(_WEBSITE_ACTION_RE.finditer(text))
     for term in terms:
