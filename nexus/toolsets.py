@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Set
 
 BUILTIN_TOOLSETS: Dict[str, str] = {
     "filesystem": "Workspace file inspection and editing",
-    "terminal": "Local, Docker, and SSH command execution",
+    "terminal": "Local, Docker, and SSH command execution with tracked background processes",
     "project": "Project structure and instruction-file inspection",
     "checkpoints": "Workspace snapshots and rollback",
     "memory": "Persistent memory and cross-session recall",
