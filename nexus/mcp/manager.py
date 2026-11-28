@@ -522,8 +522,40 @@ class MCPManager:
         self._registered_tools: List[Tool] = []
         self._load_configs()
 
+    def _migrate_legacy_global_configs(self) -> None:
+        """Move legacy ~/.config/nexus MCP config into ~/.config/nolthira safely."""
+        home = Path.home()
+        legacy_dir = home / ".config" / "nexus"
+        current_dir = home / ".config" / "nolthira"
+        for filename in ("mcp.json", "mcp_servers.json"):
+            legacy_path = legacy_dir / filename
+            current_path = current_dir / filename
+            if not legacy_path.is_file():
+                continue
+            try:
+                current_dir.mkdir(parents=True, exist_ok=True)
+                if not current_path.exists():
+                    legacy_path.replace(current_path)
+                    continue
+
+                legacy_data = json.loads(legacy_path.read_text(encoding="utf-8"))
+                current_data = json.loads(current_path.read_text(encoding="utf-8"))
+                legacy_servers = legacy_data.get("mcpServers", legacy_data.get("servers", {}))
+                current_key = "mcpServers" if "mcpServers" in current_data or "servers" not in current_data else "servers"
+                current_servers = current_data.setdefault(current_key, {})
+                if isinstance(legacy_servers, dict) and isinstance(current_servers, dict):
+                    for name, definition in legacy_servers.items():
+                        current_servers.setdefault(name, definition)
+                    temp_path = current_path.with_suffix(current_path.suffix + ".tmp")
+                    temp_path.write_text(json.dumps(current_data, indent=2) + "\\n", encoding="utf-8")
+                    temp_path.replace(current_path)
+                    legacy_path.unlink()
+            except (OSError, ValueError, TypeError) as exc:
+                logger.warning("Could not migrate legacy MCP config %s: %s", legacy_path, exc)
+
     def _get_config_files(self) -> List[Path]:
         home = Path.home()
+        self._migrate_legacy_global_configs()
         candidates = [
             self.workspace_dir / ".mcp.json",
             self.workspace_dir / "mcp.json",
