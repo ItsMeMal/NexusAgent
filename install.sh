@@ -34,7 +34,7 @@ case "${OS_NAME}" in
     *)          PLATFORM="Unknown" ;;
 esac
 
-printf "${GRAY}  Target OS: ${PLATFORM} · Home: ${HOME}/.nexus\n"
+printf "${GRAY}  Target OS: ${PLATFORM} · Home: ${HOME}/.nolthira\n"
 printf "  ────────────────────────────────────────────────────────────\n${NC}"
 echo ""
 
@@ -75,14 +75,49 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 printf "${GREEN}  [OK] Found Git\n${NC}"
 
-# 3. Setup ~/.nexus home directories
-NEXUS_HOME="${HOME}/.nexus"
-ENGINE_DIR="${NEXUS_HOME}/engine"
-BIN_DIR="${NEXUS_HOME}/bin"
-VENV_DIR="${NEXUS_HOME}/venv"
+# 3. Migrate legacy ~/.nolthira into canonical ~/.nolthira.
+LEGACY_HOME="${HOME}/.nexus"
+NOLTHIRA_HOME="${HOME}/.nolthira"
 
-printf "${CYAN}  [..] Initializing Nolthira Home at ${NEXUS_HOME}...\n${NC}"
-mkdir -p "${NEXUS_HOME}"
+merge_missing_home_entries() {
+    local source_dir="$1"
+    local destination_dir="$2"
+    local entry name target
+    mkdir -p "$destination_dir"
+    shopt -s dotglob nullglob
+    for entry in "$source_dir"/*; do
+        [[ -e "$entry" || -L "$entry" ]] || continue
+        name="${entry##*/}"
+        target="$destination_dir/$name"
+        if [[ -e "$target" || -L "$target" ]]; then
+            if [[ -d "$entry" && ! -L "$entry" && -d "$target" && ! -L "$target" ]]; then
+                case "$name" in engine|venv|.git) continue ;; esac
+                merge_missing_home_entries "$entry" "$target"
+            fi
+            continue
+        fi
+        mv -- "$entry" "$target"
+    done
+    rmdir "$source_dir" 2>/dev/null || true
+}
+
+if [[ -d "$LEGACY_HOME" && ! -L "$LEGACY_HOME" ]]; then
+    if [[ ! -e "$NOLTHIRA_HOME" && ! -L "$NOLTHIRA_HOME" ]]; then
+        mv -- "$LEGACY_HOME" "$NOLTHIRA_HOME"
+    else
+        printf "${CYAN}  [..] Merging legacy .nexus data into .nolthira without overwriting existing files...\n${NC}"
+        merge_missing_home_entries "$LEGACY_HOME" "$NOLTHIRA_HOME"
+        if [[ -d "$LEGACY_HOME" ]]; then
+            printf "${YELLOW}  [!] Conflicting legacy data remains in ${LEGACY_HOME}; it was kept as a backup.\n${NC}"
+        fi
+    fi
+fi
+
+ENGINE_DIR="${NOLTHIRA_HOME}/engine"
+BIN_DIR="${NOLTHIRA_HOME}/bin"
+VENV_DIR="${NOLTHIRA_HOME}/venv"
+printf "${CYAN}  [..] Initializing Nolthira Home at ${NOLTHIRA_HOME}...\n${NC}"
+mkdir -p "${NOLTHIRA_HOME}"
 mkdir -p "${BIN_DIR}"
 
 # 4. Clone or update repository
@@ -158,8 +193,8 @@ else
 fi
 printf "${GREEN}  [OK] Dependencies installed successfully.\n${NC}"
 
-# 7. Setup default ~/.nexus/.env if not present
-GLOBAL_ENV="${NEXUS_HOME}/.env"
+# 7. Setup default ~/.nolthira/.env if not present
+GLOBAL_ENV="${NOLTHIRA_HOME}/.env"
 EXAMPLE_ENV="${ENGINE_DIR}/.env.example"
 if [ ! -f "${GLOBAL_ENV}" ]; then
     if [ -f "${EXAMPLE_ENV}" ]; then
@@ -175,7 +210,7 @@ EOF
     printf "${GREEN}  [OK] Generated global config at ${GLOBAL_ENV}\n${NC}"
 fi
 
-# 8. Create launcher scripts in ~/.nexus/bin
+# 8. Create launcher scripts in ~/.nolthira/bin
 LAUNCHER="${BIN_DIR}/nolthira"
 cat <<EOF > "${LAUNCHER}"
 #!/usr/bin/env bash
@@ -224,7 +259,7 @@ PATH_EXPORT="export PATH=\"${BIN_DIR}:\$PATH\""
 ADDED_TO_PROFILE=0
 
 for cfg in "${SHELL_CONFIGS[@]}"; do
-    if ! grep -q ".nexus/bin" "$cfg" 2>/dev/null; then
+    if ! grep -q ".nolthira/bin" "$cfg" 2>/dev/null; then
         echo "" >> "$cfg"
         echo "# Nolthira Agent CLI" >> "$cfg"
         echo "$PATH_EXPORT" >> "$cfg"
@@ -233,7 +268,7 @@ for cfg in "${SHELL_CONFIGS[@]}"; do
 done
 
 if [ "$ADDED_TO_PROFILE" -eq 1 ]; then
-    printf "${GREEN}  [OK] Added ~/.nexus/bin to shell profile (PATH)\n${NC}"
+    printf "${GREEN}  [OK] Added ~/.nolthira/bin to shell profile (PATH)\n${NC}"
 fi
 
 echo ""
