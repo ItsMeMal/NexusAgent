@@ -189,7 +189,7 @@ for legacy_name in nexus nexuss; do
 done
 printf "${GREEN}  [OK] Created CLI launcher in ${BIN_DIR}\n${NC}"
 
-# 9. Link directly into system PATH locations so 'nexus' works INSTANTLY in any open shell
+# 9. Link directly into system PATH locations so 'nolthira' works INSTANTLY in any open shell
 LINKED_SYSTEM=0
 for sys_dir in /usr/local/bin /usr/bin; do
     if [ -d "$sys_dir" ]; then
@@ -201,10 +201,11 @@ for sys_dir in /usr/local/bin /usr/bin; do
             printf "${GREEN}  [OK] Linked 'nolthira' to ${sys_dir} (legacy aliases retained)\n${NC}"
             break
         elif command -v sudo >/dev/null 2>&1; then
-            if sudo -n ln -sf "${LAUNCHER}" "${sys_dir}/nexus" 2>/dev/null; then
+            if sudo -n ln -sf "${LAUNCHER}" "${sys_dir}/nolthira" 2>/dev/null; then
+                sudo ln -sf "${LAUNCHER}" "${sys_dir}/nexus" 2>/dev/null || true
                 sudo ln -sf "${LAUNCHER}" "${sys_dir}/nexuss" 2>/dev/null || true
                 LINKED_SYSTEM=1
-                printf "${GREEN}  [OK] Linked 'nexus' to ${sys_dir} via sudo (Command immediately available)\n${NC}"
+                printf "${GREEN}  [OK] Linked 'nolthira' to ${sys_dir} via sudo (legacy aliases retained)\n${NC}"
                 break
             fi
         fi
