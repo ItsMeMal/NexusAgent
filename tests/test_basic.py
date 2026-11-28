@@ -3,19 +3,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import asyncio
-from nexus.config import config
-from nexus.memory import SQLiteMemory
-from nexus.skills import SkillManager
-from nexus.cron import CronScheduler
-from nexus.orchestrator import SubagentManager
-from nexus.tools import create_default_registry
-from nexus.core import LLMClient, NexusAgent
+from nolthira.config import config
+from nolthira.memory import SQLiteMemory
+from nolthira.skills import SkillManager
+from nolthira.cron import CronScheduler
+from nolthira.orchestrator import SubagentManager
+from nolthira.tools import create_default_registry
+from nolthira.core import LLMClient, NolthiraAgent
 
 async def run_tests():
     print("1. Testing SQLiteMemory & FTS5...")
     test_db = Path("test_verify.db")
     memory = SQLiteMemory(test_db)
-    memory.store_memory("project_type", "Full Nexus Autonomous Orchestrator", category="metadata")
+    memory.store_memory("project_type", "Full Nolthira Autonomous Orchestrator", category="metadata")
     results = memory.recall_memories("Orchestrator")
     assert len(results) > 0, "Memory recall failed"
     print("   [OK] Stored and recalled memory:", results[0]["content"])
@@ -69,15 +69,15 @@ async def run_tests():
     assert "delegate_task" not in scoped_names  # Subagents don't get recursive subagents by default
 
     print("6. Testing System Prompt with SOUL Orchestrator...")
-    agent = NexusAgent(llm_client=llm, memory=memory, skill_manager=skill_mgr, registry=registry)
+    agent = NolthiraAgent(llm_client=llm, memory=memory, skill_manager=skill_mgr, registry=registry)
     prompt = agent.build_system_prompt()
     assert "Orchestrator" in prompt
     print("   [OK] Orchestrator System prompt assembled successfully.")
 
     print("7. Testing Messaging Gateways (Telegram, Discord, WhatsApp) & Plugins...")
-    from nexus.plugins import PluginManager
-    from nexus.gateways import GatewayManager, GatewayMessage, chunk_text
-    from nexus.gateways.discord import _AsyncWebSocket
+    from nolthira.plugins import PluginManager
+    from nolthira.gateways import GatewayManager, GatewayMessage, chunk_text
+    from nolthira.gateways.discord import _AsyncWebSocket
 
     pm = PluginManager(workspace_dir=config.WORKSPACE_DIR, codebase_dir=config.CODEBASE_DIR)
     plugin_names = [p.name for p in pm.list_plugins()]
@@ -130,13 +130,13 @@ async def run_tests():
         "update_id": 1,
         "message": {"message_id": 10, "chat": {"id": 6966600514, "type": "private"}, "from": {"id": 6966600514, "username": "mallss"}, "text": "/start"}
     })
-    assert len(sent_payloads) == 1 and "Nexus Agent" in sent_payloads[0][1], f"Telegram reply missing: {sent_payloads}"
+    assert len(sent_payloads) == 1 and "Nolthira Agent" in sent_payloads[0][1], f"Telegram reply missing: {sent_payloads}"
 
     print("   [OK] Gateway adapters, allow-list security, WhatsApp parser, Telegram update flow, and WS frame builder verified.")
 
     print("8. Testing MCP Stdio JSON-RPC Transport...")
     import sys, json, tempfile
-    from nexus.mcp import MCPManager
+    from nolthira.mcp import MCPManager
     mock_mcp_script = (
         "import sys, json\n"
         "for line in sys.stdin:\n"
@@ -177,7 +177,7 @@ async def run_tests():
         mcp_mgr.register_mcp_tools(registry)
         mcp_tool = registry.get("mcp_mock_ping")
         assert mcp_tool is not None, "MCP tool not registered"
-        call_res = await mcp_tool.execute(msg="nexus")
+        call_res = await mcp_tool.execute(msg="nolthira")
         assert call_res == "pong:nexus", f"Unexpected MCP tool output: {call_res}"
         statuses = mcp_mgr.get_status()
         assert statuses and statuses[0]["status"] == "running" and statuses[0]["tools"] == 1
@@ -185,7 +185,7 @@ async def run_tests():
     print("   [OK] MCP stdio handshake, tools/list, tools/call, and cleanup verified.")
 
     print("9. Testing Remote HTTP MCP Transport + Config Add/Remove...")
-    from nexus.mcp import MCPServerConfig
+    from nolthira.mcp import MCPServerConfig
 
     async def handle_remote_mcp(reader, writer):
         req_line = await reader.readline()
@@ -240,11 +240,11 @@ async def run_tests():
         with tempfile.TemporaryDirectory() as tmpdir2:
             tmp_p2 = Path(tmpdir2)
             rmgr = MCPManager(workspace_dir=tmp_p2, codebase_dir=tmp_p2)
-            os.environ["NEXUS_TEST_MCP_TOKEN"] = "test-pat-xyz"
+            os.environ["NOLTHIRA_TEST_MCP_TOKEN"] = "test-pat-xyz"
             rcfg = MCPServerConfig(
                 name="ghremote",
                 url=f"http://127.0.0.1:{port}/mcp/",
-                headers={"Authorization": "Bearer ${NEXUS_TEST_MCP_TOKEN}"},
+                headers={"Authorization": "Bearer ${NOLTHIRA_TEST_MCP_TOKEN}"},
                 transport="http",
             )
             saved_file = rmgr.add_server_to_config(rcfg, scope="workspace")
@@ -254,8 +254,8 @@ async def run_tests():
             rmgr.register_mcp_tools(registry)
             rtool = registry.get("mcp_ghremote_repo_info")
             assert rtool is not None
-            rout = await rtool.execute(repo="ItsMeMal/NexusAgent")
-            assert rout == "stars:999:ItsMeMal/NexusAgent", f"Unexpected remote output: {rout}"
+            rout = await rtool.execute(repo="ItsMeMal/NolthiraAgent")
+            assert rout == "stars:999:ItsMeMal/NolthiraAgent", f"Unexpected remote output: {rout}"
             rstatus = rmgr.get_status()
             assert rstatus[0]["transport"] == "http" and rstatus[0]["status"] == "running"
             removed = await rmgr.remove_server("ghremote", registry)
@@ -264,12 +264,12 @@ async def run_tests():
     finally:
         server.close()
         await server.wait_closed()
-        os.environ.pop("NEXUS_TEST_MCP_TOKEN", None)
+        os.environ.pop("NOLTHIRA_TEST_MCP_TOKEN", None)
     print("   [OK] Remote HTTP MCP transport, env header expansion, session tracking, and add/remove verified.")
 
     print("10. Testing Agent & Gateway Interrupt / /stop Cancellation...")
-    from nexus.gateways.base import GatewayMessage
-    from nexus.tools.base import Tool
+    from nolthira.gateways.base import GatewayMessage
+    from nolthira.tools.base import Tool
 
     slow_started = asyncio.Event()
     async def slow_handler(**kwargs):
@@ -310,8 +310,8 @@ async def run_tests():
     print("   [OK] Gateway /stop cancellation and dangling tool_call memory cleanup verified.")
 
     print("11. Testing Real AI-Team Orchestrator (Board + Tools + Dashboard API)...")
-    from nexus.team import TeamManager, dashboard_state
-    from nexus.team.server import api_state, api_read_file
+    from nolthira.team import TeamManager, dashboard_state
+    from nolthira.team.server import api_state, api_read_file
     from fastapi import HTTPException
 
     class TeamMockLLM:
@@ -431,7 +431,7 @@ async def run_tests():
     print("12. Testing /models Health Check (aktif / mati / belum dicek + next-day recovery)...")
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
-    from nexus.providers import ProviderManager, PROVIDERS
+    from nolthira.providers import ProviderManager, PROVIDERS
 
     probe_state = {"probe_down_recovered": False, "probed": []}
 
@@ -536,29 +536,29 @@ async def run_tests():
 
     print("   [OK] Model health classification (aktif/unchecked/down) + next-day recovery verified.")
 
-    print("13. Testing Nexus Mascot Thinking/Loading Animation...")
+    print("13. Testing Nolthira Mascot Thinking/Loading Animation...")
     import io
     from rich.console import Console
-    from nexus.ui import AgentUIController, build_nexus_mascot_renderable
+    from nolthira.ui import AgentUIController, build_nolthira_mascot_renderable
 
     buf_console = Console(file=io.StringIO(), width=96, legacy_windows=False)
     ui_ctrl = AgentUIController(model_name="nexus/test-model", console_instance=buf_console)
     for f_idx, msg in [(0, "Thinking & coordinating..."), (2, "Executing write_file..."), (5, "Synthesizing next step...")]:
-        rend = build_nexus_mascot_renderable(f_idx, 1.2, msg, "nexus/test-model", 96)
+        rend = build_nolthira_mascot_renderable(f_idx, 1.2, msg, "nexus/test-model", 96)
         buf_console.print(rend)
     rendered = buf_console.file.getvalue()
     assert "NEXUS PIKO" in rendered and "THINKING" in rendered and "EXECUTING" in rendered and "SYNTHESIZING" in rendered
-    compact_rend = build_nexus_mascot_renderable(0, 0.5, "Thinking...", "m", width=48)
+    compact_rend = build_nolthira_mascot_renderable(0, 0.5, "Thinking...", "m", width=48)
     buf_console.print(compact_rend)
     assert "Thinking" in buf_console.file.getvalue()
     ui_ctrl.start_thinking("Thinking...")
     await asyncio.sleep(0.15)
     ui_ctrl.stop_status()
-    print("   [OK] Animated Nexus Mascot thinking/tool/compact lifecycle verified.")
+    print("   [OK] Animated Nolthira Mascot thinking/tool/compact lifecycle verified.")
 
     print("14. Testing Agent Modes (auto/plan/code/ask/turbo) & Upgraded Prompt HUD...")
-    from nexus.core import AGENT_MODES, MODE_ORDER, cycle_mode, get_mode
-    from nexus.cli import build_prompt_fragments, build_bottom_toolbar
+    from nolthira.core import AGENT_MODES, MODE_ORDER, cycle_mode, get_mode
+    from nolthira.cli import build_prompt_fragments, build_bottom_toolbar
 
     cur = "auto"
     visited = [cur]
@@ -592,7 +592,7 @@ async def run_tests():
 
     with tempfile.TemporaryDirectory() as mtmp:
         mode_llm = ModeMockLLM()
-        mode_agent = NexusAgent(
+        mode_agent = NolthiraAgent(
             llm_client=mode_llm,
             memory=memory,
             skill_manager=skill_mgr,
@@ -612,7 +612,7 @@ async def run_tests():
         # Verify CODE mode caps temperature cleanly during run and restores afterwards
         mode_agent.set_mode("code")
         assert mode_llm.temperature == 0.7
-        frags = build_prompt_fragments("deepai-cyber", "code", "NexusAgentCLIV2", "main")
+        frags = build_prompt_fragments("deepai-cyber", "code", "NolthiraAgentCLIV2", "main")
         bar = build_bottom_toolbar("code", "Custom", "abcd1234")
         frag_txt = "".join(t for _, t in frags)
         bar_txt = "".join(t for _, t in bar)
@@ -621,8 +621,8 @@ async def run_tests():
     print("   [OK] Agent modes, PLAN read-only guard, and prompt HUD verified.")
 
     print("15. Testing LLM Auto-Retry (502), Content Sanitization (400), & Empty-Output Synthesis...")
-    import nexus.core.llm as llm_mod
-    from nexus.core.llm import sanitize_messages
+    import nolthira.core.llm as llm_mod
+    from nolthira.core.llm import sanitize_messages
 
     san = sanitize_messages([
         {"role": "assistant", "content": None, "tool_calls": [{"id": "1", "type": "function", "function": {"name": "list_dir", "arguments": "{}"}}]},
@@ -695,7 +695,7 @@ async def run_tests():
                 return {"role": "assistant", "content": ""}  # simulates model returning empty text
             return {"role": "assistant", "content": "Synthesized non-blank response."}
 
-    heal_agent = NexusAgent(llm_client=BlankThenSynthLLM(), memory=memory, skill_manager=skill_mgr, registry=registry, session_id="heal-sess")
+    heal_agent = NolthiraAgent(llm_client=BlankThenSynthLLM(), memory=memory, skill_manager=skill_mgr, registry=registry, session_id="heal-sess")
     heal_out = await heal_agent.run("build it")
     assert "Synthesized non-blank response" in heal_out
     print("   [OK] Auto-retry (502), content sanitization (400), history healing, & blank-output synthesis verified.")
@@ -735,7 +735,7 @@ async def run_tests():
         try:
             s_llm = LLMClient(api_key="k", api_base=f"http://127.0.0.1:{s_port}/v1", model="stream-coder")
             tokens = []
-            s_agent = NexusAgent(
+            s_agent = NolthiraAgent(
                 llm_client=s_llm,
                 memory=memory,
                 skill_manager=skill_mgr,
@@ -817,15 +817,15 @@ async def run_tests():
                     }
                 return {"role": "assistant", "content": "Wrote app.txt cleanly in chunks."}
 
-        ag18 = NexusAgent(llm_client=TruncRecoverMockLLM(), memory=memory, skill_manager=skill_mgr, registry=reg18, session_id="trunc-rec-18")
+        ag18 = NolthiraAgent(llm_client=TruncRecoverMockLLM(), memory=memory, skill_manager=skill_mgr, registry=reg18, session_id="trunc-rec-18")
         out18 = await ag18.run("Create app.txt")
         assert "Wrote app.txt cleanly" in out18
         assert (root18 / "app.txt").read_text(encoding="utf-8") == "line1\nline2\nline3"
     print("   [OK] Compact skills, bilingual skill match, append_file, & truncation recovery verified.")
 
     print("19. Testing Session Auto-Naming, Resumed Chat Rendering, & Cross-Session FTS5 Search...")
-    from nexus.ui import render_resumed_history
-    from nexus.ui import tui as tui_mod
+    from nolthira.ui import render_resumed_history
+    from nolthira.ui import tui as tui_mod
 
     memory.create_session("empty_orphan", title="Session empty_orphan")
     memory.create_session("auto_named_1", title="Session auto_named_1")
@@ -862,7 +862,7 @@ async def run_tests():
 
     print("20. Testing Real Cron Runner Execution & Auto Context Compaction...")
     import time as _time
-    from nexus.cron.scheduler import compute_next_run
+    from nolthira.cron.scheduler import compute_next_run
 
     nxt_cron, once_cron = compute_next_run("*/5 * * * *", from_ts=1700000000.0)
     assert nxt_cron is not None and nxt_cron > 1700000000.0 and not once_cron
@@ -897,7 +897,7 @@ async def run_tests():
             assert any("Compacted Earlier Session Context" in str(m.get("content", "")) for m in messages), "Compacted summary missing!"
             return {"role": "assistant", "content": "Continuing from compacted context cleanly."}
 
-    c_agent = NexusAgent(llm_client=CompactMockLLM(), memory=memory, skill_manager=skill_mgr, registry=registry, session_id="long-sess")
+    c_agent = NolthiraAgent(llm_client=CompactMockLLM(), memory=memory, skill_manager=skill_mgr, registry=registry, session_id="long-sess")
     c_out = await c_agent.run("Now summarize next step")
     assert "Continuing from compacted" in c_out
     assert seen_prompt_counts[0] < 20, f"History not compacted: {seen_prompt_counts}"
@@ -905,14 +905,14 @@ async def run_tests():
     print("   [OK] Real Cron Runner execution & Auto Context Compaction verified.")
 
     print("21. Testing True-Color Pixel Sprite Mascot, Kitty/iTerm2/Sixel Encoders, & Win Proactor Fix...")
-    from nexus.ui.mascot import (
+    from nolthira.ui.mascot import (
         detect_graphics_protocol,
         encode_iterm2_image,
         encode_kitty_image,
         encode_sixel_image,
         render_mascot_png_bytes,
     )
-    from nexus.cli import _install_win_proactor_pipe_fix
+    from nolthira.cli import _install_win_proactor_pipe_fix
 
     assert detect_graphics_protocol("pixel") == "pixel"
     assert detect_graphics_protocol("kitty") == "kitty"
@@ -926,8 +926,8 @@ async def run_tests():
     print("   [OK] Pixel sprite, Kitty/iTerm2/Sixel encoders, & Proactor shutdown guard verified.")
 
     print("22. Testing Browser Tool, Docker/SSH Sandbox, Slack/Email Gateways, Voice/Media & Setup...")
-    from nexus.tools.terminal import build_sandboxed_command
-    from nexus.gateways import SlackGateway, EmailGateway
+    from nolthira.tools.terminal import build_sandboxed_command
+    from nolthira.gateways import SlackGateway, EmailGateway
 
     assert registry.get("browser") is not None
     assert registry.get("image_generate") is not None
@@ -953,8 +953,8 @@ async def run_tests():
 
     print("23. Testing Smart Install Timeout, Process-Tree Kill, Truncation Path Hint, & Stream Marker Guard...")
     import contextlib
-    from nexus.tools.terminal import compute_effective_timeout
-    from nexus.core.agent import _extract_partial_tool_hint, _strip_calling_tools_marker
+    from nolthira.tools.terminal import compute_effective_timeout
+    from nolthira.core.agent import _extract_partial_tool_hint, _strip_calling_tools_marker
 
     assert compute_effective_timeout("npm install prisma @prisma/client", 120) == 300
     assert compute_effective_timeout("npm install prisma", 450) == 450
