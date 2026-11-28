@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nexus.core.agent import NexusAgent, _redact_learning_text
-from nexus.memory import SQLiteMemory
-from nexus.skills import SkillManager
-from nexus.tools.base import Tool, ToolRegistry
+from nolthira.core.agent import NolthiraAgent, _redact_learning_text
+from nolthira.memory import SQLiteMemory
+from nolthira.skills import SkillManager
+from nolthira.tools.base import Tool, ToolRegistry
 
 
 class FakeLLM:
@@ -155,7 +155,7 @@ class LearningGovernanceTests(unittest.TestCase):
         self.assertEqual([item["key"] for item in hits], ["pending_prisma"])
 
     def test_learning_observation_tools_require_verification_and_allow_review(self):
-        from nexus.tools.memory_tools import get_memory_tools
+        from nolthira.tools.memory_tools import get_memory_tools
 
         tools = {tool.name: tool for tool in get_memory_tools(self.memory)}
         self.assertNotIn("review_memory_proposal", tools)
@@ -215,7 +215,7 @@ class AgentLearningCaptureTests(unittest.IsolatedAsyncioTestCase):
                 },
                 {"content": "The failure was recorded for review.", "tool_calls": None},
             ])
-            agent = NexusAgent(
+            agent = NolthiraAgent(
                 llm_client=llm,
                 memory=memory,
                 skill_manager=skills,
@@ -248,7 +248,7 @@ class AgentLearningCaptureTests(unittest.IsolatedAsyncioTestCase):
             llm = FakeLLM([
                 {"content": "I will write the complete schema and validate it.", "tool_calls": None},
             ])
-            agent = NexusAgent(
+            agent = NolthiraAgent(
                 llm_client=llm,
                 memory=memory,
                 skill_manager=skills,
@@ -268,7 +268,7 @@ class AgentLearningCaptureTests(unittest.IsolatedAsyncioTestCase):
             root = Path(tmp)
             memory = SQLiteMemory(root / "memory.db")
             skills = SkillManager(root / ".skills", extra_dirs=[])
-            agent = NexusAgent(
+            agent = NolthiraAgent(
                 llm_client=FakeLLM([
                     {"content": "Acknowledged. I will correct the answer.", "tool_calls": None},
                 ]),
