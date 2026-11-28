@@ -1,5 +1,5 @@
 """
-nexus/gateways/slack.py
+nolthira/gateways/slack.py
 Slack Web API Gateway adapter (zero external SDK required).
 Polls configured channel IDs via conversations.history and posts replies via chat.postMessage.
 """
@@ -103,7 +103,7 @@ class SlackGateway(BaseGateway):
                     self.log("ERROR", self.last_error)
                     return
                 bot_user_id = str(auth_data["user_id"])
-                self.identity = f"@{auth_data.get('user', 'nexus')}"
+                self.identity = f"@{auth_data.get('user', 'nolthira')}"
 
                 while self.running:
                     target_channels = self.channels
