@@ -11,7 +11,7 @@ import httpx
 from .config import config
 
 REPO_API_URL = "https://api.github.com/repos/ItsMeMal/NolthiraAgent/commits/main"
-CACHE_FILE = config.NEXUS_HOME / ".update_cache.json"
+CACHE_FILE = config.NOLTHIRA_HOME / ".update_cache.json"
 
 def get_local_commit(engine_dir: Optional[Path] = None) -> Optional[str]:
     """Retrieve current local Git commit SHA."""
@@ -89,7 +89,7 @@ async def check_for_update(force: bool = False) -> Optional[Dict[str, Any]]:
 
 async def perform_update(console: Any) -> bool:
     """Execute live engine update via git pull, dependency refresh, and workspace pruning."""
-    engine_dir = config.NEXUS_HOME / "engine"
+    engine_dir = config.NOLTHIRA_HOME / "engine"
     if not (engine_dir / ".git").exists():
         engine_dir = config.CODEBASE_DIR
 
@@ -113,8 +113,8 @@ async def perform_update(console: Any) -> bool:
         console.print(f"  [bold red]Error pulling updates:[/bold red] {str(e)}")
         return False
 
-    # Step 2: Prune non-engine assets so ~/.nexus/engine stays clean (only in installed engine, not git repo)
-    if engine_dir == config.NEXUS_HOME / "engine":
+    # Step 2: Prune non-engine assets so ~/.nolthira/engine stays clean (only in installed engine, not git repo)
+    if engine_dir == config.NOLTHIRA_HOME / "engine":
         prune_targets = ["website", "tests", "install.sh", "install.ps1", "wrangler.toml"]
         for t in prune_targets:
             p = engine_dir / t
@@ -132,9 +132,9 @@ async def perform_update(console: Any) -> bool:
     req_file = engine_dir / "requirements.txt"
     if req_file.exists():
         venv_python = (
-            config.NEXUS_HOME / "venv" / "Scripts" / "python.exe"
+            config.NOLTHIRA_HOME / "venv" / "Scripts" / "python.exe"
             if sys.platform == "win32"
-            else config.NEXUS_HOME / "venv" / "bin" / "python"
+            else config.NOLTHIRA_HOME / "venv" / "bin" / "python"
         )
         py_exec = str(venv_python) if venv_python.exists() else sys.executable
         try:
@@ -151,5 +151,5 @@ async def perform_update(console: Any) -> bool:
 
     new_sha = get_local_commit(engine_dir) or "latest"
     console.print(f"\n  [bold #22c55e]✨ Nolthira Agent has been successfully updated to [{new_sha[:7]}]![/bold #22c55e]")
-    console.print("  [dim]Please restart your Nexus session to load the updated engine.[/dim]\n")
+    console.print("  [dim]Please restart your Nolthira session to load the updated engine.[/dim]\n")
     return True
