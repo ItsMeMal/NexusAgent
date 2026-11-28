@@ -24,7 +24,7 @@ class PluginManager:
         self.plugin_dirs = [
             workspace_dir / "plugins",
             workspace_dir / ".plugins",
-            config.NEXUS_HOME / "plugins",
+            config.NOLTHIRA_HOME / "plugins",
             codebase_dir / "plugins"
         ]
         self.plugins: Dict[str, PluginInfo] = {}
