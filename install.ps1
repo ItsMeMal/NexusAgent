@@ -1,6 +1,6 @@
 ﻿# ==============================================================================
 #  ⚡ Nolthira Agent Orchestrator - One-Line Windows Installer
-#  Usage: irm https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.ps1 | iex
+#  Usage: irm https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.ps1 | iex
 # ==============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -67,15 +67,23 @@ New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 if (Test-Path (Join-Path $engineDir ".git")) {
     Write-Host "  [..] Updating existing Nolthira engine..." -ForegroundColor Cyan
     Push-Location $engineDir
+    git remote set-url origin https://github.com/ItsMeMal/NolthiraAgent.git
+    if ($LASTEXITCODE -ne 0) {
+        git remote add origin https://github.com/ItsMeMal/NolthiraAgent.git
+    }
     git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt 2>$null
-    git pull origin main --quiet
+    if ($LASTEXITCODE -ne 0) { throw "Failed to configure sparse checkout." }
+    git fetch origin main --quiet
+    if ($LASTEXITCODE -ne 0) { throw "Failed to fetch NolthiraAgent from GitHub." }
+    git pull --ff-only origin main --quiet
+    if ($LASTEXITCODE -ne 0) { throw "Failed to fast-forward the existing Nolthira engine." }
     Pop-Location
 } else {
     Write-Host "  [..] Downloading Nolthira Agent Engine from GitHub..." -ForegroundColor Cyan
     if (Test-Path $engineDir) {
         Remove-Item -Recurse -Force $engineDir
     }
-    git clone https://github.com/ItsMeMal/NexusAgent.git $engineDir --quiet
+    git clone https://github.com/ItsMeMal/NolthiraAgent.git $engineDir --quiet
     Push-Location $engineDir
     git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt 2>$null
     Pop-Location
