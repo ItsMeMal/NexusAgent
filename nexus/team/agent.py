@@ -212,6 +212,7 @@ class TeamAgent:
         board: Optional[TeamBoard] = None,
         parent_registry=None,
         allow_task_creation: bool = False,
+        include_persistent_memory: bool = True,
     ) -> None:
         self.role = role
         self.llm = llm_client
@@ -221,6 +222,7 @@ class TeamAgent:
         self.board = board
         self.parent_registry = parent_registry
         self.allow_task_creation = allow_task_creation
+        self.include_persistent_memory = bool(include_persistent_memory)
         self.agent_id = f"{role.id}-{uuid.uuid4().hex[:6]}"
         self.total_runs: int = 0
         self.last_result: Optional[str] = None
@@ -302,7 +304,10 @@ class TeamAgent:
             board=board,
             agent_id=role_id,
             root_dir=self.root_dir,
-            toolsets=toolsets_override if toolsets_override is not None else self.role.toolsets,
+            toolsets=[
+                name for name in (toolsets_override if toolsets_override is not None else self.role.toolsets)
+                if self.include_persistent_memory or name != "memory"
+            ],
             memory=self.memory,
             skill_manager=self.skill_manager,
             parent_registry=self.parent_registry,
@@ -321,6 +326,8 @@ class TeamAgent:
             session_id=session_id,
             on_tool_call=on_tool_call,
             on_tool_result=on_tool_result,
+            include_persistent_memory=self.include_persistent_memory,
+            enable_learning_capture=self.include_persistent_memory,
         )
 
         # Scope the agent's system prompt cleanly around its role & team context

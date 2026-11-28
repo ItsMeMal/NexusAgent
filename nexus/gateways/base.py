@@ -399,6 +399,7 @@ class BaseGateway(ABC):
                 skill_manager=self.skill_manager,
                 root_dir=config.ROOT_DIR,
                 parent_registry=self.registry,
+                include_persistent_memory=False,
             )
             return "\n\n".join(replies) if replies else TEAM_HELP
 
@@ -413,6 +414,8 @@ class BaseGateway(ABC):
                 soul_path=self.soul_path,
                 max_steps=self.max_steps,
                 session_id=session_id,
+                include_persistent_memory=False,
+                enable_learning_capture=False,
             )
             self.log("INFO", f"Handling message from {msg.username or msg.user_id} in chat {msg.chat_id}")
             task = asyncio.create_task(agent.run(text))

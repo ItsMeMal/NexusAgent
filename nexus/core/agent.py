@@ -92,6 +92,8 @@ class NexusAgent:
         on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_tool_result: Optional[Callable[[str, str, float], None]] = None,
         on_retry: Optional[Callable[[int, int, str], None]] = None,
+        include_persistent_memory: bool = True,
+        enable_learning_capture: bool = True,
     ):
         self.llm = llm_client
         self.memory = memory
@@ -100,6 +102,8 @@ class NexusAgent:
         self.soul_path = soul_path
         self.max_steps = max_steps
         self.session_id = session_id or str(uuid.uuid4())[:8]
+        self.include_persistent_memory = bool(include_persistent_memory)
+        self.enable_learning_capture = bool(enable_learning_capture)
         self.mode: str = get_mode(mode or getattr(config, "AGENT_MODE", "auto")).id
         
         # UI Callbacks
@@ -131,10 +135,12 @@ class NexusAgent:
             skills_summary = self.skill_manager.get_skills_summary()
         
         # Recent persistent memories
-        recent_memories = [
-            item for item in self.memory.get_all_memories(limit=20)
-            if str(item.get("category", "")).lower() != "learning"
-        ][:8]
+        recent_memories = []
+        if self.include_persistent_memory:
+            recent_memories = [
+                item for item in self.memory.get_all_memories(limit=20)
+                if str(item.get("category", "")).lower() != "learning"
+            ][:8]
         memories_text = ""
         if recent_memories:
             memories_text = "### Known Persistent Memories / User Facts:\n" + "\n".join(
@@ -349,7 +355,7 @@ class NexusAgent:
             history = await self._compact_history(history)
         
         # 2. Capture explicit user corrections as reviewable observations, never active memory.
-        if hasattr(self.memory, "record_learning_observation") and _looks_like_user_correction(user_prompt):
+        if self.enable_learning_capture and hasattr(self.memory, "record_learning_observation") and _looks_like_user_correction(user_prompt):
             previous_assistant = next(
                 (str(item.get("content") or "") for item in reversed(history) if item.get("role") == "assistant"),
                 "",
@@ -374,7 +380,7 @@ class NexusAgent:
         system_prompt = self.build_system_prompt()
 
         # Inject only approved lessons that match this task; pending proposals never enter the prompt.
-        if hasattr(self.memory, "recall_relevant_learnings"):
+        if self.include_persistent_memory and hasattr(self.memory, "recall_relevant_learnings"):
             try:
                 relevant_learnings = self.memory.recall_relevant_learnings(user_prompt, limit=4)
             except Exception:
@@ -572,7 +578,8 @@ class NexusAgent:
                     # Keep diagnostic observations separate from durable memory. A lesson needs
                     # a concrete resolution and verification before it can become a proposal.
                     if (
-                        hasattr(self.memory, "record_learning_observation")
+                        self.enable_learning_capture
+                        and hasattr(self.memory, "record_learning_observation")
                         and _looks_like_tool_failure(safe_result)
                     ):
                         try:
