@@ -118,11 +118,11 @@ class NexusRouteOAuth:
                 if parsed.path != "/oauth/callback":
                     body, status = b"Invalid OAuth callback. Close this tab.", "404 Not Found"
                 elif result["state"] != state:
-                    body, status = b"OAuth state validation failed. Return to NexusAgent.", "400 Bad Request"
+                    body, status = b"OAuth state validation failed. Return to Nolthira Agent.", "400 Bad Request"
                     if not callback_result.done():
                         callback_result.set_exception(RuntimeError("OAuth state validation failed."))
                 elif result["error"]:
-                    body, status = b"Authorization was not completed. Return to NexusAgent.", "400 Bad Request"
+                    body, status = b"Authorization was not completed. Return to Nolthira Agent.", "400 Bad Request"
                     if not callback_result.done():
                         callback_result.set_exception(RuntimeError("Authorization was denied or cancelled: " + result["error"]))
                 elif result["code"]:
