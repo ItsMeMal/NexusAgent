@@ -183,17 +183,26 @@ async def main_async():
         temperature=config.TEMPERATURE
     )
 
+    # Restore first-party Mallss Nexus Route OAuth automatically when it is the active endpoint.
+    active_provider = ProviderManager.detect_active_provider(config.API_BASE)
+    if active_provider.id == "mallss_nexus_route":
+        from .providers.nexus_route_oauth import NexusRouteOAuth
+        llm.token_provider = NexusRouteOAuth().get_access_token
+        llm.api_key = ""
+
+    # Context size is displayed only when the provider reports exact metadata for this model.
+    llm.context_window = await ProviderManager.get_model_context_window(
+        model_id=llm.model,
+        api_base=llm.api_base,
+        api_key=llm.api_key,
+        token_provider=llm.token_provider,
+    )
+
     active_mode = get_mode(args.mode or config.AGENT_MODE).id
 
     # Dedicated UI controller for collision-free live streaming & spinners
     ui_controller = AgentUIController(model_name=llm.model, console_instance=console, mode_id=active_mode)
     llm.on_usage = ui_controller.on_usage
-
-    # Restore first-party Mallss Nexus Route OAuth automatically when it is the active endpoint.
-    if ProviderManager.detect_active_provider(config.API_BASE).id == "mallss_nexus_route":
-        from .providers.nexus_route_oauth import NexusRouteOAuth
-        llm.token_provider = NexusRouteOAuth().get_access_token
-        llm.api_key = ""
 
     # Subagent orchestrator manager
     subagent_manager = SubagentManager(
