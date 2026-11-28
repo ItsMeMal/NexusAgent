@@ -112,7 +112,11 @@ Type `/` in the prompt for real-time autocomplete:
 * `/plugins` — View loaded modular plugins from `plugins/`
 * `/security` — View security guardrails, command sandbox, and safety policy
 * `/skills` — View learned procedures and dynamic skills
-* `/memory` — Inspect persistent facts stored in SQLite FTS5
+* `/memory` — Inspect approved persistent facts and evidence-backed learning
+* `/memory proposals` — Review pending memory/learning proposals
+* `/memory observations` — Inspect captured tool failures and explicit corrections
+* `/memory review <id> approve|reject` — Explicitly approve or reject a proposal
+* `/memory dismiss <id> [reason]` — Dismiss an observation without promoting it
 * `/cron` — View scheduled background jobs and automations
 * `/sessions` — List past conversation sessions stored in SQLite
 * `/new` — Start a fresh, clean context session
@@ -148,3 +152,15 @@ Platform profiles are independently selectable for Telegram, Discord, WhatsApp, 
 The subagent runtime supports role-scoped permissions, bounded execution time, step limits, and a global concurrency cap. Default limits are 3 concurrent workers, 600 seconds per worker, and 20 reasoning steps. These are configurable under the `limits` object in `toolsets.json`.
 
 Use `delegate_task` for a single focused worker. Use `delegate_tasks` for 2–8 independent workstreams that can safely run concurrently. Do not delegate overlapping file edits or tasks that depend on one another in the same batch. Explicitly requested toolsets can narrow a role's access, but cannot widen it.
+
+### Evidence-Based Self-Improving Learning Loop
+
+Nexus separates raw observations from durable memory:
+
+1. Clear user corrections and tool failures are captured as bounded, deduplicated observations. Common credential patterns are redacted before observations are stored.
+2. Observations remain diagnostic records. They do not enter long-term memory or change future behavior.
+3. Nexus may promote an observation only after identifying a reusable root cause and supplying a concrete verification result. This creates a pending learning proposal.
+4. The operator reviews proposals with `/memory proposals`, then explicitly approves or rejects one with `/memory review <id> approve|reject`. The model cannot approve its own proposals.
+5. Only approved learning entries are retrieved by relevance and injected into later task contexts. They remain guidance to verify, not instructions that override the current user or security policy.
+
+Use `/memory observations` to inspect captured failures/corrections and `/memory dismiss <id> [reason]` to discard transient noise. Pending proposals and dismissed observations never influence future task prompts.
