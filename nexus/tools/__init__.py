@@ -14,9 +14,11 @@ from .media import get_media_tools
 from .computer import get_computer_tools
 from .project import get_project_tools
 from .checkpoint_tools import get_checkpoint_tools
+from .todo import get_todo_tools
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
 from ..cron import CronScheduler
+from ..config import config
 
 
 def _register_group(registry: ToolRegistry, toolset: str, tools) -> None:
@@ -54,6 +56,13 @@ def create_default_registry(
             registry,
             "orchestration",
             get_orchestration_tools(subagent_manager, session_id_getter),
+        )
+
+    if session_id_getter:
+        _register_group(
+            registry,
+            "orchestration",
+            get_todo_tools(session_id_getter, config.NEXUS_HOME / "todos"),
         )
 
     if llm_client:
