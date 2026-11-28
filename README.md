@@ -116,7 +116,7 @@ Open PowerShell or Command Prompt in any project folder:
 ```bash
 nolthira
 ```
-*(legacy launch aliases remain available for existing installations)*
+
 
 ### 2. Single-Shot Prompt Execution
 ```bash
@@ -127,8 +127,8 @@ nolthira -p "Research the latest cybersecurity vulnerability reports and summari
 ```env
 OPENAI_API_BASE=https://openrouter.ai/api/v1
 OPENAI_API_KEY=your_api_key_here
-NEXUS_MODEL=anthropic/claude-3.5-sonnet
-NEXUS_TEMPERATURE=0.7
+NOLTHIRA_MODEL=anthropic/claude-3.5-sonnet
+NOLTHIRA_TEMPERATURE=0.7
 ```
 
 ---
