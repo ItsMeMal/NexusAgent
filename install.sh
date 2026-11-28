@@ -125,7 +125,7 @@ if [ -d "${ENGINE_DIR}/.git" ]; then
     printf "${CYAN}  [..] Updating existing Nolthira engine...\n${NC}"
     cd "${ENGINE_DIR}"
     git remote set-url origin https://github.com/ItsMeMal/NolthiraAgent.git || git remote add origin https://github.com/ItsMeMal/NolthiraAgent.git
-    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt
+    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt
     git fetch origin main --quiet
     git pull --ff-only origin main --quiet
 else
@@ -133,7 +133,7 @@ else
     rm -rf "${ENGINE_DIR}"
     git clone https://github.com/ItsMeMal/NolthiraAgent.git "${ENGINE_DIR}" --quiet
     cd "${ENGINE_DIR}" 2>/dev/null || true
-    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt 2>/dev/null || true
+    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt 2>/dev/null || true
 fi
 
 # Prune non-engine artifacts (website, tests, installers) from runtime engine directory
