@@ -4,7 +4,7 @@ from nexus.ui.tui import LOGO_GLYPHS, RAW_LOGO
 
 
 class NolthiraLogoTests(unittest.TestCase):
-    def test_every_glyph_uses_a_fixed_six_by_six_cell(self):
+    def test_every_glyph_uses_a_fixed_five_by_seven_cell(self):
         self.assertEqual(set(LOGO_GLYPHS), set("NOLTHIRA"))
         for letter, rows in LOGO_GLYPHS.items():
             with self.subTest(letter=letter):
