@@ -75,7 +75,7 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 printf "${GREEN}  [OK] Found Git\n${NC}"
 
-# 3. Migrate legacy ~/.nolthira into canonical ~/.nolthira.
+# 3. Migrate legacy ~/.nexus into canonical ~/.nolthira.
 LEGACY_HOME="${HOME}/.nexus"
 NOLTHIRA_HOME="${HOME}/.nolthira"
 
