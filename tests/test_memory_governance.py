@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nexus.memory import SQLiteMemory
+from nolthira.memory import SQLiteMemory
 
 
 class MemoryGovernanceTests(unittest.TestCase):
@@ -100,13 +100,13 @@ class MemoryGovernanceTests(unittest.TestCase):
         self.assertEqual(history[0]["snapshot"]["content"], "Indonesian")
 
     def test_archive_and_restore_control_recall_without_losing_history(self):
-        self.memory.store_memory("project", "NexusAgent", category="work")
+        self.memory.store_memory("project", "NolthiraAgent", category="work")
         memory_id = self.memory.get_all_memories()[0]["id"]
         self.assertTrue(self.memory.archive_memory(memory_id, reason="Project completed"))
         self.assertEqual(self.memory.get_all_memories(), [])
-        self.assertEqual(self.memory.recall_memories("NexusAgent"), [])
+        self.assertEqual(self.memory.recall_memories("NolthiraAgent"), [])
         self.assertTrue(self.memory.restore_memory(memory_id, reason="Project resumed"))
-        self.assertEqual(self.memory.get_all_memories()[0]["content"], "NexusAgent")
+        self.assertEqual(self.memory.get_all_memories()[0]["content"], "NolthiraAgent")
         self.assertEqual(
             [item["action"] for item in self.memory.get_memory_history(memory_id)],
             ["restored", "archived"],
