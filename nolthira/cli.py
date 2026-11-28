@@ -42,7 +42,7 @@ from .ui import (
     render_update_card,
     render_gateway_card,
     AgentUIController,
-    NexusCommandCompleter,
+    NolthiraCommandCompleter,
     render_command_palette,
     interactive_select_provider,
     interactive_select_model,
@@ -382,7 +382,7 @@ async def main_async():
     except Exception:
         pass  # Dashboard is optional, don't block CLI
 
-    completer = NexusCommandCompleter()
+    completer = NolthiraCommandCompleter()
     prompt_kb = KeyBindings()
 
     @prompt_kb.add("s-tab")
