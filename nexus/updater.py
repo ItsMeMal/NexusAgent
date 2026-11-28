@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 import httpx
 from .config import config
 
-REPO_API_URL = "https://api.github.com/repos/ItsMeMal/NexusAgent/commits/main"
+REPO_API_URL = "https://api.github.com/repos/ItsMeMal/NolthiraAgent/commits/main"
 CACHE_FILE = config.NEXUS_HOME / ".update_cache.json"
 
 def get_local_commit(engine_dir: Optional[Path] = None) -> Optional[str]:
@@ -48,7 +48,7 @@ async def check_for_update(force: bool = False) -> Optional[Dict[str, Any]]:
             pass
 
     try:
-        async with httpx.AsyncClient(timeout=3.5, headers={"User-Agent": "NexusAgent-CLI"}) as client:
+        async with httpx.AsyncClient(timeout=3.5, headers={"User-Agent": "Nolthira-CLI"}) as client:
             resp = await client.get(REPO_API_URL)
             if resp.status_code != 200:
                 return None
@@ -98,7 +98,7 @@ async def perform_update(console: Any) -> bool:
         console.print(f"  Expected location: {engine_dir}\n")
         return False
 
-    console.print("\n  [bold #00ffd7]⚡ Updating Nexus Agent Engine...[/bold #00ffd7]\n")
+    console.print("\n  [bold #00ffd7]⚡ Updating Nolthira Agent Engine...[/bold #00ffd7]\n")
 
     # Step 1: Discard any local modifications in engine tracked files and pull
     console.print("  [dim]⠋ Fetching and merging latest changes from GitHub...[/dim]")
@@ -150,6 +150,6 @@ async def perform_update(console: Any) -> bool:
         pass
 
     new_sha = get_local_commit(engine_dir) or "latest"
-    console.print(f"\n  [bold #22c55e]✨ Nexus Agent has been successfully updated to [{new_sha[:7]}]![/bold #22c55e]")
+    console.print(f"\n  [bold #22c55e]✨ Nolthira Agent has been successfully updated to [{new_sha[:7]}]![/bold #22c55e]")
     console.print("  [dim]Please restart your Nexus session to load the updated engine.[/dim]\n")
     return True
