@@ -1,6 +1,6 @@
 """Tracked background processes for long-running coding and development commands.
 
-Process handles are scoped to one live ProcessManager (normally one Nexus CLI
+Process handles are scoped to one live ProcessManager (normally one Nolthira CLI
 runtime). They are intentionally not reconstructed from arbitrary PIDs after a
 restart: only processes started by this manager can be inspected or terminated.
 """
@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 
 class ProcessManager:
-    """Own and supervise background subprocesses started by Nexus."""
+    """Own and supervise background subprocesses started by Nolthira."""
 
     def __init__(
         self,
@@ -186,7 +186,7 @@ class ProcessManager:
         thread = threading.Thread(
             target=self._capture_output,
             args=(session,),
-            name=f"nexus-{session_id}",
+            name=f"nolthira-{session_id}",
             daemon=True,
         )
         session["capture_thread"] = thread
@@ -230,7 +230,7 @@ class ProcessManager:
     def poll(self, session_id: str) -> Dict[str, Any]:
         session = self._get(session_id)
         if not session:
-            return {"error": "Unknown process session. Only sessions started by this Nexus runtime can be managed."}
+            return {"error": "Unknown process session. Only sessions started by this Nolthira runtime can be managed."}
         self._refresh(session)
         code = session["process"].poll()
         result = {
@@ -248,7 +248,7 @@ class ProcessManager:
     def log(self, session_id: str, limit: int = 24000) -> Dict[str, Any]:
         session = self._get(session_id)
         if not session:
-            return {"error": "Unknown process session. Only sessions started by this Nexus runtime can be managed."}
+            return {"error": "Unknown process session. Only sessions started by this Nolthira runtime can be managed."}
         self._refresh(session)
         safe_limit = max(1024, min(int(limit or 24000), 64000))
         with session["lock"]:
@@ -271,7 +271,7 @@ class ProcessManager:
     def wait(self, session_id: str, timeout: int = 30) -> Dict[str, Any]:
         session = self._get(session_id)
         if not session:
-            return {"error": "Unknown process session. Only sessions started by this Nexus runtime can be managed."}
+            return {"error": "Unknown process session. Only sessions started by this Nolthira runtime can be managed."}
         safe_timeout = max(1, min(int(timeout or 30), 300))
         try:
             session["process"].wait(timeout=safe_timeout)
@@ -287,7 +287,7 @@ class ProcessManager:
     def write(self, session_id: str, data: str) -> Dict[str, Any]:
         session = self._get(session_id)
         if not session:
-            return {"error": "Unknown process session. Only sessions started by this Nexus runtime can be managed."}
+            return {"error": "Unknown process session. Only sessions started by this Nolthira runtime can be managed."}
         if session["process"].poll() is not None:
             return {"error": "Process has already exited; stdin is no longer available."}
         pipe = session["process"].stdin
@@ -303,7 +303,7 @@ class ProcessManager:
     def kill(self, session_id: str) -> Dict[str, Any]:
         session = self._get(session_id)
         if not session:
-            return {"error": "Unknown process session. Only sessions started by this Nexus runtime can be managed."}
+            return {"error": "Unknown process session. Only sessions started by this Nolthira runtime can be managed."}
         process = session["process"]
         if process.poll() is not None:
             self._refresh(session)
