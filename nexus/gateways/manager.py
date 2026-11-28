@@ -16,7 +16,7 @@ from .email_gw import EmailGateway
 
 
 def create_gateway_send_tool(manager: "GatewayManager") -> Tool:
-    """Create the gateway_send tool matching Nexus's Pydantic Tool pattern."""
+    """Create the gateway_send tool matching Nolthira's Pydantic Tool pattern."""
     async def gateway_send(platform: str, target: str, message: str) -> str:
         gw = manager.gateways.get(platform.lower())
         if not gw:
