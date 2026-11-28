@@ -368,7 +368,7 @@ async def _cmd_setup(send):
         "1. Go to `github.com/settings/installations`\n"
         "2. Click your app → URL contains the installation ID\n"
         "   e.g. `...installations/12345678` → ID is `12345678`\n\n"
-        "After saving `.env`, restart Nexus or run `/github status` to verify."
+        "After saving `.env`, restart Nolthira Agent or run `/github status` to verify."
     )
 
 
