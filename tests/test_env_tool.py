@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from nexus.tools.filesystem import get_filesystem_tools
-from nexus.tools.terminal import get_terminal_tools
+from nexus.tools.terminal import get_terminal_tools, _workspace_child_environment
 from nexus.security import SecurityGuard
 from nexus.tools.base import ToolRegistry
 from nexus.toolsets import ToolsetManager
@@ -95,6 +95,24 @@ class SafeEnvironmentUpdateTests(unittest.IsolatedAsyncioTestCase):
             result = await run_command.execute(command=node_write)
             self.assertIn("Security Guard", result)
             self.assertFalse((root / ".env").exists())
+
+    async def test_read_file_accepts_numeric_line_count_string(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "AGENTS.md").write_text("\\n".join(f"line {i}" for i in range(1, 406)), encoding="utf-8")
+            reader = next(tool for tool in get_filesystem_tools(root) if tool.name == "read_file")
+            result = await reader.execute(path="AGENTS.md", start_line="1", line_count="1000")
+            self.assertIn("Lines 1-405 of 405", result)
+            self.assertIn("line 405", result)
+            self.assertNotIn("unsupported operand", result)
+
+    async def test_workspace_dotenv_is_inherited_by_child_environment(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / ".env").write_text("NEXUS_DOTENV_TEST=workspace-value\\n", encoding="utf-8")
+            child_env = _workspace_child_environment(root)
+            self.assertEqual(child_env["NEXUS_DOTENV_TEST"], "workspace-value")
+            self.assertNotIn("NEXUS_DOTENV_TEST", os.environ)
 
     async def test_researcher_toolset_cannot_mutate_environment(self):
         with tempfile.TemporaryDirectory() as temp_dir:

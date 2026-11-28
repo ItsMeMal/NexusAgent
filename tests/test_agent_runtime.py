@@ -353,5 +353,77 @@ class AgentCommandRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(registry.calls[1]["timeout"], 360)
 
 
+class FakeRepeatableProcessRegistry:
+    def __init__(self):
+        self.calls = []
+
+    def to_openai_schemas(self):
+        return [{
+            "type": "function",
+            "function": {
+                "name": "process",
+                "description": "Read process output.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string"},
+                        "session_id": {"type": "string"},
+                    },
+                    "required": ["action", "session_id"],
+                },
+            },
+        }]
+
+    def get(self, name):
+        return None
+
+    async def execute_tool(self, name, arguments):
+        self.calls.append(dict(arguments))
+        return "Process log: still running; fresh output available."
+
+
+def repeatable_log_call(call_id):
+    return {
+        "role": "assistant",
+        "content": "[calling tools]",
+        "tool_calls": [{
+            "id": call_id,
+            "type": "function",
+            "function": {
+                "name": "process",
+                "arguments": json.dumps({"action": "log", "session_id": "proc_test"}),
+            },
+        }],
+    }
+
+
+class RepeatableProcessReadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_identical_process_log_reads_are_allowed(self):
+        llm = ScriptedLLM([
+            repeatable_log_call("log-1"),
+            repeatable_log_call("log-2"),
+            repeatable_log_call("log-3"),
+            {"role": "assistant", "content": "The background process is still running."},
+        ])
+        memory = FakeMemory()
+        registry = FakeRepeatableProcessRegistry()
+        agent = NexusAgent(
+            llm_client=llm,
+            memory=memory,
+            skill_manager=FakeSkills(),
+            registry=registry,
+            soul_path=Path(tempfile.gettempdir()) / "nexus-test-soul-does-not-exist.md",
+            max_steps=6,
+            mode="auto",
+        )
+        result = await agent.run("Check the running background process logs.")
+        self.assertEqual(result, "The background process is still running.")
+        self.assertEqual(len(registry.calls), 3)
+        self.assertTrue(all(
+            call == {"action": "log", "session_id": "proc_test"}
+            for call in registry.calls
+        ))
+
+
 if __name__ == "__main__":
     unittest.main()
