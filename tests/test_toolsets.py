@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nexus.toolsets import BUILTIN_TOOLSETS, ToolsetConfigError, ToolsetManager
-from nexus.tools.base import Tool, ToolRegistry
+from nolthira.toolsets import BUILTIN_TOOLSETS, ToolsetConfigError, ToolsetManager
+from nolthira.tools.base import Tool, ToolRegistry
 
 
 def make_tool(name):
@@ -78,7 +78,7 @@ class ToolsetManagerTests(unittest.TestCase):
         self.assertEqual(reloaded.profile_for_role("researcher"), "coder")
 
     def test_gateway_registry_uses_read_oriented_profile_by_default(self):
-        from nexus.gateways.manager import GatewayManager
+        from nolthira.gateways.manager import GatewayManager
 
         registry = ToolRegistry()
         registry.register(make_tool("read_file"), toolset="filesystem")
@@ -111,7 +111,7 @@ class ToolsetManagerTests(unittest.TestCase):
         self.assertIsNotNone(telegram_registry.get("run_command"))
 
     def test_older_toolset_files_migrate_to_restricted_gateway_defaults(self):
-        from nexus.toolsets import _default_config
+        from nolthira.toolsets import _default_config
 
         legacy = _default_config()
         legacy["version"] = 1
