@@ -25,24 +25,29 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
    - Extensible `plugins/` directory (`/plugins`) to load dynamic custom tools and agent behaviors.
 8. **Security & Anti-Jailbreak Guardrails (`/security`)**:
    - Destructive command interceptor (`rm -rf`, disk wipes, fork bombs), system path sandboxing (`C:\Windows`, `/etc`), credential protection (`.env`, SSH keys), and prompt injection resistance.
-9. **Persistent Memory Across Sessions (SQLite + FTS5)**:
-   - Permanent storage for facts, decisions, and preferences.
+9. **Governed Persistent Memory (SQLite + FTS5)**:
+   - Cross-session storage with provenance, confidence, and supporting evidence.
+   - Inferred facts and reusable lessons enter a review queue; pending proposals never affect normal recall.
+   - Approval/rejection, archive/restore, revision history, and permanent deletion controls.
 10. **Autonomous Cron / Background Automation**:
     - Deferred or recurring task scheduling via `schedule_task` (`/cron`).
-11. **Dynamic Skills & Continuous Learning**:
-    - Learns procedures from `.skills/*.md` and can generate new skills via `create_skill`.
+11. **Managed Skills & Reviewable Learning**:
+    - Discovers skills from local, shared, plugin, and bundled sources with source precedence.
+    - Creates, updates, deletes, and structurally validates Nexus-owned skills; external/bundled skills remain read-only.
+    - Stores corrections and verified lessons as reviewable memory proposals instead of silently promoting guesses.
 
 ---
 
-## 🛠 Complete Autonomous Toolset (20 Tools)
+## 🛠 Core Autonomous Toolsets
 
 * **Computer Use & GUI Automation**: `computer` (desktop screenshots with vision analysis, mouse click/move/drag, typing, hotkeys, scrolling, app launch)
 * **Filesystem & Code**: `read_file`, `write_file`, `patch_file`, `list_dir`, `search_files`
 * **Terminal**: `run_command` (guarded shell execution)
 * **Vision**: `view_image` (multimodal image & diagram analysis)
 * **Web Intelligence**: `web_search`, `web_extract`
-* **Persistent Memory**: `store_memory`, `recall_memory`, `list_all_memories`
-* **Dynamic Skills**: `list_skills`, `read_skill`, `create_skill`
+* **Workspace Checkpoints & Recovery**: `create_checkpoint`, `list_checkpoints`, `inspect_checkpoint`, `restore_checkpoint` (safe overlay by default; exact rollback requires explicit confirmation)
+* **Governed Memory**: `store_memory`, `propose_memory`, `record_learning`, `recall_memory`, `list_all_memories`, `list_memory_proposals`, `review_memory_proposal`, `archive_memory`, `restore_memory`, `delete_memory`, `memory_history`, `session_search`
+* **Managed Skills**: `list_skills`, `read_skill`, `create_skill`, `update_skill`, `delete_skill`, `validate_skill`
 * **Background Automations**: `schedule_task`, `list_scheduled_tasks`, `cancel_scheduled_task`
 * **Multi-Agent Orchestration**: `delegate_task`
 
@@ -101,7 +106,7 @@ Type `/` in the prompt for real-time autocomplete:
 * `/provider` or `/connect` — Switch or connect AI router via interactive menu
 * `/resume` — Browse and resume past conversation sessions (`↑`/`↓`)
 * `/computer` — Inspect GUI automation status, screen resolution, or capture screenshot (`/computer screenshot`)
-* `/tools` — Inspect all 20 active autonomous tools
+* `/tools` — Inspect currently registered autonomous tools
 * `/status` — View agent system diagnostics and active telemetry
 * `/mcp` — Inspect connected Model Context Protocol (MCP) servers
 * `/plugins` — View loaded modular plugins from `plugins/`

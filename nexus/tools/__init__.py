@@ -13,6 +13,7 @@ from .vision import get_vision_tools
 from .media import get_media_tools
 from .computer import get_computer_tools
 from .project import get_project_tools
+from .checkpoint_tools import get_checkpoint_tools
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
 from ..cron import CronScheduler
@@ -75,7 +76,11 @@ def create_default_registry(
     for t in get_project_tools(root_dir):
         registry.register(t)
 
-    # 10. Computer Use Tools (GUI automation: screenshot, mouse, keyboard, hotkey, scroll, app_launch)
+    # 10. Workspace checkpoints and safe rollback
+    for t in get_checkpoint_tools(root_dir):
+        registry.register(t)
+
+    # 11. Computer Use Tools (GUI automation: screenshot, mouse, keyboard, hotkey, scroll, app_launch)
     for t in get_computer_tools(llm_client):
         registry.register(t)
         
