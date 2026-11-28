@@ -493,8 +493,8 @@ async def _probe_model_health(
         else:
             headers["Authorization"] = f"Bearer {api_key}"
     if "openrouter.ai" in target_base:
-        headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NexusAgent"
-        headers["X-Title"] = "Nexus Agent CLI"
+        headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NolthiraAgent"
+        headers["X-Title"] = "Nolthira Agent CLI"
 
     payload = {
         "model": model_id,
@@ -691,7 +691,7 @@ class ProviderManager:
                     headers["Authorization"] = f"Bearer {candidate_key}"
 
                 if "openrouter.ai" in target_base:
-                    headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NexusAgent"
+                    headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NolthiraAgent"
 
                 use_x_api_key = False
                 async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
