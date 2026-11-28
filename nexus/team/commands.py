@@ -1,5 +1,5 @@
 """
-nexus/team/commands.py
+nolthira/team/commands.py
 Shared /team command dispatcher for gateways & CLI help.
 """
 
