@@ -1,7 +1,7 @@
 """
 nexus/ui/mascot.py
 Animated True-Color Half-Block Pixel Sprite & Terminal Graphics (Kitty / iTerm2 / Sixel)
-engine for the Nexus Mascot (Piko).
+engine for the Nolthira Mascot (Piko).
 """
 
 from __future__ import annotations
@@ -443,7 +443,7 @@ def build_piko_renderable(
     # native protocol image string can also be accessed via encode_* helpers when invoked directly)
     mascot = render_pixel_sprite_text(frame_idx, elapsed, mode_kind)
 
-    model_short = (model_name.split("/")[-1] if "/" in model_name else model_name) or "nexus"
+    model_short = (model_name.split("/")[-1] if "/" in model_name else model_name) or "nolthira"
     if len(model_short) > 28:
         model_short = model_short[:25] + "..."
 
@@ -457,7 +457,7 @@ def build_piko_renderable(
     mode_spec = get_mode(mode_id)
 
     info = Text()
-    info.append("◈ NEXUS ", style="bold #00ffd7")
+    info.append("◈ NOLTHIRA ", style="bold #00ffd7")
     info.append("PIKO ", style="bold #f472b6")
     info.append(badge_text, style=badge_style)
     info.append(f"  {mode_spec.icon} {mode_spec.label}", style=f"bold {mode_spec.color}")
