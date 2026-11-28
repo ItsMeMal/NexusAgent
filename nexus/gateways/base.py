@@ -399,6 +399,7 @@ class BaseGateway(ABC):
                 skill_manager=self.skill_manager,
                 root_dir=config.ROOT_DIR,
                 parent_registry=self.registry,
+                include_persistent_memory=False,
             )
             return "\n\n".join(replies) if replies else TEAM_HELP
 
