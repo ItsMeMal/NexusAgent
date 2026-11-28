@@ -300,6 +300,11 @@ class CheckpointManager:
             raise CheckpointError("Exact restore deletes eligible files absent from the checkpoint; set confirm_exact=true only after explicit user confirmation.")
 
         archive_path, manifest = self._read_manifest(checkpoint_id)
+        if restore_mode == "exact" and int(manifest.get("skipped_count", 0) or 0) > 0:
+            raise CheckpointError(
+                "Exact restore is unavailable because this snapshot skipped one or more files. "
+                "Use overlay restore or create a complete checkpoint before making destructive changes."
+            )
         restore_items = self._prepare_restore(archive_path, manifest)
         snapshot_paths = {str(target.relative_to(self.workspace).as_posix()) for target, _, _ in restore_items}
         preserved_paths = set(manifest.get("preserved_paths", []))
