@@ -47,18 +47,59 @@ def get_memory_tools(memory: SQLiteMemory):
         key: str,
         lesson: str,
         evidence: str,
+        verification: str,
+        observation_id: int = 0,
         confidence: float = 0.8,
     ) -> str:
-        """Record a reusable lesson or correction as a reviewable learning proposal."""
+        """Promote a verified observation into a pending proposal, or create one with proof."""
+        if not verification.strip():
+            return "Error: verification is required. State the test, reproduction, or concrete check that proves this lesson."
+        if observation_id:
+            proposal_id = memory.promote_learning_observation(
+                observation_id=observation_id,
+                key=key,
+                lesson=lesson,
+                verification=verification,
+                confidence=confidence,
+            )
+            if proposal_id is None:
+                return f"Error: learning observation #{observation_id} is missing, dismissed, or already unavailable."
+            return (
+                f"Promoted observation #{observation_id} to pending learning proposal #{proposal_id}. "
+                "It is not active memory until explicitly approved."
+            )
+
+        proof = f"{evidence.strip()}\\nVerification: {verification.strip()}"
         proposal_id = memory.propose_memory(
             key=key,
             content=lesson,
             category="learning",
             source="agent_learning",
             confidence=confidence,
-            evidence=evidence,
+            evidence=proof,
         )
-        return f"Recorded learning proposal #{proposal_id}. It will not affect future behavior until approved."
+        return f"Recorded learning proposal #{proposal_id}. It is pending review and will not affect behavior until approved."
+
+    def list_learning_observations(status: str = "observed", limit: int = 20) -> str:
+        """Inspect captured failures and corrections before deciding whether they teach a reusable lesson."""
+        observations = memory.list_learning_observations(status=status, limit=limit)
+        if not observations:
+            return f"No {status} learning observations."
+        lines = [f"{status.title()} learning observations ({len(observations)}):"]
+        for item in observations:
+            lines.append(
+                f"- [observation #{item['id']} · {item['event_type']} · session {item.get('session_id') or 'n/a'}] "
+                f"{item['subject']}: {item['observation']}"
+                + (f"\\n  Task: {item['task_context']}" if item.get("task_context") else "")
+                + (f"\\n  Evidence: {item['evidence']}" if item.get("evidence") else "")
+            )
+        return "\\n".join(lines)
+
+    def dismiss_learning_observation(observation_id: int, reason: str = "") -> str:
+        """Dismiss an unhelpful or transient observation without creating long-term memory."""
+        if not memory.dismiss_learning_observation(observation_id, reason=reason):
+            return f"Observation #{observation_id} was not found or has already been reviewed."
+        return f"Dismissed learning observation #{observation_id}; no memory was created."
 
     def recall_memory(query: str, limit: int = 5) -> str:
         """Search active, approved long-term memories by keyword."""
@@ -212,15 +253,37 @@ def get_memory_tools(memory: SQLiteMemory):
         ),
         tool(
             "record_learning",
-            "Record a reusable lesson from a user correction, failed attempt, or verified task outcome. This creates a pending proposal, not an active memory.",
+            "Turn a concrete correction or captured failure into a reviewable learning proposal. Verification is mandatory; optionally link an observation ID. It never activates memory by itself.",
             {
                 "key": {"type": "string"},
                 "lesson": {"type": "string"},
-                "evidence": {"type": "string", "description": "Correction, failure, or verification that supports the lesson"},
+                "evidence": {"type": "string", "description": "Observed correction/failure and its context"},
+                "verification": {"type": "string", "description": "A reproducible check or test result proving the proposed lesson"},
+                "observation_id": {"type": "integer", "description": "Optional ID returned by list_learning_observations"},
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.8},
             },
-            ["key", "lesson", "evidence"],
+            ["key", "lesson", "evidence", "verification"],
             record_learning,
+        ),
+        tool(
+            "list_learning_observations",
+            "Review automatically captured tool failures and explicit user corrections. These observations are not active memory.",
+            {
+                "status": {"type": "string", "enum": ["observed", "promoted", "dismissed"], "default": "observed"},
+                "limit": {"type": "integer", "default": 20},
+            },
+            [],
+            list_learning_observations,
+        ),
+        tool(
+            "dismiss_learning_observation",
+            "Dismiss a transient or irrelevant learning observation without promoting it to long-term memory.",
+            {
+                "observation_id": {"type": "integer"},
+                "reason": {"type": "string"},
+            },
+            ["observation_id"],
+            dismiss_learning_observation,
         ),
         tool(
             "recall_memory",
