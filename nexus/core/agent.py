@@ -50,7 +50,7 @@ _USER_CORRECTION_RE = re.compile(
 _LEARNING_FAILURE_MARKERS = (
     "[command failed", "error executing tool", "error:", "timed out",
     "timeout", "request failed", "failed to", "access denied:",
-    "blocked by security guard",
+    "blocked by security guard", "security guard:", "system loop guard",
 )
 _LEARNING_SECRET_PATTERNS = (
     re.compile(r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|authorization)\b\s*[:=]\s*[^\s,;]+"),
