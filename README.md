@@ -56,18 +56,18 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 ## ⚡ Quick One-Line Installation
 
-Install Nolthira globally into your existing home directory (`~/.nexus`). The existing path is retained so your current settings, sessions, OAuth login and memory remain available:
+Install Nolthira globally into your existing home directory (`~/.nexus`). The existing path is retained so your current settings, sessions, OAuth login and memory remain available. The installer updates an existing engine checkout to the new GitHub remote before pulling updates:
 
-The GitHub repository URL below intentionally remains `ItsMeMal/NexusAgent` until the repository itself is renamed.
+The GitHub repository URL below intentionally remains `ItsMeMal/NolthiraAgent` until the repository itself is renamed.
 
 ### Windows (PowerShell)
 ```powershell
-irm https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.ps1 | iex
 ```
 
 ### Linux & macOS (curl)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.sh | bash
 ```
 
 > **Home Directory Layout:**
