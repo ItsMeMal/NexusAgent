@@ -89,14 +89,14 @@ mkdir -p "${BIN_DIR}"
 if [ -d "${ENGINE_DIR}/.git" ]; then
     printf "${CYAN}  [..] Updating existing Nolthira engine...\n${NC}"
     cd "${ENGINE_DIR}"
-    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md 2>/dev/null || true
+    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt 2>/dev/null || true
     git pull origin main --quiet || true
 else
     printf "${CYAN}  [..] Downloading Nolthira Agent Engine from GitHub...\n${NC}"
     rm -rf "${ENGINE_DIR}"
     git clone https://github.com/ItsMeMal/NexusAgent.git "${ENGINE_DIR}" --quiet
     cd "${ENGINE_DIR}" 2>/dev/null || true
-    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md 2>/dev/null || true
+    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt 2>/dev/null || true
 fi
 
 # Prune non-engine artifacts (website, tests, installers) from runtime engine directory
