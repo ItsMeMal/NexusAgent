@@ -491,30 +491,30 @@ async def main_async():
                             active_profile = parts[2]
                             toolset_manager.apply(registry, active_profile)
                             tools = registry.get_all()
-                            console.print(f"\\n  [bold #22c55e]✔ Active toolset profile: {active_profile}[/bold #22c55e]\\n")
+                            console.print(f"\n  [bold #22c55e]✔ Active toolset profile: {active_profile}[/bold #22c55e]\n")
                         elif action in ("enable", "disable") and len(parts) > 2:
                             state = toolset_manager.set_toolset(active_profile, parts[2], enabled=(action == "enable"))
                             toolset_manager.apply(registry, active_profile)
                             tools = registry.get_all()
                             status = "enabled" if action == "enable" else "disabled"
-                            console.print(f"\\n  [bold #22c55e]✔ Toolset '{parts[2]}' {status} in profile '{active_profile}'.[/bold #22c55e]\\n")
+                            console.print(f"\n  [bold #22c55e]✔ Toolset '{parts[2]}' {status} in profile '{active_profile}'.[/bold #22c55e]\n")
                         elif action == "platform" and len(parts) > 3:
                             toolset_manager.set_platform_profile(parts[2], parts[3])
-                            console.print(f"\\n  [bold #22c55e]✔ Platform '{parts[2]}' uses profile '{parts[3]}'. Restart its gateway to apply.[/bold #22c55e]\\n")
+                            console.print(f"\n  [bold #22c55e]✔ Platform '{parts[2]}' uses profile '{parts[3]}'. Restart its gateway to apply.[/bold #22c55e]\n")
                         elif action == "role" and len(parts) > 3:
                             toolset_manager.set_role_profile(parts[2], parts[3])
-                            console.print(f"\\n  [bold #22c55e]✔ Subagent role '{parts[2]}' uses profile '{parts[3]}'.[/bold #22c55e]\\n")
+                            console.print(f"\n  [bold #22c55e]✔ Subagent role '{parts[2]}' uses profile '{parts[3]}'.[/bold #22c55e]\n")
                         else:
                             profiles = toolset_manager.list_profiles()
-                            console.print(f"\\n  [bold #38bdf8]Toolset Profiles · active: {active_profile}[/bold #38bdf8]")
+                            console.print(f"\n  [bold #38bdf8]Toolset Profiles · active: {active_profile}[/bold #38bdf8]")
                             for item in profiles:
                                 enabled = ", ".join(item["enabled_toolsets"])
                                 denied = ", ".join(item["disabled_tools"]) or "none"
                                 marker = " [bold #22c55e](active)[/bold #22c55e]" if item["name"] == active_profile else ""
-                                console.print(f"  [white]{item['name']}[/white]{marker}\\n    [dim]Enabled: {enabled}\\n    Disabled tools: {denied}[/dim]")
-                            console.print("\\n  [dim]/toolsets use <profile> · /toolsets enable|disable <toolset> · /toolsets platform <gateway> <profile> · /toolsets role <role> <profile>[/dim]\\n")
+                                console.print(f"  [white]{item['name']}[/white]{marker}\n    [dim]Enabled: {enabled}\n    Disabled tools: {denied}[/dim]")
+                            console.print("\n  [dim]/toolsets use <profile> · /toolsets enable|disable <toolset> · /toolsets platform <gateway> <profile> · /toolsets role <role> <profile>[/dim]\n")
                     except ToolsetConfigError as exc:
-                        console.print(f"  [bold red]Toolset configuration error:[/bold red] {exc}\\n")
+                        console.print(f"  [bold red]Toolset configuration error:[/bold red] {exc}\n")
                     continue
                 elif cmd in ("/status", "/info"):
                     active_prov = ProviderManager.detect_active_provider(config.API_BASE)
