@@ -1,9 +1,9 @@
 """
-nexus/team/manager.py
+nolthira/team/manager.py
 TeamManager — Real Autonomous AI-Team Orchestrator.
 
 Instead of sequential text-only LLM calls ("pipeline"), orchestrates real
-tool-using NexusAgent specialists around a Shared Task Board & Team Mailbox:
+tool-using NolthiraAgent specialists around a Shared Task Board & Team Mailbox:
   1. Team Lead inspects workspace & creates concrete tasks with dependencies
   2. Wave Scheduler executes independent tasks in parallel & dependent tasks in order
   3. Reviewers / QA Testers inspect real files, run tests, and can request fixes
@@ -90,7 +90,7 @@ def auto_mode(preset: str, custom_roles: List[str]) -> str:
 
 
 class TeamManager:
-    """Coordinates an autonomous AI-Team using shared TeamBoard and real NexusAgent tools."""
+    """Coordinates an autonomous AI-Team using shared TeamBoard and real NolthiraAgent tools."""
 
     def __init__(
         self,
