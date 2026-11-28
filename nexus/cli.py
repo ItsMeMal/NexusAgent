@@ -777,6 +777,73 @@ async def main_async():
                 elif cmd in ("/skills", "/skill"):
                     render_skills_table(skill_manager.load_all_skills())
                     continue
+                elif cmd in ("/todo",):
+                    parts_todo = text.strip().split(maxsplit=3)
+                    action_todo = parts_todo[1].lower() if len(parts_todo) > 1 else "list"
+                    todo_tool = registry.get("todo")
+                    if not todo_tool:
+                        console.print("  [yellow]The todo tool is disabled in the active toolset profile.[/yellow]\\n")
+                        continue
+
+                    try:
+                        if action_todo == "add":
+                            if len(parts_todo) < 3:
+                                console.print("  [yellow]Usage: /todo add <task title>[/yellow]\\n")
+                                continue
+                            result_todo = await todo_tool.execute(action="add", title=parts_todo[2])
+                        elif action_todo in ("start", "block", "complete", "remove"):
+                            if len(parts_todo) < 3:
+                                console.print(f"  [yellow]Usage: /todo {action_todo} <task-id>[/yellow]\\n")
+                                continue
+                            task_id_todo = parts_todo[2]
+                            if action_todo == "start":
+                                result_todo = await todo_tool.execute(action="update", task_id=task_id_todo, status="in_progress")
+                            elif action_todo == "block":
+                                result_todo = await todo_tool.execute(action="update", task_id=task_id_todo, status="blocked")
+                            else:
+                                result_todo = await todo_tool.execute(action=action_todo, task_id=task_id_todo)
+                        elif action_todo == "update":
+                            if len(parts_todo) < 4:
+                                console.print("  [yellow]Usage: /todo update <task-id> <new title>[/yellow]\\n")
+                                continue
+                            result_todo = await todo_tool.execute(action="update", task_id=parts_todo[2], title=parts_todo[3])
+                        elif action_todo == "list":
+                            result_todo = await todo_tool.execute(action="list")
+                        else:
+                            console.print("  [yellow]Usage: /todo [list|add <title>|start <id>|block <id>|complete <id>|update <id> <title>|remove <id>][/yellow]\\n")
+                            continue
+
+                        if isinstance(result_todo, dict) and result_todo.get("error"):
+                            console.print(f"  [bold red]Todo error:[/bold red] {result_todo['error']}\\n")
+                        elif action_todo == "list":
+                            from rich.table import Table
+                            todo_table = Table(title=f"Task Plan · Session {agent.session_id}", show_lines=False)
+                            todo_table.add_column("ID", style="cyan", no_wrap=True)
+                            todo_table.add_column("Status", style="green", no_wrap=True)
+                            todo_table.add_column("Priority", no_wrap=True)
+                            todo_table.add_column("Task")
+                            for task_item in result_todo.get("tasks", []):
+                                status_style = "green" if task_item["status"] == "completed" else ("yellow" if task_item["status"] == "blocked" else "cyan")
+                                todo_table.add_row(
+                                    task_item["id"],
+                                    f"[{status_style}]{task_item['status']}[/{status_style}]",
+                                    task_item["priority"],
+                                    task_item["title"],
+                                )
+                            if result_todo.get("tasks"):
+                                console.print(todo_table)
+                            else:
+                                console.print("  [dim]No tasks in this session. Use /todo add <task title>.[/dim]")
+                            summary_todo = result_todo.get("summary", {})
+                            console.print(
+                                f"  [dim]Remaining: {result_todo.get('remaining', 0)} · "
+                                f"Completed: {summary_todo.get('completed', 0)}\\n[/dim]"
+                            )
+                        else:
+                            console.print(f"  [bold #22c55e]✔ Todo {action_todo} updated.[/bold #22c55e]\\n")
+                    except Exception as exc:
+                        console.print(f"  [bold red]Todo command failed:[/bold red] {exc}\\n")
+                    continue
                 elif cmd in ("/memory", "/mem"):
                     parts_mem = text.strip().split(maxsplit=3)
                     action_mem = parts_mem[1].lower() if len(parts_mem) > 1 else "list"
