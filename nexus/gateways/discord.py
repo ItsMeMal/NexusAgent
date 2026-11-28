@@ -1,6 +1,8 @@
 import os
 import json
 import ssl
+import hashlib
+import hmac
 import struct
 import base64
 import asyncio
@@ -48,12 +50,31 @@ class _AsyncWebSocket:
         writer.write(req.encode("ascii"))
         await writer.drain()
 
-        # Read HTTP handshake response
-        header_bytes = await reader.readuntil(b"\r\n\r\n")
-        status_line = header_bytes.split(b"\r\n", 1)[0].decode("ascii", errors="ignore")
-        if "101" not in status_line:
+        # Validate the complete RFC 6455 upgrade handshake before trusting the socket.
+        try:
+            header_bytes = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=15.0)
+            header_lines = header_bytes.decode("latin-1", errors="replace").split("\r\n")
+            status_line = header_lines[0] if header_lines else ""
+            headers = {}
+            for line in header_lines[1:]:
+                if ":" in line:
+                    name, value = line.split(":", 1)
+                    headers[name.strip().lower()] = value.strip()
+            expected_accept = base64.b64encode(
+                hashlib.sha1((sec_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")).digest()
+            ).decode("ascii")
+            if not status_line.startswith("HTTP/1.1 101 "):
+                raise ConnectionError(f"WebSocket handshake failed: {status_line}")
+            actual_accept = headers.get("sec-websocket-accept", "")
+            if not actual_accept or not hmac.compare_digest(actual_accept, expected_accept):
+                raise ConnectionError("WebSocket handshake failed: invalid Sec-WebSocket-Accept")
+        except Exception:
             writer.close()
-            raise ConnectionError(f"WebSocket handshake failed: {status_line}")
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            raise
 
         return cls(reader, writer)
 
@@ -158,6 +179,7 @@ class DiscordGateway(BaseGateway):
         self._bot_user_id: str = ""
         self._ws: Optional[_AsyncWebSocket] = None
         self._seq: Optional[int] = None
+        self._message_tasks = set()
 
     @property
     def token(self) -> str:
@@ -207,11 +229,30 @@ class DiscordGateway(BaseGateway):
                 try:
                     resp = await client.post(url, headers=self._headers(), json=payload)
                     if resp.status_code not in (200, 201):
+                        self.last_error = f"Discord API HTTP {resp.status_code}: {resp.text[:200]}"
                         ok = False
+                    else:
+                        self.last_error = ""
                 except Exception as e:
                     self.last_error = str(e)
                     ok = False
         return ok
+
+    def _schedule_message_event(self, client: httpx.AsyncClient, data: Dict[str, Any]) -> None:
+        task = asyncio.create_task(self._handle_message_event(client, data))
+        self._message_tasks.add(task)
+
+        def _finished(done_task):
+            self._message_tasks.discard(done_task)
+            try:
+                error = done_task.exception()
+            except asyncio.CancelledError:
+                return
+            if error:
+                self.last_error = str(error)
+                self.log("ERROR", f"Discord message task failed: {error}")
+
+        task.add_done_callback(_finished)
 
     async def _handle_message_event(self, client: httpx.AsyncClient, data: Dict[str, Any]):
         author = data.get("author", {})
@@ -288,8 +329,9 @@ class DiscordGateway(BaseGateway):
                 await ws.send_json({"op": 1, "d": self._seq})
         except asyncio.CancelledError:
             pass
-        except Exception:
-            pass
+        except Exception as exc:
+            self.last_error = f"Discord heartbeat failed: {exc}"
+            self.log("ERROR", self.last_error)
 
     async def start(self):
         if not self.is_configured():
@@ -312,9 +354,10 @@ class DiscordGateway(BaseGateway):
                 if gw_resp.status_code == 200:
                     gw_base = gw_resp.json().get("url", "wss://gateway.discord.gg")
                     gateway_url = f"{gw_base.rstrip('/')}/?v=10&encoding=json"
-                elif gw_resp.status_code in (401, 403):
-                    self.last_error = f"Invalid DISCORD_BOT_TOKEN (HTTP {gw_resp.status_code})"
+                else:
+                    self.last_error = f"Discord gateway discovery failed (HTTP {gw_resp.status_code}): {gw_resp.text[:200]}"
                     self.running = False
+                    self.log("ERROR", self.last_error)
                     return
             except Exception as e:
                 self.last_error = str(e)
@@ -374,7 +417,7 @@ class DiscordGateway(BaseGateway):
                                 self.last_error = ""
                                 self.log("INFO", f"Connected to Discord as {self.identity}")
                             elif ev_type == "MESSAGE_CREATE":
-                                asyncio.create_task(self._handle_message_event(client, ev_data))
+                                self._schedule_message_event(client, ev_data)
                         elif ev_op == 7:  # RECONNECT
                             break
                         elif ev_op == 9:  # INVALID SESSION
@@ -398,3 +441,7 @@ class DiscordGateway(BaseGateway):
         self.running = False
         if self._ws:
             await self._ws.close()
+        for task in list(self._message_tasks):
+            task.cancel()
+        if self._message_tasks:
+            await asyncio.gather(*self._message_tasks, return_exceptions=True)

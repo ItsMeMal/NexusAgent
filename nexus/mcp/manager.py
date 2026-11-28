@@ -642,8 +642,9 @@ class MCPManager:
         prefix = f"mcp_{name}_"
         self._registered_tools = [t for t in self._registered_tools if not t.name.startswith(prefix)]
         if registry and hasattr(registry, "_tools"):
-            for k in [k for k in list(registry._tools.keys()) if k.startswith(prefix)]:
-                registry._tools.pop(k, None)
+            for key in [key for key in list(registry._tools.keys()) if key.startswith(prefix)]:
+                registry._tools.pop(key, None)
+                getattr(registry, "_toolsets", {}).pop(key, None)
 
         removed_from_disk = False
         for cfg_path in self._get_config_files():
@@ -693,8 +694,9 @@ class MCPManager:
         """Reload configs from disk, restart MCP servers, and re-register tools."""
         await self.stop_all()
         if hasattr(registry, "_tools"):
-            for k in [k for k in list(registry._tools.keys()) if k.startswith("mcp_")]:
-                registry._tools.pop(k, None)
+            for key in [key for key in list(registry._tools.keys()) if key.startswith("mcp_")]:
+                registry._tools.pop(key, None)
+                getattr(registry, "_toolsets", {}).pop(key, None)
         self.servers.clear()
         self._errors.clear()
         self._registered_tools.clear()
@@ -717,7 +719,7 @@ class MCPManager:
                 continue
             for tool_def in session.tools:
                 tool = self._make_tool(server_name, tool_def, session)
-                registry.register(tool)
+                registry.register(tool, toolset="mcp")
                 self._registered_tools.append(tool)
 
     def _register_stubs(self, registry: ToolRegistry):
@@ -728,7 +730,7 @@ class MCPManager:
                 tool_defs = _probe_tools_sync(cfg)
                 for tool_def in tool_defs:
                     tool = self._make_stub_tool(server_name, cfg, tool_def)
-                    registry.register(tool)
+                    registry.register(tool, toolset="mcp")
                     self._registered_tools.append(tool)
             except Exception as e:
                 self._errors[server_name] = str(e)

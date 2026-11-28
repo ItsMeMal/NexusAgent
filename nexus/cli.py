@@ -11,6 +11,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 
 from .config import config
+from .toolsets import ToolsetManager, ToolsetConfigError
 from .memory import SQLiteMemory
 from .skills import SkillManager
 from .cron import CronScheduler
@@ -169,6 +170,7 @@ async def main_async():
     # Initialize subsystems
     memory = SQLiteMemory(config.MEMORY_DB_PATH)
     skill_manager = SkillManager(config.SKILLS_DIR)
+    toolset_manager = ToolsetManager(config.NEXUS_HOME / "toolsets.json")
     cron_scheduler = CronScheduler(config.MEMORY_DB_PATH)
     mcp_manager = MCPManager(workspace_dir=config.WORKSPACE_DIR, codebase_dir=config.CODEBASE_DIR)
     plugin_manager = PluginManager(workspace_dir=config.WORKSPACE_DIR, codebase_dir=config.CODEBASE_DIR)
@@ -192,7 +194,8 @@ async def main_async():
         memory=memory,
         skill_manager=skill_manager,
         root_dir=config.ROOT_DIR,
-        on_subagent_event=ui_controller.on_subagent_event
+        on_subagent_event=ui_controller.on_subagent_event,
+        toolset_manager=toolset_manager,
     )
 
     current_session = [args.session or os.urandom(4).hex()]
@@ -205,7 +208,9 @@ async def main_async():
         cron_scheduler=cron_scheduler,
         subagent_manager=subagent_manager,
         session_id_getter=lambda: current_session[0],
-        llm_client=llm
+        llm_client=llm,
+        toolset_manager=toolset_manager,
+        profile=toolset_manager.default_profile,
     )
     if mcp_manager.servers:
         await mcp_manager.start_all()
@@ -224,6 +229,7 @@ async def main_async():
         soul_path=config.SOUL_PATH,
         max_steps=config.MAX_STEPS,
         on_log=_gateway_logger,
+        toolset_manager=toolset_manager,
     )
     gateway_manager.register_tools(registry)
 
@@ -474,6 +480,41 @@ async def main_async():
                     continue
                 elif cmd in ("/tools", "/tool"):
                     render_tools_table(tools)
+                    continue
+                elif cmd in ("/toolsets", "/toolset"):
+                    parts = text.strip().split()
+                    action = parts[1].lower() if len(parts) > 1 else "list"
+                    active_profile = toolset_manager.default_profile
+                    try:
+                        if action == "use" and len(parts) > 2:
+                            toolset_manager.set_default_profile(parts[2])
+                            active_profile = parts[2]
+                            toolset_manager.apply(registry, active_profile)
+                            tools = registry.get_all()
+                            console.print(f"\n  [bold #22c55e]✔ Active toolset profile: {active_profile}[/bold #22c55e]\n")
+                        elif action in ("enable", "disable") and len(parts) > 2:
+                            state = toolset_manager.set_toolset(active_profile, parts[2], enabled=(action == "enable"))
+                            toolset_manager.apply(registry, active_profile)
+                            tools = registry.get_all()
+                            status = "enabled" if action == "enable" else "disabled"
+                            console.print(f"\n  [bold #22c55e]✔ Toolset '{parts[2]}' {status} in profile '{active_profile}'.[/bold #22c55e]\n")
+                        elif action == "platform" and len(parts) > 3:
+                            toolset_manager.set_platform_profile(parts[2], parts[3])
+                            console.print(f"\n  [bold #22c55e]✔ Platform '{parts[2]}' uses profile '{parts[3]}'. Restart its gateway to apply.[/bold #22c55e]\n")
+                        elif action == "role" and len(parts) > 3:
+                            toolset_manager.set_role_profile(parts[2], parts[3])
+                            console.print(f"\n  [bold #22c55e]✔ Subagent role '{parts[2]}' uses profile '{parts[3]}'.[/bold #22c55e]\n")
+                        else:
+                            profiles = toolset_manager.list_profiles()
+                            console.print(f"\n  [bold #38bdf8]Toolset Profiles · active: {active_profile}[/bold #38bdf8]")
+                            for item in profiles:
+                                enabled = ", ".join(item["enabled_toolsets"])
+                                denied = ", ".join(item["disabled_tools"]) or "none"
+                                marker = " [bold #22c55e](active)[/bold #22c55e]" if item["name"] == active_profile else ""
+                                console.print(f"  [white]{item['name']}[/white]{marker}\n    [dim]Enabled: {enabled}\n    Disabled tools: {denied}[/dim]")
+                            console.print("\n  [dim]/toolsets use <profile> · /toolsets enable|disable <toolset> · /toolsets platform <gateway> <profile> · /toolsets role <role> <profile>[/dim]\n")
+                    except ToolsetConfigError as exc:
+                        console.print(f"  [bold red]Toolset configuration error:[/bold red] {exc}\n")
                     continue
                 elif cmd in ("/status", "/info"):
                     active_prov = ProviderManager.detect_active_provider(config.API_BASE)
@@ -737,7 +778,65 @@ async def main_async():
                     render_skills_table(skill_manager.load_all_skills())
                     continue
                 elif cmd in ("/memory", "/mem"):
-                    render_memories_table(memory.get_all_memories(limit=25))
+                    parts_mem = text.strip().split(maxsplit=3)
+                    action_mem = parts_mem[1].lower() if len(parts_mem) > 1 else "list"
+                    if action_mem in ("proposals", "queue"):
+                        proposals = memory.list_memory_proposals(status="pending", limit=30)
+                        if not proposals:
+                            console.print("\n  [dim]No pending memory proposals.[/dim]\n")
+                        else:
+                            console.print(f"\n  [bold #38bdf8]Pending Memory Proposals ({len(proposals)})[/bold #38bdf8]")
+                            for item in proposals:
+                                console.print(
+                                    f"  [bold]#{item['id']} · {item['key']}[/bold] [dim]({item['category']} · {item['source']} · confidence {item['confidence']})[/dim]\n"
+                                    f"    {item['content']}\n"
+                                    f"    [dim]Evidence: {item.get('evidence') or 'not supplied'}[/dim]"
+                                )
+                            console.print("\n  [dim]/memory review <id> approve|reject [reason][/dim]\n")
+                    elif action_mem == "observations":
+                        observations = memory.list_learning_observations(status="observed", limit=30)
+                        if not observations:
+                            console.print("\n  [dim]No unreviewed learning observations.[/dim]\n")
+                        else:
+                            console.print(f"\n  [bold #38bdf8]Learning Observations ({len(observations)})[/bold #38bdf8]")
+                            for item in observations:
+                                console.print(
+                                    f"  [bold]#{item['id']} · {item['event_type']} · {item['subject']}[/bold]\n"
+                                    f"    {item['observation']}\n"
+                                    f"    [dim]Task: {item['task_context']}[/dim]"
+                                )
+                            console.print("\n  [dim]Promote only after verifying a reusable fix: record_learning with observation_id. Or /memory dismiss <id> [reason].[/dim]\n")
+                    elif action_mem == "review" and len(parts_mem) >= 3 and not parts_mem[2].isdigit():
+                        console.print("  [yellow]Usage: /memory review <id> approve|reject [reason][/yellow]\n")
+                    elif action_mem == "review" and len(parts_mem) >= 3:
+                        proposal_id = int(parts_mem[2])
+                        decision = parts_mem[3].split(maxsplit=1)[0].lower() if len(parts_mem) > 3 else ""
+                        reason = parts_mem[3].split(maxsplit=1)[1] if len(parts_mem) > 3 and " " in parts_mem[3] else ""
+                        try:
+                            changed = memory.review_memory_proposal(
+                                proposal_id=proposal_id,
+                                decision=decision,
+                                reviewer="user",
+                                reason=reason,
+                            )
+                            console.print(
+                                f"\n  [bold #22c55e]✔ Proposal #{proposal_id} reviewed: {decision}.[/bold #22c55e]\n"
+                                if changed else
+                                f"\n  [yellow]Proposal #{proposal_id} is missing or already reviewed.[/yellow]\n"
+                            )
+                        except ValueError as exc:
+                            console.print(f"\n  [red]{exc}[/red]\n")
+                    elif action_mem == "dismiss" and len(parts_mem) >= 3 and parts_mem[2].isdigit():
+                        reason = parts_mem[3] if len(parts_mem) > 3 else "Dismissed from CLI."
+                        changed = memory.dismiss_learning_observation(int(parts_mem[2]), reason=reason)
+                        console.print(
+                            f"\n  [bold #22c55e]✔ Observation #{parts_mem[2]} dismissed.[/bold #22c55e]\n"
+                            if changed else
+                            f"\n  [yellow]Observation #{parts_mem[2]} is missing or already reviewed.[/yellow]\n"
+                        )
+                    else:
+                        render_memories_table(memory.get_all_memories(limit=25))
+                        console.print("  [dim]/memory proposals · /memory observations · /memory review <id> approve|reject · /memory dismiss <id>[/dim]\n")
                     continue
                 elif cmd in ("/cron", "/tasks"):
                     parts = text.strip().split()

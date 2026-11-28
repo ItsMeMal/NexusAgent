@@ -69,90 +69,167 @@ class GatewayManager:
         soul_path: Path = config.SOUL_PATH,
         max_steps: int = config.MAX_STEPS,
         on_log: Optional[Callable[[str, str], None]] = None,
+        toolset_manager: Optional[Any] = None,
     ):
         self.on_log = on_log
+        self.toolset_manager = toolset_manager
+
+        def _registry_for(platform: str) -> ToolRegistry:
+            if self.toolset_manager is None:
+                return registry
+            scoped = registry.clone()
+            profile = self.toolset_manager.profile_for_platform(platform)
+            self.toolset_manager.apply(scoped, profile=profile)
+            return scoped
+
         self.gateways: Dict[str, BaseGateway] = {
-            "telegram": TelegramGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
-            "discord": DiscordGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
-            "whatsapp": WhatsAppGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
-            "slack": SlackGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
-            "email": EmailGateway(llm_client, memory, skill_manager, registry, soul_path, max_steps, on_log=on_log),
+            "telegram": TelegramGateway(llm_client, memory, skill_manager, _registry_for("telegram"), soul_path, max_steps, on_log=on_log),
+            "discord": DiscordGateway(llm_client, memory, skill_manager, _registry_for("discord"), soul_path, max_steps, on_log=on_log),
+            "whatsapp": WhatsAppGateway(llm_client, memory, skill_manager, _registry_for("whatsapp"), soul_path, max_steps, on_log=on_log),
+            "slack": SlackGateway(llm_client, memory, skill_manager, _registry_for("slack"), soul_path, max_steps, on_log=on_log),
+            "email": EmailGateway(llm_client, memory, skill_manager, _registry_for("email"), soul_path, max_steps, on_log=on_log),
         }
         self._tasks: Dict[str, asyncio.Task] = {}
+        self._start_lock = asyncio.Lock()
 
     def register_tools(self, registry: ToolRegistry):
-        registry.register(create_gateway_send_tool(self))
+        registry.register(create_gateway_send_tool(self), toolset="gateway")
+
+    def _apply_platform_profile(self, platform: str) -> None:
+        """Refresh one stopped gateway's tool policy before its next start."""
+        if self.toolset_manager is None:
+            return
+        gateway = self.gateways.get(platform)
+        if gateway is None:
+            return
+        profile = self.toolset_manager.profile_for_platform(platform)
+        self.toolset_manager.apply(gateway.registry, profile=profile)
 
     def get_statuses(self) -> List[GatewayStatus]:
         return [gw.get_status() for gw in self.gateways.values()]
 
+    def _on_gateway_task_done(self, key: str, task: asyncio.Task) -> None:
+        gateway = self.gateways.get(key)
+        if gateway is None:
+            return
+        try:
+            error = task.exception()
+        except asyncio.CancelledError:
+            return
+        if error is not None:
+            gateway.last_error = str(error)
+            gateway.running = False
+            if self.on_log:
+                try:
+                    self.on_log(key, f"[ERROR] Gateway task terminated: {error}")
+                except Exception:
+                    pass
+
     async def start_gateway(self, name: str = "all") -> Dict[str, str]:
-        """Start one or all configured gateways as background tasks."""
+        """Start one or all configured gateways and report immediate startup failures."""
         targets = list(self.gateways.keys()) if name == "all" else [name.lower()]
         results: Dict[str, str] = {}
 
-        for key in targets:
-            gw = self.gateways.get(key)
-            if not gw:
-                results[key] = "unknown"
-                continue
-            if not gw.is_configured():
-                results[key] = "not_configured"
-                continue
-            existing = self._tasks.get(key)
-            if existing and not existing.done():
-                results[key] = "already_running"
-                continue
+        async with self._start_lock:
+            for key in targets:
+                gw = self.gateways.get(key)
+                if not gw:
+                    results[key] = "unknown"
+                    continue
+                if not gw.is_configured():
+                    results[key] = "not_configured"
+                    continue
+                existing = self._tasks.get(key)
+                if existing and not existing.done():
+                    results[key] = "already_running"
+                    continue
 
-            task = asyncio.create_task(gw.start(), name=f"nexus-gateway-{key}")
-            self._tasks[key] = task
-            results[key] = "started"
+                self._apply_platform_profile(key)
+                gw.last_error = ""
+                task = asyncio.create_task(gw.start(), name=f"nexus-gateway-{key}")
+                task.add_done_callback(
+                    lambda completed, gateway_key=key: self._on_gateway_task_done(gateway_key, completed)
+                )
+                self._tasks[key] = task
+                results[key] = "started"
 
-        # Brief yield to allow initial handshakes / binding to start
-        if any(v == "started" for v in results.values()):
+        # Give adapters a short window to perform token checks/handshakes.
+        if any(value == "started" for value in results.values()):
             await asyncio.sleep(0.8)
+            for key, value in list(results.items()):
+                if value != "started":
+                    continue
+                task = self._tasks.get(key)
+                gateway = self.gateways[key]
+                if task and task.done():
+                    try:
+                        error = task.exception()
+                    except asyncio.CancelledError:
+                        error = None
+                    if error or gateway.last_error:
+                        results[key] = "failed"
+                    else:
+                        results[key] = "stopped"
 
         return results
 
     async def stop_gateway(self, name: str = "all") -> Dict[str, str]:
-        """Stop one or all running gateway tasks."""
+        """Stop one or all gateway tasks and consume any task exception."""
         targets = list(self.gateways.keys()) if name == "all" else [name.lower()]
         results: Dict[str, str] = {}
 
         for key in targets:
-            gw = self.gateways.get(key)
-            if gw:
-                await gw.stop()
+            gateway = self.gateways.get(key)
             task = self._tasks.pop(key, None)
-            if task and not task.done():
-                task.cancel()
+            if gateway:
+                try:
+                    await gateway.stop()
+                except Exception as exc:
+                    gateway.last_error = str(exc)
+                    results[key] = "failed"
+                    continue
+            if task:
+                if not task.done():
+                    task.cancel()
                 try:
                     await task
                 except asyncio.CancelledError:
                     pass
-                results[key] = "stopped"
+                except Exception as exc:
+                    if gateway:
+                        gateway.last_error = str(exc)
+                    results[key] = "failed"
+                    continue
+                results.setdefault(key, "stopped")
             else:
-                results[key] = "not_running"
+                results.setdefault(key, "not_running")
 
         return results
 
     async def run_foreground(self, target: str = "all"):
-        """Run gateway daemon in foreground (for `nexus --gateway`)."""
+        """Run configured gateways in the foreground while isolating per-gateway failures."""
         targets = list(self.gateways.keys()) if target == "all" else [target.lower()]
         active_tasks: List[asyncio.Task] = []
 
         for key in targets:
-            gw = self.gateways.get(key)
-            if gw and gw.is_configured():
-                active_tasks.append(asyncio.create_task(gw.start(), name=f"nexus-gateway-{key}"))
+            gateway = self.gateways.get(key)
+            if gateway and gateway.is_configured():
+                self._apply_platform_profile(key)
+                gateway.last_error = ""
+                task = asyncio.create_task(gateway.start(), name=f"nexus-gateway-{key}")
+                task.add_done_callback(
+                    lambda completed, gateway_key=key: self._on_gateway_task_done(gateway_key, completed)
+                )
+                self._tasks[key] = task
+                active_tasks.append(task)
 
         if not active_tasks:
             return False
 
         try:
-            await asyncio.gather(*active_tasks)
+            await asyncio.gather(*active_tasks, return_exceptions=True)
         except asyncio.CancelledError:
-            pass
+            raise
         finally:
             await self.stop_gateway("all")
         return True

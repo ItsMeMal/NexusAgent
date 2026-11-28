@@ -25,24 +25,29 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
    - Extensible `plugins/` directory (`/plugins`) to load dynamic custom tools and agent behaviors.
 8. **Security & Anti-Jailbreak Guardrails (`/security`)**:
    - Destructive command interceptor (`rm -rf`, disk wipes, fork bombs), system path sandboxing (`C:\Windows`, `/etc`), credential protection (`.env`, SSH keys), and prompt injection resistance.
-9. **Persistent Memory Across Sessions (SQLite + FTS5)**:
-   - Permanent storage for facts, decisions, and preferences.
+9. **Governed Persistent Memory (SQLite + FTS5)**:
+   - Cross-session storage with provenance, confidence, and supporting evidence.
+   - Inferred facts and reusable lessons enter a review queue; pending proposals never affect normal recall.
+   - Approval/rejection, archive/restore, revision history, and permanent deletion controls.
 10. **Autonomous Cron / Background Automation**:
     - Deferred or recurring task scheduling via `schedule_task` (`/cron`).
-11. **Dynamic Skills & Continuous Learning**:
-    - Learns procedures from `.skills/*.md` and can generate new skills via `create_skill`.
+11. **Managed Skills & Reviewable Learning**:
+    - Discovers skills from local, shared, plugin, and bundled sources with source precedence.
+    - Creates, updates, deletes, and structurally validates Nexus-owned skills; external/bundled skills remain read-only.
+    - Stores corrections and verified lessons as reviewable memory proposals instead of silently promoting guesses.
 
 ---
 
-## 🛠 Complete Autonomous Toolset (20 Tools)
+## 🛠 Core Autonomous Toolsets
 
 * **Computer Use & GUI Automation**: `computer` (desktop screenshots with vision analysis, mouse click/move/drag, typing, hotkeys, scrolling, app launch)
 * **Filesystem & Code**: `read_file`, `write_file`, `patch_file`, `list_dir`, `search_files`
 * **Terminal**: `run_command` (guarded shell execution)
 * **Vision**: `view_image` (multimodal image & diagram analysis)
 * **Web Intelligence**: `web_search`, `web_extract`
-* **Persistent Memory**: `store_memory`, `recall_memory`, `list_all_memories`
-* **Dynamic Skills**: `list_skills`, `read_skill`, `create_skill`
+* **Workspace Checkpoints & Recovery**: `create_checkpoint`, `list_checkpoints`, `inspect_checkpoint`, `restore_checkpoint` (safe overlay by default; exact rollback requires explicit confirmation)
+* **Governed Memory**: `store_memory`, `propose_memory`, `record_learning`, `recall_memory`, `list_all_memories`, `list_memory_proposals`, `review_memory_proposal`, `archive_memory`, `restore_memory`, `delete_memory`, `memory_history`, `session_search`
+* **Managed Skills**: `list_skills`, `read_skill`, `create_skill`, `update_skill`, `delete_skill`, `validate_skill`
 * **Background Automations**: `schedule_task`, `list_scheduled_tasks`, `cancel_scheduled_task`
 * **Multi-Agent Orchestration**: `delegate_task`
 
@@ -101,16 +106,61 @@ Type `/` in the prompt for real-time autocomplete:
 * `/provider` or `/connect` — Switch or connect AI router via interactive menu
 * `/resume` — Browse and resume past conversation sessions (`↑`/`↓`)
 * `/computer` — Inspect GUI automation status, screen resolution, or capture screenshot (`/computer screenshot`)
-* `/tools` — Inspect all 20 active autonomous tools
+* `/tools` — Inspect currently registered autonomous tools
 * `/status` — View agent system diagnostics and active telemetry
 * `/mcp` — Inspect connected Model Context Protocol (MCP) servers
 * `/plugins` — View loaded modular plugins from `plugins/`
 * `/security` — View security guardrails, command sandbox, and safety policy
 * `/skills` — View learned procedures and dynamic skills
-* `/memory` — Inspect persistent facts stored in SQLite FTS5
+* `/memory` — Inspect approved persistent facts and evidence-backed learning
+* `/memory proposals` — Review pending memory/learning proposals
+* `/memory observations` — Inspect captured tool failures and explicit corrections
+* `/memory review <id> approve|reject` — Explicitly approve or reject a proposal
+* `/memory dismiss <id> [reason]` — Dismiss an observation without promoting it
 * `/cron` — View scheduled background jobs and automations
 * `/sessions` — List past conversation sessions stored in SQLite
 * `/new` — Start a fresh, clean context session
 * `/clear` — Clear terminal screen and show banner
 * `/help` — Display command palette
 * `exit` or `quit` — Exit Nexus Agent CLI and persist session state
+
+---
+## 🧰 Configurable Toolsets & Subagent Runtime
+
+Nexus stores toolset policy in `~/.nexus/toolsets.json`. The file is created atomically when a setting is changed. Profiles are applied to the live tool registry; disabled tools are unavailable to the model and are also rejected if called by name or alias.
+
+Built-in profiles:
+
+- `default` — all built-in capability groups and registered extensions.
+- `researcher` — read-oriented workspace, memory, skill, and web access; terminal execution, file mutation, memory writes, plugins, MCP, and other extension tools are blocked.
+- `analyst` — researcher profile with browser and vision capabilities enabled.
+- `coder` — file editing, project inspection, checkpoints, terminal, and development tools.
+
+CLI management:
+
+```text
+/toolsets
+/toolsets use coder
+/toolsets enable browser
+/toolsets disable computer
+/toolsets platform telegram researcher
+/toolsets role debugger coder
+```
+
+Platform profiles are independently selectable for Telegram, Discord, WhatsApp, Slack, and Email. Changing a platform profile requires restarting that gateway to rebuild its isolated registry. Subagent role mappings take effect on the next delegation.
+
+The subagent runtime supports role-scoped permissions, bounded execution time, step limits, and a global concurrency cap. Default limits are 3 concurrent workers, 600 seconds per worker, and 20 reasoning steps. These are configurable under the `limits` object in `toolsets.json`.
+
+Use `delegate_task` for a single focused worker. Use `delegate_tasks` for 2–8 independent workstreams that can safely run concurrently. Do not delegate overlapping file edits or tasks that depend on one another in the same batch. Explicitly requested toolsets can narrow a role's access, but cannot widen it.
+
+### Evidence-Based Self-Improving Learning Loop
+
+Nexus separates raw observations from durable memory:
+
+1. Clear user corrections and tool failures are captured as bounded, deduplicated observations. Common credential patterns are redacted before observations are stored.
+2. Observations remain diagnostic records. They do not enter long-term memory or change future behavior.
+3. Nexus may promote an observation only after identifying a reusable root cause and supplying a concrete verification result. This creates a pending learning proposal.
+4. The operator reviews proposals with `/memory proposals`, then explicitly approves or rejects one with `/memory review <id> approve|reject`. The model cannot approve its own proposals.
+5. Only approved learning entries are retrieved by relevance and injected into later task contexts. They remain guidance to verify, not instructions that override the current user or security policy.
+
+Use `/memory observations` to inspect captured failures/corrections and `/memory dismiss <id> [reason]` to discard transient noise. Pending proposals and dismissed observations never influence future task prompts.

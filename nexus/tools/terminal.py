@@ -133,6 +133,8 @@ def get_terminal_tools(root_dir: Path):
             exit_code = process.returncode
 
             result_lines = [f"Exit Code: {exit_code}"]
+            if exit_code != 0:
+                result_lines.insert(0, f"[COMMAND FAILED: exit code {exit_code}. Do not continue dependent work until this failure is diagnosed and resolved.]")
             if stdout:
                 result_lines.append(f"STDOUT:\n{stdout}")
             if stderr:
@@ -140,10 +142,10 @@ def get_terminal_tools(root_dir: Path):
             if not stdout and not stderr:
                 result_lines.append("(Command produced no output)")
 
-            # Limit total output length to avoid context overflow
+            # Preserve both the command's beginning and its final diagnostic lines.
             res = "\n".join(result_lines)
             if len(res) > 4000:
-                res = res[:4000] + "\n...[Output truncated]"
+                res = res[:2400] + "\n...[middle output truncated]...\n" + res[-1450:]
             return res
         except Exception as e:
             return f"Error running command '{command}': {str(e)}"
