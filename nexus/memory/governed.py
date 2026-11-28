@@ -457,7 +457,7 @@ class MemoryGovernanceMixin:
         detail = self._clean_text(observation, "observation", 3000)
         proof = str(evidence or "").strip()[:3000] or None
         sid = str(session_id or "").strip()[:120] or None
-        fingerprint_source = "\\x1f".join((kind, sid or "", task, target, detail))
+        fingerprint_source = chr(31).join((kind, sid or "", task, target, detail))
         fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()
 
         with self._get_connection() as conn:
@@ -550,7 +550,7 @@ class MemoryGovernanceMixin:
             if row["evidence"]:
                 evidence_parts.append(f"Evidence: {row['evidence']}")
             evidence_parts.append(f"Verification: {clean_verification}")
-            evidence = "\\n".join(evidence_parts)[:4000]
+            evidence = "\n".join(evidence_parts)[:4000]
 
             existing = cursor.execute(
                 """
@@ -588,7 +588,7 @@ class MemoryGovernanceMixin:
 
     def recall_relevant_learnings(self, query: str, limit: int = 4) -> List[Dict[str, Any]]:
         """Retrieve only approved learning memories relevant to the current task."""
-        clean_query = re.sub(r"[^a-zA-Z0-9\\s]", " ", str(query or "")).strip()
+        clean_query = re.sub(r"[^a-zA-Z0-9\s]", " ", str(query or "")).strip()
         tokens = list(dict.fromkeys(word for word in clean_query.split() if len(word) >= 3))[:12]
         if not tokens:
             return []
