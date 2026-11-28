@@ -3,13 +3,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from nexus.core.agent import NexusAgent
-from nexus.gateways.base import BaseGateway, GatewayMessage
-from nexus.memory import SQLiteMemory
-from nexus.skills import SkillManager
-from nexus.tools.base import ToolRegistry
-from nexus.team.agent import BUILTIN_ROLES_BY_ID, TeamAgent
-from nexus.team.manager import TeamManager
+from nolthira.core.agent import NolthiraAgent
+from nolthira.gateways.base import BaseGateway, GatewayMessage
+from nolthira.memory import SQLiteMemory
+from nolthira.skills import SkillManager
+from nolthira.tools.base import ToolRegistry
+from nolthira.team.agent import BUILTIN_ROLES_BY_ID, TeamAgent
+from nolthira.team.manager import TeamManager
 
 
 class CapturingLLM:
@@ -126,8 +126,8 @@ class TeamMemoryIsolationTests(unittest.IsolatedAsyncioTestCase):
             captured["toolsets"] = kwargs["toolsets"]
             return ToolRegistry()
 
-        with patch("nexus.team.agent.build_team_agent_registry", side_effect=fake_build_registry), patch(
-            "nexus.team.agent.NexusAgent", side_effect=lambda **kwargs: FakeAgent(**kwargs)
+        with patch("nolthira.team.agent.build_team_agent_registry", side_effect=fake_build_registry), patch(
+            "nolthira.team.agent.NolthiraAgent", side_effect=lambda **kwargs: FakeAgent(**kwargs)
         ) as agent_constructor:
             result = await team_agent.run("Inspect the project.")
 
