@@ -164,13 +164,13 @@ async def main_async():
     if not gateway_target and args.subcommand and args.subcommand[0].lower() == "gateway":
         gateway_target = args.subcommand[1].lower() if len(args.subcommand) > 1 else "all"
 
-    # Active configuration .env path (workspace override or global ~/.nexus/.env)
+    # Active configuration .env path (workspace override or global ~/.nolthira/.env)
     env_path = config.ENV_PATH
 
     # Initialize subsystems
     memory = SQLiteMemory(config.MEMORY_DB_PATH)
     skill_manager = SkillManager(config.SKILLS_DIR)
-    toolset_manager = ToolsetManager(config.NEXUS_HOME / "toolsets.json")
+    toolset_manager = ToolsetManager(config.NOLTHIRA_HOME / "toolsets.json")
     cron_scheduler = CronScheduler(config.MEMORY_DB_PATH)
     mcp_manager = MCPManager(workspace_dir=config.WORKSPACE_DIR, codebase_dir=config.CODEBASE_DIR)
     plugin_manager = PluginManager(workspace_dir=config.WORKSPACE_DIR, codebase_dir=config.CODEBASE_DIR)
