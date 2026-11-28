@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Callable
 
 from ..config import config
-from ..core.agent import NexusAgent
+from ..core.agent import NolthiraAgent
 from ..core.llm import LLMClient
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
@@ -81,7 +81,7 @@ class GatewayStatus:
 
 
 class BaseGateway(ABC):
-    """Abstract base class for Nexus messaging gateways (Hermes-style unified bridge)."""
+    """Abstract base class for Nolthira messaging gateways (Hermes-style unified bridge)."""
 
     platform_name: str = "base"
 
@@ -168,7 +168,7 @@ class BaseGateway(ABC):
             return None
         try:
             import httpx
-            whisper_model = os.getenv("NEXUS_WHISPER_MODEL", "whisper-1")
+            whisper_model = os.getenv("NOLTHIRA_WHISPER_MODEL", "whisper-1")
             url = f"{config.API_BASE.rstrip('/')}/audio/transcriptions"
             headers = {"Authorization": f"Bearer {config.API_KEY}"}
             files = {"file": (filename, audio_bytes, "audio/ogg")}
@@ -184,11 +184,11 @@ class BaseGateway(ABC):
         return None
 
     async def process_message(self, msg: GatewayMessage) -> Optional[str]:
-        """Authorize, normalize, execute NexusAgent reasoning, and return formatted reply."""
+        """Authorize, normalize, execute NolthiraAgent reasoning, and return formatted reply."""
         if not self.is_authorized(msg.user_id, msg.username):
             self.log("WARN", f"Unauthorized access blocked from user={msg.user_id} (@{msg.username})")
             return (
-                f"🔒 *Access Denied (Nexus Security Guard)*\n"
+                f"🔒 *Access Denied (Nolthira Security Guard)*\n"
                 f"Your {self.platform_name.capitalize()} ID `{msg.user_id}` is not on the allow-list.\n"
                 f"Add `{msg.user_id}` to your gateway allow-list in `.env` or set `GATEWAY_ALLOW_ALL_USERS=true`."
             )
@@ -209,7 +209,7 @@ class BaseGateway(ABC):
 
         if cmd in ("/start", "/help"):
             return (
-                f"⚡ *Nexus Agent* · `{self.platform_name.capitalize()}` Gateway\n\n"
+                f"⚡ *Nolthira Agent* · `{self.platform_name.capitalize()}` Gateway\n\n"
                 f"Model: `{self.llm.model}`\n"
                 f"User ID: `{msg.user_id}`\n"
                 f"Session: `{self.get_session_id(msg.chat_id)}`\n\n"
@@ -226,7 +226,7 @@ class BaseGateway(ABC):
                 f"• `/github` — GitHub App (repos/PRs/issues)\n"
                 f"• `/team` — AI-Team multi-agent (/team help)\n"
                 f"• `/help` — This menu\n\n"
-                f"Send any message to chat with Nexus!"
+                f"Send any message to chat with Nolthira!"
             )
 
         if cmd in ("/new", "/reset", "/clear"):
@@ -237,7 +237,7 @@ class BaseGateway(ABC):
             skills_count = len(self.skill_manager.load_all_skills())
             tools_count = len(self.registry.get_all())
             return (
-                f"📊 *Nexus Gateway Status*\n"
+                f"📊 *Nolthira Gateway Status*\n"
                 f"• Platform: `{self.platform_name.capitalize()}`\n"
                 f"• Model: `{self.llm.model}`\n"
                 f"• Session: `{self.get_session_id(msg.chat_id)}`\n"
@@ -377,7 +377,7 @@ class BaseGateway(ABC):
                 return f"❌ Sessions error: {e}"
 
         if cmd == "/github" or text.startswith("/github "):
-            from nexus.github_app.commands import handle_github_command, HELP_TEXT
+            from nolthira.github_app.commands import handle_github_command, HELP_TEXT
             replies = []
             async def _send(t):
                 replies.append(t)
@@ -386,7 +386,7 @@ class BaseGateway(ABC):
             return "\n\n".join(replies) if replies else HELP_TEXT
 
         if cmd in ("/team", "/ai-team") or text.startswith("/team ") or text.startswith("/ai-team "):
-            from nexus.team.commands import handle_team_command, HELP_TEXT as TEAM_HELP
+            from nolthira.team.commands import handle_team_command, HELP_TEXT as TEAM_HELP
             replies = []
             async def _team_send(t):
                 replies.append(t)
@@ -406,7 +406,7 @@ class BaseGateway(ABC):
         lock = self._get_lock(msg.chat_id)
         async with lock:
             session_id = self.get_session_id(msg.chat_id)
-            agent = NexusAgent(
+            agent = NolthiraAgent(
                 llm_client=self.llm,
                 memory=self.memory,
                 skill_manager=self.skill_manager,
