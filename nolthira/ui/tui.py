@@ -324,7 +324,7 @@ def render_tool_result(tool_name: str, result: str, elapsed: float = 0.0):
     )
 
     normalized = str(tool_name or "").strip().lower()
-    if normalized in {"read_file", "run_command", "process", "web_extract"} and safe_result.strip():
+    if normalized in {"read_file", "run_command", "process"} and safe_result.strip():
         console.print(
             Panel(
                 Text(safe_result, no_wrap=False, overflow="fold"),
