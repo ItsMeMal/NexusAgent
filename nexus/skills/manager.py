@@ -2,14 +2,25 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import re
 import os
+import tempfile
 
 
 class Skill:
-    def __init__(self, name: str, description: str, content: str, file_path: Path):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        content: str,
+        file_path: Path,
+        source: str = "",
+        writable: bool = False,
+    ):
         self.name = name
         self.description = description
         self.content = content
         self.file_path = file_path
+        self.source = source or str(file_path.parent)
+        self.writable = writable
 
 
 def _extract_skill_description(text: str) -> str:
@@ -150,16 +161,19 @@ class SkillManager:
                     else:
                         skill_name = file.stem
 
-                    # Deduplicate: primary dir wins
-                    if skill_name in seen_names:
+                    # Normalized deduplication: the first configured source wins.
+                    normalized_name = re.sub(r"[-_\\s]+", "", skill_name.lower())
+                    if normalized_name in seen_names:
                         continue
-                    seen_names[skill_name] = True
+                    seen_names[normalized_name] = True
 
                     skills.append(Skill(
                         name=skill_name,
                         description=desc,
                         content=text,
                         file_path=file,
+                        source=str(directory.resolve()),
+                        writable=self._is_primary_file(file),
                     ))
                 except Exception:
                     continue
@@ -180,7 +194,14 @@ class SkillManager:
                 if candidate.exists():
                     try:
                         text = candidate.read_text(encoding="utf-8")
-                        return Skill(name=clean, description="", content=text, file_path=candidate)
+                        return Skill(
+                            name=clean,
+                            description=_extract_skill_description(text),
+                            content=text,
+                            file_path=candidate,
+                            source=str(directory.resolve()),
+                            writable=self._is_primary_file(candidate),
+                        )
                     except Exception:
                         continue
         # Normalized case-insensitive / hyphen-underscore fallback
@@ -256,13 +277,130 @@ class SkillManager:
         scored.sort(key=lambda x: x[0], reverse=True)
         return [s for _, s in scored[:top_k]]
 
+    @staticmethod
+    def _normalize_skill_name(name: str) -> str:
+        raw = str(name or "").strip()
+        if not raw or "/" in raw or "\\\\" in raw:
+            raise ValueError("Skill name must be a non-empty identifier, not a path.")
+        clean = re.sub(r"[^a-zA-Z0-9_-]+", "-", raw).strip("-").lower()
+        if not clean or len(clean) > 80 or clean in {".", ".."}:
+            raise ValueError("Skill name must be 1-80 characters using letters, numbers, '-' or '_'.")
+        return clean
+
+    def _is_primary_file(self, file_path: Path) -> bool:
+        try:
+            return file_path.resolve().is_relative_to(self.skills_dir.resolve())
+        except (OSError, ValueError):
+            return False
+
+    def _find_primary_skill_file(self, name: str) -> Optional[Path]:
+        clean_name = self._normalize_skill_name(name)
+        candidates = (
+            self.skills_dir / f"{clean_name}.md",
+            self.skills_dir / clean_name / "SKILL.md",
+            self.skills_dir / clean_name / f"{clean_name}.md",
+        )
+        for candidate in candidates:
+            if candidate.is_file() and self._is_primary_file(candidate):
+                return candidate
+        return None
+
+    @staticmethod
+    def _atomic_write_skill(path: Path, full_text: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\\n") as handle:
+                handle.write(full_text)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, path)
+        except Exception:
+            try:
+                os.unlink(temp_name)
+            except OSError:
+                pass
+            raise
+
+    @staticmethod
+    def _format_skill_file(name: str, description: str, content: str) -> str:
+        clean_description = str(description or "").strip()
+        instructions = str(content or "").strip()
+        if not clean_description:
+            raise ValueError("Skill description must not be empty.")
+        if not instructions:
+            raise ValueError("Skill instructions must not be empty.")
+        return f"# Skill: {name}\\nDescription: {clean_description}\\n\\n{instructions}\\n"
+
     def save_skill(self, name: str, description: str, content: str) -> Path:
-        """Save a new skill to the primary (writable) skills directory."""
-        clean_name = re.sub(r"[^a-zA-Z0-9_-]", "-", name).strip("-").lower()
+        """Create a new skill in the primary writable directory; never overwrite silently."""
+        clean_name = self._normalize_skill_name(name)
         file_path = self.skills_dir / f"{clean_name}.md"
-        full_text = f"# Skill: {clean_name}\nDescription: {description}\n\n{content}\n"
-        file_path.write_text(full_text, encoding="utf-8")
+        if file_path.exists() or self._find_primary_skill_file(clean_name):
+            raise FileExistsError(f"Skill '{clean_name}' already exists in the writable skill directory.")
+        full_text = self._format_skill_file(clean_name, description, content)
+        self._atomic_write_skill(file_path, full_text)
         return file_path
+
+    def update_skill(self, name: str, description: str, content: str) -> Path:
+        """Update only a skill owned by the primary writable directory."""
+        clean_name = self._normalize_skill_name(name)
+        file_path = self._find_primary_skill_file(clean_name)
+        if not file_path:
+            existing = self.get_skill(clean_name)
+            if existing:
+                raise PermissionError(
+                    f"Skill '{clean_name}' is loaded from a read-only source ({existing.source})."
+                )
+            raise FileNotFoundError(f"Writable skill '{clean_name}' was not found.")
+        full_text = self._format_skill_file(clean_name, description, content)
+        self._atomic_write_skill(file_path, full_text)
+        return file_path
+
+    def delete_skill(self, name: str) -> bool:
+        """Delete only a skill owned by the primary writable directory."""
+        clean_name = self._normalize_skill_name(name)
+        file_path = self._find_primary_skill_file(clean_name)
+        if not file_path:
+            existing = self.get_skill(clean_name)
+            if existing:
+                raise PermissionError(
+                    f"Skill '{clean_name}' is loaded from a read-only source ({existing.source})."
+                )
+            return False
+        file_path.unlink()
+        return True
+
+    def validate_skill(self, name: str) -> Dict[str, Any]:
+        """Check skill structure and minimum instruction quality without executing its instructions."""
+        skill = self.get_skill(name)
+        if not skill:
+            return {"valid": False, "name": name, "issues": ["Skill not found."]}
+
+        issues: List[str] = []
+        lines = skill.content.splitlines()
+        body_start = 0
+        if lines and lines[0].strip() == "---":
+            try:
+                body_start = next(i for i, line in enumerate(lines[1:], 1) if line.strip() == "---") + 1
+            except StopIteration:
+                issues.append("YAML frontmatter is missing its closing '---' delimiter.")
+                body_start = len(lines)
+
+        if skill.description == "No description":
+            issues.append("Add a concise description so the skill can be discovered.")
+        instructions = "\\n".join(lines[body_start:]).strip()
+        if len(instructions) < 40:
+            issues.append("Instruction body is too short; add actionable steps and constraints.")
+        if not skill.writable:
+            issues.append("Skill is read-only; validation does not grant permission to modify it.")
+        return {
+            "valid": not issues,
+            "name": skill.name,
+            "source": skill.source,
+            "writable": skill.writable,
+            "issues": issues,
+        }
 
     def get_skills_summary(self, compact: bool = False, query: str = "", max_chars: int = 4500) -> str:
         skills = self.load_all_skills()
