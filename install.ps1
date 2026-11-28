@@ -53,7 +53,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 }
 Write-Host "  [OK] Found Git" -ForegroundColor Green
 
-# 3. Migrate legacy ~/.nolthira into canonical ~/.nolthira.
+# 3. Migrate legacy ~/.nexus into canonical ~/.nolthira.
 $legacyHome = Join-Path $env:USERPROFILE ".nexus"
 $nolthiraHome = Join-Path $env:USERPROFILE ".nolthira"
 
