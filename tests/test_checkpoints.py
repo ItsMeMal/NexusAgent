@@ -92,6 +92,22 @@ class CheckpointManagerTests(unittest.TestCase):
 
         self.assertTrue(large_but_allowed.exists())
 
+
+    def test_restore_refuses_to_overwrite_live_file_not_captured_by_safety_snapshot(self):
+        source = self.workspace / "main.py"
+        source.write_text("old", encoding="utf-8")
+        self.manager.MAX_FILE_BYTES = 5
+        checkpoint = self.manager.create_checkpoint("small original")
+        source.write_text("newer user changes exceed snapshot file limit", encoding="utf-8")
+
+        with self.assertRaisesRegex(CheckpointError, "could not capture files"):
+            self.manager.restore_checkpoint(checkpoint["id"], mode="overlay")
+
+        self.assertEqual(
+            source.read_text(encoding="utf-8"),
+            "newer user changes exceed snapshot file limit",
+        )
+
     def test_checkpoint_cannot_be_restored_into_a_different_workspace(self):
         checkpoint = self.manager.create_checkpoint("workspace identity")
         other = self.workspace.parent / "other-project"
