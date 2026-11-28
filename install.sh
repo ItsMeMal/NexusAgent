@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  ⚡ Nexus Agent Orchestrator - Universal Linux & macOS Installer
-#  Usage: curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh | bash
+#  ⚡ Nolthira Agent Orchestrator - Universal Linux & macOS Installer
+#  Usage: curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.sh | bash
 # ==============================================================================
 
 set -e
@@ -16,14 +16,15 @@ WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
 echo ""
-printf "${CYAN}  ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗\n"
-printf "  ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝\n"
-printf "  ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗\n"
-printf "  ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║\n"
-printf "  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║\n"
-printf "  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝\n${NC}"
+printf "${CYAN}  ██╗  ██╗   ██████╗   ██╗  ████████╗  ██╗  ██╗  ██╗  ██████╗   █████╗\n"
+printf "  ███╗ ██║  ██╔═══██╗  ██║  ╚══██╔══╝  ██║  ██║  ██║  ██╔══██╗  ██╔══██╗\n"
+printf "  ████╗██║  ██║   ██║  ██║    ██║  ███████║  ██║  ██████╔╝  ███████║\n"
+printf "  ██╔████║  ██║   ██║  ██║    ██║  ██╔══██║  ██║  ██╔══██╗  ██╔══██║\n"
+printf "  ██║╚███║  ╚██████╔╝  ███████╗    ██║  ██║  ██║  ██║  ██║  ██║  ██║  ██║\n"
+printf "  ╚═╝ ╚══╝   ╚═════╝   ╚══════╝    ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝\n"
+printf "${NC}"
 echo ""
-printf "${GREEN}  ⚡ Nexus Agent Orchestrator Installer\n${NC}"
+printf "${GREEN}  ⚡ Nolthira Agent Orchestrator Installer\n${NC}"
 
 # Detect OS
 OS_NAME="$(uname -s)"
@@ -80,27 +81,27 @@ ENGINE_DIR="${NEXUS_HOME}/engine"
 BIN_DIR="${NEXUS_HOME}/bin"
 VENV_DIR="${NEXUS_HOME}/venv"
 
-printf "${CYAN}  [..] Initializing Nexus Home at ${NEXUS_HOME}...\n${NC}"
+printf "${CYAN}  [..] Initializing Nolthira Home at ${NEXUS_HOME}...\n${NC}"
 mkdir -p "${NEXUS_HOME}"
 mkdir -p "${BIN_DIR}"
 
 # 4. Clone or update repository
 if [ -d "${ENGINE_DIR}/.git" ]; then
-    printf "${CYAN}  [..] Updating existing Nexus engine...\n${NC}"
+    printf "${CYAN}  [..] Updating existing Nolthira engine...\n${NC}"
     cd "${ENGINE_DIR}"
     git sparse-checkout set nexus .skills pyproject.toml .env.example README.md 2>/dev/null || true
     git pull origin main --quiet || true
 else
-    printf "${CYAN}  [..] Downloading Nexus Agent Engine from GitHub...\n${NC}"
+    printf "${CYAN}  [..] Downloading Nolthira Agent Engine from GitHub...\n${NC}"
     rm -rf "${ENGINE_DIR}"
-    git clone https://github.com/ItsMeMal/NexusAgent.git "${ENGINE_DIR}" --quiet
+    git clone https://github.com/ItsMeMal/NolthiraAgent.git "${ENGINE_DIR}" --quiet
     cd "${ENGINE_DIR}" 2>/dev/null || true
     git sparse-checkout set nexus .skills pyproject.toml .env.example README.md 2>/dev/null || true
 fi
 
 # Prune non-engine artifacts (website, tests, installers) from runtime engine directory
 rm -rf "${ENGINE_DIR}/website" "${ENGINE_DIR}/tests" "${ENGINE_DIR}/install.ps1" "${ENGINE_DIR}/install.sh" "${ENGINE_DIR}/wrangler.toml"
-printf "${GREEN}  [OK] Nexus Engine ready at ${ENGINE_DIR}\n${NC}"
+printf "${GREEN}  [OK] Nolthira Engine ready at ${ENGINE_DIR}\n${NC}"
 
 # 5. Create or verify virtual environment with auto-recovery
 VENV_PYTHON="${VENV_DIR}/bin/python"
@@ -144,7 +145,7 @@ else
 fi
 
 # 6. Install dependencies
-printf "${CYAN}  [..] Installing Nexus dependencies (httpx, rich, prompt_toolkit, ddgs, pydantic, pyautogui, pillow)...\n${NC}"
+printf "${CYAN}  [..] Installing Nolthira dependencies (httpx, rich, prompt_toolkit, ddgs, pydantic, pyautogui, pillow)...\n${NC}"
 if [ "$USE_VENV" -eq 1 ]; then
     "${VENV_PYTHON}" -m pip install --quiet --upgrade pip 2>/dev/null || true
     "${VENV_PYTHON}" -m pip install --quiet -r "${ENGINE_DIR}/requirements.txt"
@@ -173,7 +174,7 @@ EOF
 fi
 
 # 8. Create launcher scripts in ~/.nexus/bin
-LAUNCHER="${BIN_DIR}/nexus"
+LAUNCHER="${BIN_DIR}/nolthira"
 cat <<EOF > "${LAUNCHER}"
 #!/usr/bin/env bash
 export PYTHONPATH="${ENGINE_DIR}:\${PYTHONPATH}"
@@ -181,9 +182,11 @@ exec "${RUN_PYTHON}" -m nexus.cli "\$@"
 EOF
 chmod +x "${LAUNCHER}"
 
-# Create 'nexuss' alias
-cp -f "${LAUNCHER}" "${BIN_DIR}/nexuss"
-chmod +x "${BIN_DIR}/nexuss"
+# Keep legacy command aliases during the migration.
+for legacy_name in nexus nexuss; do
+    cp -f "${LAUNCHER}" "${BIN_DIR}/${legacy_name}"
+    chmod +x "${BIN_DIR}/${legacy_name}"
+done
 printf "${GREEN}  [OK] Created CLI launcher in ${BIN_DIR}\n${NC}"
 
 # 9. Link directly into system PATH locations so 'nexus' works INSTANTLY in any open shell
@@ -191,10 +194,11 @@ LINKED_SYSTEM=0
 for sys_dir in /usr/local/bin /usr/bin; do
     if [ -d "$sys_dir" ]; then
         if [ -w "$sys_dir" ] || [ "$(id -u)" -eq 0 ]; then
-            ln -sf "${LAUNCHER}" "${sys_dir}/nexus" 2>/dev/null && \
-            ln -sf "${LAUNCHER}" "${sys_dir}/nexuss" 2>/dev/null && \
+            for command_name in nolthira nexus nexuss; do
+                ln -sf "${LAUNCHER}" "${sys_dir}/${command_name}" 2>/dev/null
+            done
             LINKED_SYSTEM=1
-            printf "${GREEN}  [OK] Linked 'nexus' to ${sys_dir} (Command immediately available)\n${NC}"
+            printf "${GREEN}  [OK] Linked 'nolthira' to ${sys_dir} (legacy aliases retained)\n${NC}"
             break
         elif command -v sudo >/dev/null 2>&1; then
             if sudo -n ln -sf "${LAUNCHER}" "${sys_dir}/nexus" 2>/dev/null; then
@@ -219,7 +223,7 @@ ADDED_TO_PROFILE=0
 for cfg in "${SHELL_CONFIGS[@]}"; do
     if ! grep -q ".nexus/bin" "$cfg" 2>/dev/null; then
         echo "" >> "$cfg"
-        echo "# Nexus Agent CLI" >> "$cfg"
+        echo "# Nolthira Agent CLI" >> "$cfg"
         echo "$PATH_EXPORT" >> "$cfg"
         ADDED_TO_PROFILE=1
     fi
@@ -231,11 +235,12 @@ fi
 
 echo ""
 printf "  ────────────────────────────────────────────────────────────\n"
-printf "${GREEN}  ✨ Nexus Agent Orchestrator has been successfully installed!\n${NC}"
+printf "${GREEN}  ✨ Nolthira Agent Orchestrator has been successfully installed!\n${NC}"
 echo ""
 printf "${WHITE}  🚀 Getting Started:\n${NC}"
 printf "${GRAY}     1. Configure your API key:\n${NC}"
 printf "${CYAN}        nano ${GLOBAL_ENV}\n${NC}"
-printf "${GRAY}     2. Launch Nexus from any folder:\n${NC}"
-printf "${YELLOW}        nexus\n${NC}"
+printf "${GRAY}     2. Launch Nolthira from any folder:\n${NC}"
+printf "${YELLOW}        nolthira\n${NC}"
+printf "${GRAY}        (legacy alias: nexus)\n${NC}"
 echo ""

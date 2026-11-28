@@ -1,19 +1,19 @@
 ﻿# ==============================================================================
-#  ⚡ Nexus Agent Orchestrator - One-Line Windows Installer
-#  Usage: irm https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.ps1 | iex
+#  ⚡ Nolthira Agent Orchestrator - One-Line Windows Installer
+#  Usage: irm https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.ps1 | iex
 # ==============================================================================
 
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
-Write-Host "  ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗" -ForegroundColor Cyan
-Write-Host "  ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝" -ForegroundColor Cyan
-Write-Host "  ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗" -ForegroundColor Cyan
-Write-Host "  ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║" -ForegroundColor Cyan
-Write-Host "  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║" -ForegroundColor Cyan
-Write-Host "  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝" -ForegroundColor Cyan
+Write-Host "  ██╗  ██╗   ██████╗   ██╗  ████████╗  ██╗  ██╗  ██╗  ██████╗   █████╗" -ForegroundColor Cyan
+Write-Host "  ███╗ ██║  ██╔═══██╗  ██║  ╚══██╔══╝  ██║  ██║  ██║  ██╔══██╗  ██╔══██╗" -ForegroundColor Cyan
+Write-Host "  ████╗██║  ██║   ██║  ██║    ██║  ███████║  ██║  ██████╔╝  ███████║" -ForegroundColor Cyan
+Write-Host "  ██╔████║  ██║   ██║  ██║    ██║  ██╔══██║  ██║  ██╔══██╗  ██╔══██║" -ForegroundColor Cyan
+Write-Host "  ██║╚███║  ╚██████╔╝  ███████╗    ██║  ██║  ██║  ██║  ██║  ██║  ██║  ██║" -ForegroundColor Cyan
+Write-Host "  ╚═╝ ╚══╝   ╚═════╝   ╚══════╝    ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  ⚡ Nexus Agent Orchestrator Installer" -ForegroundColor Green
+Write-Host "  ⚡ Nolthira Agent Orchestrator Installer" -ForegroundColor Green
 Write-Host "  Target OS: Windows · Home: $env:USERPROFILE\.nexus" -ForegroundColor DarkGray
 Write-Host "  ────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host ""
@@ -40,7 +40,7 @@ $pyMajor = [int]$pyVer.Split(".")[0]
 $pyMinor = [int]$pyVer.Split(".")[1]
 
 if ($pyMajor -lt 3 -or ($pyMajor -eq 3 -and $pyMinor -lt 10)) {
-    Write-Host "  [X] Python version is $pyVer. Nexus requires Python 3.10 or higher." -ForegroundColor Red
+    Write-Host "  [X] Python version is $pyVer. Nolthira requires Python 3.10 or higher." -ForegroundColor Red
     exit 1
 }
 Write-Host "  [OK] Found Python $pyVer ($pythonCmd)" -ForegroundColor Green
@@ -59,23 +59,23 @@ $engineDir = Join-Path $nexusHome "engine"
 $binDir = Join-Path $nexusHome "bin"
 $venvDir = Join-Path $nexusHome "venv"
 
-Write-Host "  [..] Initializing Nexus Home at $nexusHome..." -ForegroundColor Cyan
+Write-Host "  [..] Initializing Nolthira Home at $nexusHome..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $nexusHome | Out-Null
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
 # 4. Clone or update repository
 if (Test-Path (Join-Path $engineDir ".git")) {
-    Write-Host "  [..] Updating existing Nexus engine..." -ForegroundColor Cyan
+    Write-Host "  [..] Updating existing Nolthira engine..." -ForegroundColor Cyan
     Push-Location $engineDir
     git sparse-checkout set nexus .skills pyproject.toml .env.example README.md 2>$null
     git pull origin main --quiet
     Pop-Location
 } else {
-    Write-Host "  [..] Downloading Nexus Agent Engine from GitHub..." -ForegroundColor Cyan
+    Write-Host "  [..] Downloading Nolthira Agent Engine from GitHub..." -ForegroundColor Cyan
     if (Test-Path $engineDir) {
         Remove-Item -Recurse -Force $engineDir
     }
-    git clone https://github.com/ItsMeMal/NexusAgent.git $engineDir --quiet
+    git clone https://github.com/ItsMeMal/NolthiraAgent.git $engineDir --quiet
     Push-Location $engineDir
     git sparse-checkout set nexus .skills pyproject.toml .env.example README.md 2>$null
     Pop-Location
@@ -89,7 +89,7 @@ foreach ($target in $pruneTargets) {
         Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue
     }
 }
-Write-Host "  [OK] Nexus Engine ready at $engineDir" -ForegroundColor Green
+Write-Host "  [OK] Nolthira Engine ready at $engineDir" -ForegroundColor Green
 
 # 5. Create or verify virtualenv
 $venvPython = Join-Path (Join-Path $venvDir "Scripts") "python.exe"
@@ -99,7 +99,7 @@ if (-not (Test-Path $venvPython)) {
 }
 
 # 6. Install dependencies
-Write-Host "  [..] Installing Nexus dependencies (httpx, rich, prompt_toolkit, ddgs, pydantic, pyautogui, pillow)..." -ForegroundColor Cyan
+Write-Host "  [..] Installing Nolthira dependencies (httpx, rich, prompt_toolkit, ddgs, pydantic, pyautogui, pillow)..." -ForegroundColor Cyan
 $reqFile = Join-Path $engineDir "requirements.txt"
 & $venvPython -m pip install --quiet --upgrade pip
 & $venvPython -m pip install --quiet -r $reqFile
@@ -123,8 +123,8 @@ NEXUS_TEMPERATURE=0.7
 }
 
 # 8. Create launcher scripts in ~/.nexus/bin
-$launcherCmd = Join-Path $binDir "nexus.cmd"
-$launcherPs1 = Join-Path $binDir "nexus.ps1"
+$launcherCmd = Join-Path $binDir "nolthira.cmd"
+$launcherPs1 = Join-Path $binDir "nolthira.ps1"
 
 @"
 @echo off
@@ -135,9 +135,11 @@ $launcherPs1 = Join-Path $binDir "nexus.ps1"
 & "$venvPython" -m nexus.cli @args
 "@ | Set-Content $launcherPs1 -Encoding UTF8
 
-# Also create alias 'nexuss'
-Copy-Item $launcherCmd (Join-Path $binDir "nexuss.cmd") -Force
-Copy-Item $launcherPs1 (Join-Path $binDir "nexuss.ps1") -Force
+# Keep legacy commands working while users migrate to "nolthira".
+foreach ($legacyName in @("nexus", "nexuss")) {
+    Copy-Item $launcherCmd (Join-Path $binDir "${legacyName}.cmd") -Force
+    Copy-Item $launcherPs1 (Join-Path $binDir "${legacyName}.ps1") -Force
+}
 Write-Host "  [OK] Created CLI launcher in $binDir" -ForegroundColor Green
 
 # 9. Add ~/.nexus/bin to User PATH permanently
@@ -162,11 +164,11 @@ $standardDirs = @(
 foreach ($targetDir in $standardDirs) {
     if (Test-Path $targetDir) {
         try {
-            Copy-Item $launcherCmd (Join-Path $targetDir "nexus.cmd") -Force -ErrorAction SilentlyContinue
-            Copy-Item $launcherPs1 (Join-Path $targetDir "nexus.ps1") -Force -ErrorAction SilentlyContinue
-            Copy-Item (Join-Path $binDir "nexuss.cmd") (Join-Path $targetDir "nexuss.cmd") -Force -ErrorAction SilentlyContinue
-            Copy-Item (Join-Path $binDir "nexuss.ps1") (Join-Path $targetDir "nexuss.ps1") -Force -ErrorAction SilentlyContinue
-            Write-Host "  [OK] Linked 'nexus' to $targetDir (Immediate global access ready)" -ForegroundColor Green
+            foreach ($commandName in @("nolthira", "nexus", "nexuss")) {
+                Copy-Item (Join-Path $binDir "${commandName}.cmd") (Join-Path $targetDir "${commandName}.cmd") -Force -ErrorAction SilentlyContinue
+                Copy-Item (Join-Path $binDir "${commandName}.ps1") (Join-Path $targetDir "${commandName}.ps1") -Force -ErrorAction SilentlyContinue
+            }
+            Write-Host "  [OK] Linked 'nolthira' to $targetDir (legacy aliases retained)" -ForegroundColor Green
             break
         } catch {}
     }
@@ -174,11 +176,12 @@ foreach ($targetDir in $standardDirs) {
 
 Write-Host ""
 Write-Host "  ────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host "  ✨ Nexus Agent Orchestrator has been successfully installed!" -ForegroundColor Green
+Write-Host "  ✨ Nolthira Agent Orchestrator has been successfully installed!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  🚀 Getting Started:" -ForegroundColor White
 Write-Host "     1. Configure your API key:" -ForegroundColor DarkGray
 Write-Host "        notepad $globalEnv" -ForegroundColor Cyan
-Write-Host "     2. Launch Nexus from any folder:" -ForegroundColor DarkGray
-Write-Host "        nexus" -ForegroundColor Yellow
+Write-Host "     2. Launch Nolthira from any folder:" -ForegroundColor DarkGray
+Write-Host "        nolthira" -ForegroundColor Yellow
+Write-Host "        (legacy alias: nexus)" -ForegroundColor DarkGray
 Write-Host ""

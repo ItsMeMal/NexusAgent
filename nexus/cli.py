@@ -101,7 +101,7 @@ def build_prompt_fragments(model_name: str, mode_id: str, workspace_name: str = 
     model_short = model_name.split("/")[-1] if "/" in model_name else model_name
     frags = [
         ('class:box-top', '╭─ '),
-        ('class:app-name', '◈ nexus'),
+        ('class:app-name', '◈ nolthira'),
         ('class:dim', ' · '),
         (f'class:mode-{spec.id}', f' {spec.icon} {spec.label} '),
         ('class:dim', ' · '),
@@ -147,19 +147,19 @@ async def main_async():
         except Exception:
             pass
 
-    parser = argparse.ArgumentParser(description="Nexus Agent Orchestrator - Autonomous Multi-Agent AI CLI")
+    parser = argparse.ArgumentParser(description="Nolthira Agent Orchestrator - Autonomous Multi-Agent AI CLI")
     parser.add_argument("-p", "--prompt", type=str, help="Single-shot execution prompt", default=None)
     parser.add_argument("-m", "--model", type=str, help="Model override", default=None)
     parser.add_argument("-M", "--mode", type=str, help="Agent mode override (auto|plan|code|ask|turbo)", default=None)
     parser.add_argument("-s", "--session", type=str, help="Session ID to resume or use", default=None)
-    parser.add_argument("--setup", action="store_true", help="Run interactive Nexus setup wizard")
+    parser.add_argument("--setup", action="store_true", help="Run interactive Nolthira setup wizard")
     parser.add_argument("-g", "--gateway", nargs="?", const="all", default=None, help="Run messaging gateway daemon (all|telegram|discord|whatsapp|slack|email)")
     parser.add_argument("subcommand", nargs="*", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     run_setup_wizard = bool(args.setup or (args.subcommand and args.subcommand[0].lower() == "setup"))
 
-    # Support `nexus gateway [all|telegram|discord|whatsapp|slack|email]` positional syntax
+    # Support `nolthira gateway [all|telegram|discord|whatsapp|slack|email]` positional syntax
     gateway_target = args.gateway
     if not gateway_target and args.subcommand and args.subcommand[0].lower() == "gateway":
         gateway_target = args.subcommand[1].lower() if len(args.subcommand) > 1 else "all"
@@ -294,15 +294,15 @@ async def main_async():
                 except Exception:
                     pass
 
-    # Headless Messaging Gateway Daemon Mode (`nexus --gateway` / `nexus gateway`)
+    # Headless Messaging Gateway Daemon Mode (`nolthira --gateway` / `nolthira gateway`)
     if gateway_target:
-        console.print(f"\n  [bold #00ffd7]🌐 Starting Nexus Gateway Daemon[/bold #00ffd7] [dim](target: {gateway_target})[/dim]")
+        console.print(f"\n  [bold #00ffd7]🌐 Starting Nolthira Gateway Daemon[/bold #00ffd7] [dim](target: {gateway_target})[/dim]")
         started = await gateway_manager.start_gateway(gateway_target)
         cron_scheduler.start_runner(_cron_executor, on_complete=_cron_notify, poll_interval=5.0)
         render_gateway_card(gateway_manager.get_statuses())
         if not any(v in ("started", "already_running") for v in started.values()):
             await cron_scheduler.stop_runner()
-            console.print("  [bold yellow]⚠ No configured gateways found for target.[/bold yellow] Run `nexus` and type `/gateway setup` first.\n")
+            console.print("  [bold yellow]⚠ No configured gateways found for target.[/bold yellow] Run `nolthira` and type `/gateway setup` first.\n")
             return
         console.print("  [bold #22c55e]✔ Gateway daemon + Cron runner active.[/bold #22c55e] [dim]Listening (Ctrl+C to stop)...[/dim]\n")
         try:
@@ -316,7 +316,7 @@ async def main_async():
             console.print("  [bold #00ffd7]✔ Gateways offline.[/bold #00ffd7]\n")
         return
 
-    # Unified Onboarding Wizard (`nexus setup` or `nexus --setup`)
+    # Unified Onboarding Wizard (`nolthira setup` or `nolthira --setup`)
     if run_setup_wizard:
         setup_sess = PromptSession(history=InMemoryHistory())
         await interactive_onboarding_setup(setup_sess, llm, agent, env_path)
@@ -458,7 +458,7 @@ async def main_async():
                 await asyncio.sleep(0.15)
                 gc.collect()
                 await asyncio.sleep(0.05)
-                console.print("  [bold #00ffd7]✔ Session preserved.[/bold #00ffd7] [dim]Nexus Orchestrator offline. Goodbye![/dim]\n")
+                console.print("  [bold #00ffd7]✔ Session preserved.[/bold #00ffd7] [dim]Nolthira Orchestrator offline. Goodbye![/dim]\n")
                 break
 
             # Handle slash commands & command palette

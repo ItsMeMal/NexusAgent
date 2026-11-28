@@ -22,4 +22,6 @@ dependencies = [
 ]
 
 [project.scripts]
-nexus-agent = "nexus.cli:main"
+nolthira = "nexus.cli:main"
+nexus = "nexus.cli:main"  # Legacy command alias
+nexus-agent = "nexus.cli:main"  # Legacy console-script alias

@@ -1,13 +1,13 @@
-# ⚡ Nexus Agent Orchestrator (v1)
+# ⚡ Nolthira Agent Orchestrator (v1)
 
 An autonomous, persistent, universal, and self-improving AI Agent Orchestrator built to plan, execute, research, and solve complex workflows across any domain.
 
 ---
 
-## 🌟 Key Nexus Orchestrator Pillars
+## 🌟 Key Nolthira Orchestrator Pillars
 
 1. **Universal Autonomous Orchestrator (Multi-Domain)**:
-   - Not restricted to coding. Nexus is a general-purpose orchestrator for research, automation, web intelligence, visual analysis, business strategy, technical writing, and problem-solving.
+   - Not restricted to coding. Nolthira is a general-purpose orchestrator for research, automation, web intelligence, visual analysis, business strategy, technical writing, and problem-solving.
 2. **Multi-Agent Orchestration (`delegate_task`)**:
    - Decomposes large objectives across scoped subagents (researcher, analyst, executor) with isolated context windows.
 3. **Multimodal Vision (`view_image`)**:
@@ -33,7 +33,7 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
     - Deferred or recurring task scheduling via `schedule_task` (`/cron`).
 11. **Managed Skills & Reviewable Learning**:
     - Discovers skills from local, shared, plugin, and bundled sources with source precedence.
-    - Creates, updates, deletes, and structurally validates Nexus-owned skills; external/bundled skills remain read-only.
+    - Creates, updates, deletes, and structurally validates Nolthira-owned skills; external/bundled skills remain read-only.
     - Stores corrections and verified lessons as reviewable memory proposals instead of silently promoting guesses.
 
 ---
@@ -56,16 +56,16 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 ## ⚡ Quick One-Line Installation
 
-Install Nexus globally into your home directory (`~/.nexus`):
+Install Nolthira globally into your home directory (`~/.nexus`):
 
 ### Windows (PowerShell)
 ```powershell
-irm https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.ps1 | iex
 ```
 
 ### Linux & macOS (curl)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.sh | bash
 ```
 
 > **Home Directory Layout:**
@@ -77,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh
 
 ## 🔌 Provider Catalog
 
-Nexus includes built-in profiles for hosted inference providers and local runtimes. The provider picker (`/provider`) now includes these additional OpenAI Chat Completions-compatible endpoints:
+Nolthira includes built-in profiles for hosted inference providers and local runtimes. The provider picker (`/provider`) now includes these additional OpenAI Chat Completions-compatible endpoints:
 
 | Provider | Default base URL | Authentication |
 |---|---|---|
@@ -98,7 +98,7 @@ Nexus includes built-in profiles for hosted inference providers and local runtim
 | Hugging Face Inference Providers | `https://router.huggingface.co/v1` | `HF_TOKEN` |
 | Amazon Bedrock Mantle | `https://bedrock-mantle.us-east-1.api.aws/v1` | `AWS_BEDROCK_API_KEY` |
 
-The catalog discovers models from the selected provider's `/models` endpoint where available; it does not depend on a stale hard-coded model list. When connecting a provider, Nexus saves its provider-specific credential and also updates the active `OPENAI_API_KEY` / `OPENAI_API_BASE` values used by the current runtime. Existing provider-specific credentials are preferred when reconnecting.
+The catalog discovers models from the selected provider's `/models` endpoint where available; it does not depend on a stale hard-coded model list. When connecting a provider, Nolthira saves its provider-specific credential and also updates the active `OPENAI_API_KEY` / `OPENAI_API_BASE` values used by the current runtime. Existing provider-specific credentials are preferred when reconnecting.
 
 For regional services, the provider wizard lets you override the default base URL. This is important for Bedrock (the default profile is us-east-1) and Alibaba Model Studio (the default is the Singapore DashScope endpoint); use an endpoint and API key from the same region. Hugging Face model IDs may include a provider suffix such as `:novita` or a routing suffix such as `:fastest`.
 
@@ -107,18 +107,18 @@ For regional services, the provider wizard lets you override the default base UR
 ## 🚀 Quick Usage
 
 ### First-time setup
-Run `nexus setup` (or `nexus --setup`) for the built-in onboarding wizard. Choose **Mallss Nexus Route (Account Login)** to sign in with your existing gateway website account. NexusAgent uses OAuth Authorization Code + PKCE, stores refreshable tokens under `~/.nexus/oauth/`, and never writes your website password or OAuth token to the project `.env`.
+Run `nolthira setup` (or `nolthira --setup`) for the built-in onboarding wizard. Choose **MALLSS_NEXUS_ROUTE (Account Login)** to sign in with your existing gateway website account. NolthiraAgent uses OAuth Authorization Code + PKCE, stores refreshable tokens under `~/.nexus/oauth/`, and never writes your website password or OAuth token to the project `.env`.
 
 ### 1. Launch Directly from Any Terminal
 Open PowerShell or Command Prompt in any project folder:
 ```bash
-nexus
+nolthira
 ```
-*(or type `nexuss`)*
+*(legacy aliases `nexus` and `nexuss` remain available)*
 
 ### 2. Single-Shot Prompt Execution
 ```bash
-nexus -p "Research the latest cybersecurity vulnerability reports and summarize key takeaways"
+nolthira -p "Research the latest cybersecurity vulnerability reports and summarize key takeaways"
 ```
 
 ### 3. API Configuration (`.env`)
@@ -142,7 +142,7 @@ Type `/` in the prompt for real-time autocomplete:
 * `/tools` — Inspect currently registered autonomous tools
 * `/status` — View agent system diagnostics and active telemetry
 * `/tokens` or `/usage` — View last-request input/output/total tokens, session totals, and known context headroom
-* `/auth logout` — Revoke the Mallss Nexus Route OAuth connection
+* `/auth logout` — Revoke the MALLSS_NEXUS_ROUTE OAuth connection
 * `/mcp` — Inspect connected Model Context Protocol (MCP) servers
 * `/plugins` — View loaded modular plugins from `plugins/`
 * `/security` — View security guardrails, command sandbox, and safety policy
@@ -158,12 +158,12 @@ Type `/` in the prompt for real-time autocomplete:
 * `/new` — Start a fresh, clean context session
 * `/clear` — Clear terminal screen and show banner
 * `/help` — Display command palette
-* `exit` or `quit` — Exit Nexus Agent CLI and persist session state
+* `exit` or `quit` — Exit Nolthira Agent CLI and persist session state
 
 ---
 ## 🧰 Configurable Toolsets & Subagent Runtime
 
-Nexus stores toolset policy in `~/.nexus/toolsets.json`. The file is created atomically when a setting is changed. Profiles are applied to the live tool registry; disabled tools are unavailable to the model and are also rejected if called by name or alias.
+Nolthira stores toolset policy in `~/.nexus/toolsets.json`. The file is created atomically when a setting is changed. Profiles are applied to the live tool registry; disabled tools are unavailable to the model and are also rejected if called by name or alias.
 
 Built-in profiles:
 
@@ -191,11 +191,11 @@ Use `delegate_task` for a single focused worker. Use `delegate_tasks` for 2–8 
 
 ### Evidence-Based Self-Improving Learning Loop
 
-Nexus separates raw observations from durable memory:
+Nolthira separates raw observations from durable memory:
 
 1. Clear user corrections and tool failures are captured as bounded, deduplicated observations. Common credential patterns are redacted before observations are stored.
 2. Observations remain diagnostic records. They do not enter long-term memory or change future behavior.
-3. Nexus may promote an observation only after identifying a reusable root cause and supplying a concrete verification result. This creates a pending learning proposal.
+3. Nolthira may promote an observation only after identifying a reusable root cause and supplying a concrete verification result. This creates a pending learning proposal.
 4. The operator reviews proposals with `/memory proposals`, then explicitly approves or rejects one with `/memory review <id> approve|reject`. The model cannot approve its own proposals.
 5. Only approved learning entries are retrieved by relevance and injected into later task contexts. They remain guidance to verify, not instructions that override the current user or security policy.
 

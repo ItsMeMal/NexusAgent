@@ -12,12 +12,12 @@ from typing import Dict, Any, Optional
 console = Console()
 
 RAW_LOGO = [
-    "███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗",
-    "████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝",
-    "██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗",
-    "██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║",
-    "██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║",
-    "╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝"
+    "██╗  ██╗   ██████╗   ██╗  ████████╗  ██╗  ██╗  ██╗  ██████╗   █████╗",
+    "███╗ ██║  ██╔═══██╗  ██║  ╚══██╔══╝  ██║  ██║  ██║  ██╔══██╗  ██╔══██╗",
+    "████╗██║  ██║   ██║  ██║    ██║  ███████║  ██║  ██████╔╝  ███████║",
+    "██╔████║  ██║   ██║  ██║    ██║  ██╔══██║  ██║  ██╔══██╗  ██╔══██║",
+    "██║╚███║  ╚██████╔╝  ███████╗    ██║  ██║  ██║  ██║  ██║  ██║  ██║  ██║",
+    "╚═╝ ╚══╝   ╚═════╝   ╚══════╝    ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝",
 ]
 
 GRADIENT_COLORS = ["#00ffd7", "#00d7af", "#38bdf8", "#60a5fa", "#818cf8", "#a78bfa"]
@@ -36,12 +36,12 @@ def render_banner(
     """Render a cyberpunk welcome banner with interactive laser shimmer and bootloader."""
     # 1. Cyberpunk laser shimmer wave across ASCII logo
     if animate:
-        width = len(RAW_LOGO[0])
+        width = max(len(line) for line in RAW_LOGO)
         with Live(console=console, refresh_per_second=30, transient=True) as live:
             for wave in range(-6, width + 10, 2):
                 t = Text()
                 for row in RAW_LOGO:
-                    for col_idx, char in enumerate(row):
+                    for col_idx, char in enumerate(row.ljust(width)):
                         dist = abs(col_idx - wave)
                         if dist <= 2:
                             t.append(char, style="bold #ffffff")
@@ -74,7 +74,7 @@ def render_banner(
                 for frame in range(3):
                     spin = spinners[frame % len(spinners)]
                     txt = Text()
-                    txt.append("\n  [◈] Initializing Nexus Autonomous Core...\n\n", style="bold #38bdf8")
+                    txt.append("\n  [◈] Initializing Nolthira Autonomous Core...\n\n", style="bold #38bdf8")
                     for done_i in range(i):
                         txt.append(f"    ✔ {steps[done_i][0]:<30} ", style="bold #22c55e")
                         txt.append(f"[dim]· {steps[done_i][1]}[/dim]\n")
@@ -90,7 +90,7 @@ def render_banner(
     from ..core.modes import get_mode
     mode_spec = get_mode(mode_id)
     console.print()
-    console.print(f"  [bold #00ffd7]◈[/bold #00ffd7] [bold #38bdf8]Nexus Agent Orchestrator[/bold #38bdf8] [dim]·[/dim] [bold {mode_spec.color}]{mode_spec.icon} {mode_spec.label}[/bold {mode_spec.color}] [dim]· Autonomous Multi-Agent Engine[/dim]")
+    console.print(f"  [bold #00ffd7]◈[/bold #00ffd7] [bold #38bdf8]Nolthira Agent Orchestrator[/bold #38bdf8] [dim]·[/dim] [bold {mode_spec.color}]{mode_spec.icon} {mode_spec.label}[/bold {mode_spec.color}] [dim]· Autonomous Multi-Agent Engine[/dim]")
     console.print(f"  [dim]Router:[/dim] [bold #f59e0b]{provider_name}[/bold #f59e0b]  [dim]·[/dim]  [dim]Model:[/dim] [bold #22c55e]{model_name}[/bold #22c55e]  [dim]·[/dim]  [dim]Session:[/dim] [bold #38bdf8]{session_id}[/bold #38bdf8]")
     console.print(f"  [dim]Directory:[/dim] [dim white]{os.getcwd()}[/dim white]  [dim]·[/dim]  [dim]{tools_count} tools online · {skills_count} skills · SQLite+FTS5[/dim]")
     console.print("  [dim]─────────────────────────────────────────────────────────────────────────────[/dim]")
@@ -279,7 +279,7 @@ def render_status_card(model_name: str, provider_name: str, session_id: str, too
     """Render system diagnostics overview."""
     from ..core.modes import get_mode
     mode_spec = get_mode(mode_id)
-    console.print("\n  [bold #00ffd7]◈ Nexus System Diagnostic Overview[/bold #00ffd7]\n")
+    console.print("\n  [bold #00ffd7]◈ Nolthira System Diagnostic Overview[/bold #00ffd7]\n")
     console.print(f"    [dim]Agent Mode:[/dim]        [bold {mode_spec.color}]{mode_spec.icon} {mode_spec.label}[/bold {mode_spec.color}] [dim]({mode_spec.short_desc})[/dim]")
     console.print(f"    [dim]Active Model:[/dim]      [bold #22c55e]{model_name}[/bold #22c55e]")
     console.print(f"    [dim]Inference Router:[/dim]  [bold #f59e0b]{provider_name}[/bold #f59e0b]")
@@ -336,7 +336,7 @@ def render_resumed_history(history: list, session_id: str, title: str = "", max_
     tail = visible[-max_turns:]
     skipped = len(visible) - len(tail)
     if skipped > 0:
-        console.print(f"  [dim]... ({skipped} earlier turn(s) omitted; Nexus still remembers full context)[/dim]\n")
+        console.print(f"  [dim]... ({skipped} earlier turn(s) omitted; Nolthira still remembers full context)[/dim]\n")
     for m in tail:
         role = m.get("role")
         content = (m.get("content") or "").strip()
@@ -350,7 +350,7 @@ def render_resumed_history(history: list, session_id: str, title: str = "", max_
                 console.print(f"  [dim]  ⚙ Called tools: {names}[/dim]")
             elif content:
                 snippet = content if len(content) <= 450 else content[:447] + "..."
-                console.print(f"  [bold #00ffd7]◈ Nexus:[/bold #00ffd7] [dim white]{snippet}[/dim white]\n")
+                console.print(f"  [bold #00ffd7]◈ Nolthira:[/bold #00ffd7] [dim white]{snippet}[/dim white]\n")
     console.print("  [dim]─────────────────────────────────────────────────────────────────────────[/dim]\n")
 
 def render_mcp_table(servers: list):
@@ -411,7 +411,7 @@ def render_security_card():
     except Exception:
         pass
 
-    console.print("\n  [bold #00ffd7]🛡️ Nexus Security & Guardrail Policy[/bold #00ffd7]\n")
+    console.print("\n  [bold #00ffd7]🛡️ Nolthira Security & Guardrail Policy[/bold #00ffd7]\n")
     console.print("    [bold #22c55e]✔ Destructive Command Interceptor:[/bold #22c55e] [green]ACTIVE[/green] [dim](Blocks rm -rf /, format, fork bombs, disk wipes)[/dim]")
     console.print("    [bold #22c55e]✔ Path Sandbox Guard:[/bold #22c55e]              [green]ACTIVE[/green] [dim](Blocks OS system files C:\\Windows, /etc, /bin)[/dim]")
     console.print("    [bold #22c55e]✔ Subagent Permission Boundary:[/bold #22c55e]     [green]ACTIVE[/green] [dim](Subagents run in scoped tool registries)[/dim]")
@@ -420,7 +420,7 @@ def render_security_card():
 
 def render_computer_card():
     """Render Computer Use GUI automation status and capabilities."""
-    console.print("\n  [bold #00ffd7]🖥️ Nexus Computer Use (GUI Automation)[/bold #00ffd7]\n")
+    console.print("\n  [bold #00ffd7]🖥️ Nolthira Computer Use (GUI Automation)[/bold #00ffd7]\n")
     try:
         import pyautogui
         w, h = pyautogui.size()
@@ -435,13 +435,13 @@ def render_computer_card():
     from ..config import config
     console.print(f"    [bold #22c55e]✔ Screenshots Path:[/bold #22c55e]    [cyan]{config.SCREENSHOTS_DIR}[/cyan]")
     console.print("    [dim]Supported Actions: screenshot, mouse_move, left_click, right_click, double_click, drag, type, key, hotkey, scroll, app_launch[/dim]")
-    console.print("    [dim]Tip: Ask Nexus e.g. 'Take a screenshot and see what window is open' or 'Click the search bar at [500, 200]'.[/dim]\n")
+    console.print("    [dim]Tip: Ask Nolthira e.g. 'Take a screenshot and see what window is open' or 'Click the search bar at [500, 200]'.[/dim]\n")
 
 def render_update_alert(update_info: Dict[str, Any]):
     """Render an eye-catching update notification card in the CLI banner."""
     msg = update_info.get("message", "New engine release available")
     rem_sha = update_info.get("remote_sha", "latest")
-    console.print(f"  [bold #f59e0b]⚡ UPDATE AVAILABLE:[/bold #f59e0b] [bold white]A newer version of Nexus Agent is available![/bold white]")
+    console.print(f"  [bold #f59e0b]⚡ UPDATE AVAILABLE:[/bold #f59e0b] [bold white]A newer version of Nolthira Agent is available![/bold white]")
     console.print(f"    [dim]Latest commit:[/dim] [bold #00ffd7]{rem_sha}[/bold #00ffd7] [dim]· \"{msg}\"[/dim]")
     console.print(f"    [dim]Type [bold #22c55e]/update[/bold #22c55e] to upgrade engine directly from CLI.[/dim]\n")
 
@@ -450,18 +450,18 @@ def render_update_card(update_info: Optional[Dict[str, Any]]):
     if update_info and update_info.get("update_available"):
         rem_sha = update_info.get("remote_sha", "latest")
         msg = update_info.get("message", "New release available")
-        console.print(f"\n  [bold #f59e0b]⚡ UPDATE AVAILABLE:[/bold #f59e0b] [bold white]A newer version of Nexus Agent is available![/bold white]")
+        console.print(f"\n  [bold #f59e0b]⚡ UPDATE AVAILABLE:[/bold #f59e0b] [bold white]A newer version of Nolthira Agent is available![/bold white]")
         console.print(f"    [dim]Current local:[/dim] [white]{update_info.get('local_sha', 'unknown')}[/white]")
         console.print(f"    [dim]Latest remote:[/dim] [bold #00ffd7]{rem_sha}[/bold #00ffd7]")
         console.print(f"    [dim]Commit:[/dim]        [dim]\"{msg}\"[/dim]")
         console.print(f"    [dim]Run:[/dim]           [bold #22c55e]/update[/bold #22c55e] to install updates.\n")
     else:
-        console.print("\n  [bold #22c55e]✔ Nexus Agent is up to date![/bold #22c55e]")
+        console.print("\n  [bold #22c55e]✔ Nolthira Agent is up to date![/bold #22c55e]")
         console.print("  [dim]You are running the latest version from GitHub main.[/dim]\n")
 
 def render_gateway_card(statuses: list):
     """Render unified messaging gateway status card (Telegram, Discord, WhatsApp, Slack, Email)."""
-    console.print("\n  [bold #00ffd7]🌐 Nexus Messaging Gateways (Hermes-Style Bridge)[/bold #00ffd7]\n")
+    console.print("\n  [bold #00ffd7]🌐 Nolthira Messaging Gateways (Hermes-Style Bridge)[/bold #00ffd7]\n")
     icons = {"telegram": "✈️", "discord": "🎮", "whatsapp": "💬", "slack": "#️⃣", "email": "📧"}
     for st in statuses:
         icon = icons.get(st.platform.lower(), "📡")
