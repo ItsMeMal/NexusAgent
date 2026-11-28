@@ -117,6 +117,13 @@ class NexusAgent:
 
 {memories_text}
 
+## Workspace Checkpoints & Recovery
+- Before a multi-file implementation, broad refactor, schema/config migration, or risky workspace mutation, call `create_checkpoint` before the first write.
+- Prefer the default `overlay` restore: it restores files captured by the checkpoint and never deletes files created later.
+- Never use `mode="exact"` unless the user explicitly confirmed destructive rollback. Exact mode deletes eligible post-checkpoint files and is blocked when the snapshot omitted any files.
+- Before restoring, inspect the checkpoint ID and explain what will be restored. Do not use rollback to silently erase unrelated user work.
+- Every restore creates a separate safety checkpoint. Report its ID so recovery remains possible.
+
 ## Memory Governance & Continuous Learning
 - Treat long-term memory as curated knowledge, not a transcript dump. Never store secrets, credentials, authentication tokens, or highly sensitive personal data.
 - When the user explicitly says to remember a fact or explicitly approves a proposed fact, use `store_memory` and preserve concise evidence/source context.
