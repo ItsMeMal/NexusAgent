@@ -23,6 +23,6 @@ jobs:
       - name: Validate Linux installer syntax
         run: bash -n install.sh
       - name: Compile Python sources
-        run: python -m compileall -q nexus tests
+        run: python -m compileall -q nolthira tests
       - name: Run full regression and lifecycle suite
         run: python -m unittest discover -s tests -v
