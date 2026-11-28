@@ -46,7 +46,7 @@ def get_cron_tools(scheduler: CronScheduler):
                     "name": {"type": "string", "description": "Short name for the task"},
                     "schedule": {"type": "string", "description": "Interval/cron e.g. 'every 5m', 'every 1h', 'daily 09:00', 'in 10m', '*/5 * * * *'"},
                     "instruction": {"type": "string", "description": "Agent prompt (when mode='agent') OR exact shell command (when mode='shell')"},
-                    "mode": {"type": "string", "enum": ["agent", "shell"], "description": "'agent' runs NexusAgent, 'shell' runs command directly with zero LLM cost", "default": "agent"},
+                    "mode": {"type": "string", "enum": ["agent", "shell"], "description": "'agent' runs NolthiraAgent, 'shell' runs command directly with zero LLM cost", "default": "agent"},
                     "target": {"type": "string", "description": "Optional delivery surface ('', 'cli', 'telegram', 'discord', 'whatsapp')", "default": ""}
                 },
                 "required": ["name", "schedule", "instruction"]
