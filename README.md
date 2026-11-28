@@ -105,7 +105,7 @@ Type `/` in the prompt for real-time autocomplete:
 * `/provider` or `/connect` — Switch or connect AI router via interactive menu
 * `/resume` — Browse and resume past conversation sessions (`↑`/`↓`)
 * `/computer` — Inspect GUI automation status, screen resolution, or capture screenshot (`/computer screenshot`)
-* `/tools` — Inspect all 20 active autonomous tools
+* `/tools` — Inspect currently registered autonomous tools
 * `/status` — View agent system diagnostics and active telemetry
 * `/mcp` — Inspect connected Model Context Protocol (MCP) servers
 * `/plugins` — View loaded modular plugins from `plugins/`
