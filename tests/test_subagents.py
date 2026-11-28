@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from nexus.orchestrator.subagent import SubagentManager
-from nexus.toolsets import ToolsetManager
+from nolthira.orchestrator.subagent import SubagentManager
+from nolthira.toolsets import ToolsetManager
 
 
 class FakeLLM:
@@ -81,7 +81,7 @@ class SubagentConcurrencyTests(unittest.IsolatedAsyncioTestCase):
                 default_timeout=10,
                 max_steps=8,
             )
-            with patch("nexus.orchestrator.subagent.NexusAgent", FakeAgent):
+            with patch("nolthira.orchestrator.subagent.NolthiraAgent", FakeAgent):
                 result = await manager.delegate_many(
                     "parent-session",
                     [{"goal": f"independent task {i}", "role": "researcher"} for i in range(4)],
