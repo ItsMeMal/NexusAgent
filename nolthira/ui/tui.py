@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -7,6 +8,8 @@ from rich.live import Live
 from rich.text import Text
 from rich.table import Table
 from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.syntax import Syntax
 from typing import Dict, Any, Optional
 
 console = Console()
@@ -206,34 +209,130 @@ def build_nolthira_mascot_renderable(
         mode_id=mode_id,
     )
 
-def render_tool_call(tool_name: str, arguments: Dict[str, Any]):
-    """Compact, high-signal single-line tool call indicator."""
-    arg_parts = []
-    for k, v in arguments.items():
-        val_str = str(v)
-        if len(val_str) > 45:
-            val_str = val_str[:42] + "..."
-        arg_parts.append(f"{k}={repr(val_str)}")
-    args_summary = ", ".join(arg_parts) if arg_parts else ""
+_ACTIVITY_SECRET_LITERAL_RE = re.compile(
+    r"""(?i)(\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|private[_-]?key|database_url|connection_string|authorization)\b\s*[:=]\s*)(["'])(.*?)(\2)""",
+    re.MULTILINE,
+)
+_ACTIVITY_BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
+_ACTIVITY_TOKEN_RE = re.compile(r"\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b")
 
-    console.print(f"  [bold #f59e0b]⚙ {tool_name}[/bold #f59e0b] [dim]({args_summary})[/dim]")
+
+def _redact_activity_text(value: Any) -> str:
+    """Redact common credential literals before showing tool payloads or output."""
+    text = str(value or "")
+    text = _ACTIVITY_SECRET_LITERAL_RE.sub(r"\1[REDACTED]", text)
+    text = _ACTIVITY_BEARER_RE.sub("Bearer [REDACTED]", text)
+    return _ACTIVITY_TOKEN_RE.sub("[REDACTED]", text)
+
+
+def _render_activity_source(title: str, path: str, source: str, border_style: str = "cyan") -> None:
+    """Render complete source text with syntax highlighting and line numbers."""
+    safe_source = _redact_activity_text(source)
+    if not safe_source:
+        return
+    try:
+        lexer = Syntax.guess_lexer(path or "text")
+        body = Syntax(
+            safe_source,
+            lexer,
+            theme="monokai",
+            line_numbers=True,
+            word_wrap=False,
+            indent_guides=True,
+        )
+    except Exception:
+        body = Text(safe_source, no_wrap=False)
+    line_count = safe_source.count("\n") + (0 if safe_source.endswith("\n") else 1)
+    console.print(
+        Panel(
+            body,
+            title=f"[bold]{title}[/bold]",
+            subtitle=f"{line_count} line(s) · full payload",
+            border_style=border_style,
+            expand=True,
+        )
+    )
+
+
+def render_tool_call(tool_name: str, arguments: Dict[str, Any]):
+    """Show complete coding payloads while keeping ordinary tool calls compact."""
+    args = arguments if isinstance(arguments, dict) else {}
+    normalized = str(tool_name or "").strip().lower()
+
+    # Large source fields are rendered in dedicated syntax-highlighted panels,
+    # never hidden inside a truncated one-line argument summary.
+    hidden_fields = {"content", "target", "replacement", "command", "updates"}
+    arg_parts = []
+    for key, value in args.items():
+        if key in hidden_fields:
+            continue
+        shown = "[REDACTED]" if re.search(
+            r"(?i)(api[_-]?key|token|secret|password|authorization)", str(key)
+        ) else _redact_activity_text(value)
+        if isinstance(shown, (dict, list)):
+            shown = "[structured value]"
+        shown_text = str(shown)
+        if len(shown_text) > 100:
+            shown_text = shown_text[:97] + "..."
+        arg_parts.append(f"{key}={shown_text!r}")
+
+    if normalized == "update_env" and "updates" in args:
+        arg_parts.append("updates='<values hidden>'")
+
+    args_summary = ", ".join(arg_parts) if arg_parts else ""
+    console.print(
+        f"  [bold #f59e0b]⚙ {tool_name}[/bold #f59e0b] [dim]({args_summary})[/dim]"
+    )
+
+    if normalized in {"write_file", "append_file"}:
+        path = str(args.get("path") or "<unknown path>")
+        source = str(args.get("content") or "")
+        title = "WRITE" if normalized == "write_file" else "APPEND"
+        _render_activity_source(f"{title} · {path}", path, source, "green" if normalized == "write_file" else "cyan")
+    elif normalized == "patch_file":
+        path = str(args.get("path") or "<unknown path>")
+        _render_activity_source(f"PATCH BEFORE · {path}", path, str(args.get("target") or ""), "red")
+        _render_activity_source(f"PATCH AFTER · {path}", path, str(args.get("replacement") or ""), "green")
+    elif normalized in {"run_command", "shell", "bash", "cmd", "terminal"}:
+        command = _redact_activity_text(args.get("command") or "")
+        if command:
+            console.print(
+                Panel(
+                    Text(command, no_wrap=False, overflow="fold"),
+                    title="[bold]COMMAND[/bold]",
+                    border_style="yellow",
+                    expand=True,
+                )
+            )
+
 
 def render_tool_result(tool_name: str, result: str, elapsed: float = 0.0):
-    """Compact, high-signal tool result indicator with execution time."""
-    lines = result.strip().splitlines()
+    """Show full read/command output; keep small routine results compact."""
+    safe_result = _redact_activity_text(result)
+    lines = safe_result.strip().splitlines()
     first_line = lines[0] if lines else "Done"
-    if len(first_line) > 80:
-        first_line = first_line[:77] + "..."
-    
-    total_lines = len(lines)
+
     suffix_parts = []
     if elapsed > 0:
         suffix_parts.append(f"{elapsed:.2f}s")
-    if total_lines > 1:
-        suffix_parts.append(f"{total_lines} lines")
-    
+    if len(lines) > 1:
+        suffix_parts.append(f"{len(lines)} lines")
     suffix = f" [dim]({' · '.join(suffix_parts)})[/dim]" if suffix_parts else ""
-    console.print(f"  [bold #22c55e]✔ {tool_name}:[/bold #22c55e] [white]{first_line}[/white]{suffix}")
+
+    console.print(
+        f"  [bold #22c55e]✔ {tool_name}:[/bold #22c55e] [white]{first_line[:120]}[/white]{suffix}"
+    )
+
+    normalized = str(tool_name or "").strip().lower()
+    if normalized in {"read_file", "run_command", "process", "web_extract"} and safe_result.strip():
+        console.print(
+            Panel(
+                Text(safe_result, no_wrap=False, overflow="fold"),
+                title=f"[bold]{normalized.upper()} OUTPUT[/bold]",
+                border_style="blue",
+                expand=True,
+            )
+        )
 
 def render_subagent_event(event_type: str, message: str):
     """Clean indented indicator for subagent activity."""
