@@ -95,6 +95,16 @@ class GatewayManager:
     def register_tools(self, registry: ToolRegistry):
         registry.register(create_gateway_send_tool(self), toolset="gateway")
 
+    def _apply_platform_profile(self, platform: str) -> None:
+        """Refresh one stopped gateway's tool policy before its next start."""
+        if self.toolset_manager is None:
+            return
+        gateway = self.gateways.get(platform)
+        if gateway is None:
+            return
+        profile = self.toolset_manager.profile_for_platform(platform)
+        self.toolset_manager.apply(gateway.registry, profile=profile)
+
     def get_statuses(self) -> List[GatewayStatus]:
         return [gw.get_status() for gw in self.gateways.values()]
 
@@ -134,6 +144,7 @@ class GatewayManager:
                     results[key] = "already_running"
                     continue
 
+                self._apply_platform_profile(key)
                 gw.last_error = ""
                 task = asyncio.create_task(gw.start(), name=f"nexus-gateway-{key}")
                 task.add_done_callback(
@@ -203,6 +214,7 @@ class GatewayManager:
         for key in targets:
             gateway = self.gateways.get(key)
             if gateway and gateway.is_configured():
+                self._apply_platform_profile(key)
                 gateway.last_error = ""
                 task = asyncio.create_task(gateway.start(), name=f"nexus-gateway-{key}")
                 task.add_done_callback(
