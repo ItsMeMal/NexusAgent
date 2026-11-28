@@ -1,6 +1,6 @@
-"""Configurable, validated toolset profiles for Nexus Agent.
+"""Configurable, validated toolset profiles for Nolthira Agent.
 
-Configuration lives at ~/.nexus/toolsets.json. Profiles are applied to a ToolRegistry
+Configuration lives at ~/.nolthira/toolsets.json. Profiles are applied to a ToolRegistry
 at runtime, so a tool being installed does not imply that every agent or gateway can
 use it.
 """
