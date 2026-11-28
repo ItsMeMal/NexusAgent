@@ -11,14 +11,87 @@ from typing import Dict, Any, Optional
 
 console = Console()
 
-RAW_LOGO = [
-    "██╗  ██╗   ██████╗   ██╗  ████████╗  ██╗  ██╗  ██╗  ██████╗   █████╗",
-    "███╗ ██║  ██╔═══██╗  ██║  ╚══██╔══╝  ██║  ██║  ██║  ██╔══██╗  ██╔══██╗",
-    "████╗██║  ██║   ██║  ██║    ██║  ███████║  ██║  ██████╔╝  ███████║",
-    "██╔████║  ██║   ██║  ██║    ██║  ██╔══██║  ██║  ██╔══██╗  ██╔══██║",
-    "██║╚███║  ╚██████╔╝  ███████╗    ██║  ██║  ██║  ██║  ██║  ██║  ██║  ██║",
-    "╚═╝ ╚══╝   ╚═════╝   ╚══════╝    ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝  ╚═╝",
-]
+LOGO_GLYPHS = {
+    "N": (
+        "██  ██",
+        "███ ██",
+        "██████",
+        "██ ███",
+        "██  ██",
+        "██  ██",
+    ),
+    "O": (
+        " ████ ",
+        "██  ██",
+        "██  ██",
+        "██  ██",
+        "██  ██",
+        " ████ ",
+    ),
+    "L": (
+        "██    ",
+        "██    ",
+        "██    ",
+        "██    ",
+        "██    ",
+        "██████",
+    ),
+    "T": (
+        "██████",
+        "  ██  ",
+        "  ██  ",
+        "  ██  ",
+        "  ██  ",
+        "  ██  ",
+    ),
+    "H": (
+        "██  ██",
+        "██  ██",
+        "██████",
+        "██  ██",
+        "██  ██",
+        "██  ██",
+    ),
+    "I": (
+        "██████",
+        "  ██  ",
+        "  ██  ",
+        "  ██  ",
+        "  ██  ",
+        "██████",
+    ),
+    "R": (
+        "█████ ",
+        "██  ██",
+        "█████ ",
+        "██ ██ ",
+        "██  ██",
+        "██  ██",
+    ),
+    "A": (
+        " ████ ",
+        "██  ██",
+        "██████",
+        "██  ██",
+        "██  ██",
+        "██  ██",
+    ),
+}
+
+def _compose_logo(word: str) -> list[str]:
+    """Build a fixed-cell terminal wordmark so glyphs never collide."""
+    glyphs = [LOGO_GLYPHS[letter] for letter in word]
+    row_count = len(glyphs[0])
+    cell_width = len(glyphs[0][0])
+    if any(len(glyph) != row_count or any(len(row) != cell_width for row in glyph) for glyph in glyphs):
+        raise ValueError("Logo glyphs must use a consistent fixed-size cell.")
+    return [
+        " ".join(glyph[row_index] for glyph in glyphs)
+        for row_index in range(row_count)
+    ]
+
+
+RAW_LOGO = _compose_logo("NOLTHIRA")
 
 GRADIENT_COLORS = ["#00ffd7", "#00d7af", "#38bdf8", "#60a5fa", "#818cf8", "#a78bfa"]
 
