@@ -15,7 +15,7 @@ CODEBASE_DIR = Path(__file__).resolve().parent.parent
 WORKSPACE_DIR = Path.cwd()
 
 NOLTHIRA_HOME = Path.home() / ".nolthira"
-LEGACY_NEXUS_HOME = Path.home() / ".nexus"
+LEGACY_HOME = Path.home() / ".nexus"
 _PROTECTED_MERGE_DIRS = {"engine", "venv", ".git"}
 
 
@@ -74,11 +74,11 @@ def migrate_legacy_home(legacy_home: Path, nolthira_home: Path) -> bool:
 
 
 try:
-    migrate_legacy_home(LEGACY_NEXUS_HOME, NOLTHIRA_HOME)
+    migrate_legacy_home(LEGACY_HOME, NOLTHIRA_HOME)
     NOLTHIRA_HOME.mkdir(parents=True, exist_ok=True)
-    if LEGACY_NEXUS_HOME.exists():
+    if LEGACY_HOME.exists():
         warnings.warn(
-            f"Some legacy files remain in {LEGACY_NEXUS_HOME}: conflicting files or "
+            f"Some legacy files remain in {LEGACY_HOME}: conflicting files or "
             "existing engine/venv directories were kept as backups and were not overwritten.",
             UserWarning,
             stacklevel=2,
