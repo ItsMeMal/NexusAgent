@@ -116,7 +116,8 @@ def get_memory_tools(memory: SQLiteMemory):
         )
         if not changed:
             return f"Proposal #{proposal_id} was not found or has already been reviewed."
-        return f"Proposal #{proposal_id} {decision.lower()}d."
+        result = "approved" if decision.lower() == "approve" else "rejected"
+        return f"Proposal #{proposal_id} {result}."
 
     def archive_memory(memory_id: int, reason: str = "") -> str:
         """Hide a memory from recall without permanently deleting its contents."""
