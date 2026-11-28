@@ -125,7 +125,7 @@ if [ -d "${ENGINE_DIR}/.git" ]; then
     printf "${CYAN}  [..] Updating existing Nolthira engine...\n${NC}"
     cd "${ENGINE_DIR}"
     git remote set-url origin https://github.com/ItsMeMal/NolthiraAgent.git || git remote add origin https://github.com/ItsMeMal/NolthiraAgent.git
-    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt
+    git sparse-checkout set --no-cone /nolthira/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt
     git fetch origin main --quiet
     git pull --ff-only origin main --quiet
 else
@@ -133,7 +133,7 @@ else
     rm -rf "${ENGINE_DIR}"
     git clone https://github.com/ItsMeMal/NolthiraAgent.git "${ENGINE_DIR}" --quiet
     cd "${ENGINE_DIR}"
-    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt
+    git sparse-checkout set --no-cone /nolthira/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt
 fi
 
 # Prune non-engine artifacts (website, tests, installers) from runtime engine directory
@@ -203,8 +203,8 @@ if [ ! -f "${GLOBAL_ENV}" ]; then
         cat <<EOF > "${GLOBAL_ENV}"
 OPENAI_API_BASE=https://openrouter.ai/api/v1
 OPENAI_API_KEY=your_api_key_here
-NEXUS_MODEL=anthropic/claude-3.5-sonnet
-NEXUS_TEMPERATURE=0.7
+NOLTHIRA_MODEL=anthropic/claude-3.5-sonnet
+NOLTHIRA_TEMPERATURE=0.7
 EOF
     fi
     printf "${GREEN}  [OK] Generated global config at ${GLOBAL_ENV}\n${NC}"
@@ -215,15 +215,12 @@ LAUNCHER="${BIN_DIR}/nolthira"
 cat <<EOF > "${LAUNCHER}"
 #!/usr/bin/env bash
 export PYTHONPATH="${ENGINE_DIR}:\${PYTHONPATH}"
-exec "${RUN_PYTHON}" -m nexus.cli "\$@"
+exec "${RUN_PYTHON}" -m nolthira.cli "\$@"
 EOF
 chmod +x "${LAUNCHER}"
 
-# Keep legacy command aliases during the migration.
-for legacy_name in nexus nexuss; do
-    cp -f "${LAUNCHER}" "${BIN_DIR}/${legacy_name}"
-    chmod +x "${BIN_DIR}/${legacy_name}"
-done
+# Remove old aliases created by previous Nolthira installer versions.
+rm -f "${BIN_DIR}/nexus" "${BIN_DIR}/nexuss" "${BIN_DIR}/nexus-agent"
 printf "${GREEN}  [OK] Created CLI launcher in ${BIN_DIR}\n${NC}"
 
 # 9. Link directly into system PATH locations so 'nolthira' works INSTANTLY in any open shell
@@ -231,18 +228,26 @@ LINKED_SYSTEM=0
 for sys_dir in /usr/local/bin /usr/bin; do
     if [ -d "$sys_dir" ]; then
         if [ -w "$sys_dir" ] || [ "$(id -u)" -eq 0 ]; then
-            for command_name in nolthira nexus nexuss; do
-                ln -sf "${LAUNCHER}" "${sys_dir}/${command_name}" 2>/dev/null
+            ln -sf "${LAUNCHER}" "${sys_dir}/nolthira" 2>/dev/null
+            for legacy_name in nexus nexuss nexus-agent; do
+                legacy_path="${sys_dir}/${legacy_name}"
+                if [ -L "$legacy_path" ] && [ "$(readlink -f "$legacy_path" 2>/dev/null)" = "$(readlink -f "${LAUNCHER}")" ]; then
+                    rm -f "$legacy_path"
+                fi
             done
             LINKED_SYSTEM=1
-            printf "${GREEN}  [OK] Linked 'nolthira' to ${sys_dir} (legacy aliases retained)\n${NC}"
+            printf "${GREEN}  [OK] Linked 'nolthira' to ${sys_dir} \n${NC}"
             break
         elif command -v sudo >/dev/null 2>&1; then
             if sudo -n ln -sf "${LAUNCHER}" "${sys_dir}/nolthira" 2>/dev/null; then
-                sudo ln -sf "${LAUNCHER}" "${sys_dir}/nexus" 2>/dev/null || true
-                sudo ln -sf "${LAUNCHER}" "${sys_dir}/nexuss" 2>/dev/null || true
+                for legacy_name in nexus nexuss nexus-agent; do
+                    legacy_path="${sys_dir}/${legacy_name}"
+                    if [ -L "$legacy_path" ] && [ "$(readlink -f "$legacy_path" 2>/dev/null)" = "$(readlink -f "${LAUNCHER}")" ]; then
+                        sudo rm -f "$legacy_path"
+                    fi
+                done
                 LINKED_SYSTEM=1
-                printf "${GREEN}  [OK] Linked 'nolthira' to ${sys_dir} via sudo (legacy aliases retained)\n${NC}"
+                printf "${GREEN}  [OK] Linked 'nolthira' to ${sys_dir} via sudo \n${NC}"
                 break
             fi
         fi
