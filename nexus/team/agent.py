@@ -1,8 +1,8 @@
 """
-nexus/team/agent.py
-TeamAgent — an autonomous tool-using NexusAgent specialist in an AI-Team.
+nolthira/team/agent.py
+TeamAgent — an autonomous tool-using NolthiraAgent specialist in an AI-Team.
 
-Each TeamAgent runs a real ReAct loop via NexusAgent with:
+Each TeamAgent runs a real ReAct loop via NolthiraAgent with:
   - Role persona & system prompt
   - Role-scoped real tools (filesystem, terminal, web, memory, skills, MCP)
   - Shared Team Board & Mailbox tools (team_read_board, team_send_message, team_update_task, team_request_fix)
@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..core.agent import NexusAgent
+from ..core.agent import NolthiraAgent
 from ..config import config
 from .board import TeamBoard
 from .team_tools import build_team_agent_registry
@@ -199,7 +199,7 @@ def _summarize_args(args: Any) -> str:
 class TeamAgent:
     """
     Autonomous specialist agent inside an AI-Team.
-    When given `memory`, `skill_manager`, `root_dir`, and `board`, runs a full tool-using NexusAgent loop.
+    When given `memory`, `skill_manager`, `root_dir`, and `board`, runs a full tool-using NolthiraAgent loop.
     """
 
     def __init__(
@@ -235,7 +235,7 @@ class TeamAgent:
         toolsets_override: Optional[List[str]] = None,
         max_steps_override: Optional[int] = None,
     ) -> str:
-        """Execute a task autonomously using real NexusAgent tools."""
+        """Execute a task autonomously using real NolthiraAgent tools."""
         self.total_runs += 1
 
         # Fallback minimal mode if no memory/board supplied (unit tests / isolated calls)
@@ -316,7 +316,7 @@ class TeamAgent:
         )
 
         session_id = f"team-{board.id}-{role_id}-{uuid.uuid4().hex[:4]}"
-        agent = NexusAgent(
+        agent = NolthiraAgent(
             llm_client=self.llm,
             memory=self.memory,
             skill_manager=self.skill_manager,
