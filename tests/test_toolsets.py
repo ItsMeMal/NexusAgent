@@ -128,6 +128,7 @@ class ToolsetManagerTests(unittest.TestCase):
         self.assertNotIn("memory", migrated.resolve_profile("gateway")["enabled_toolsets"])
         self.assertIn("record_learning", migrated.resolve_profile("researcher")["disabled_tools"])
         self.assertIn("dismiss_learning_observation", migrated.resolve_profile("researcher")["disabled_tools"])
+        self.assertNotIn("memory", migrated.resolve_profile("gateway")["enabled_toolsets"])
 
     def test_unknown_profiles_and_toolsets_are_rejected(self):
         with self.assertRaises(ToolsetConfigError):
