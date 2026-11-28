@@ -313,17 +313,6 @@ def get_memory_tools(memory: SQLiteMemory):
             list_memory_proposals,
         ),
         tool(
-            "review_memory_proposal",
-            "Approve or reject a pending memory proposal. Only approval makes it available to recall.",
-            {
-                "proposal_id": {"type": "integer"},
-                "decision": {"type": "string", "enum": ["approve", "reject"]},
-                "reason": {"type": "string"},
-            },
-            ["proposal_id", "decision"],
-            review_memory_proposal,
-        ),
-        tool(
             "archive_memory",
             "Archive a memory so it is excluded from recall while retaining its revision history.",
             {"memory_id": {"type": "integer"}, "reason": {"type": "string"}},
