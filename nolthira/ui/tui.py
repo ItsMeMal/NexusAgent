@@ -452,12 +452,14 @@ def render_token_usage(usage: Dict[str, Any]) -> None:
             f"[dim]· remaining {fmt(remaining)} ({remaining_pct:.1f}%)[/dim]"
         )
     else:
-        console.print("  [dim]Context window unavailable for this model; remaining tokens are not guessed.[/dim]")
+        console.print("  [dim]Context window not reported by provider; remaining tokens unavailable.[/dim]")
     session = usage.get("session")
     if isinstance(session, dict):
+        estimated_requests = int(session.get("estimated_requests", 0) or 0)
+        estimated_note = f" · {fmt(estimated_requests)} estimated" if estimated_requests else ""
         console.print(
             f"  [dim]Session · input {fmt(session.get('input_tokens'))} · output {fmt(session.get('output_tokens'))} · "
-            f"total {fmt(session.get('total_tokens'))} · {fmt(session.get('requests'))} request(s)[/dim]"
+            f"total {fmt(session.get('total_tokens'))} · {fmt(session.get('requests'))} request(s){estimated_note}[/dim]"
         )
 
 
