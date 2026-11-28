@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..config import NOLTHIRA_HOME
+
 
 class CheckpointError(RuntimeError):
     """Raised when a checkpoint cannot be safely created, inspected, or restored."""
@@ -29,7 +31,7 @@ class CheckpointManager:
     """
 
     EXCLUDED_DIRS = {
-        ".git", ".nexus", ".venv", "venv", "env", "__pycache__", ".pytest_cache",
+        ".git", ".nolthira", ".nexus", ".venv", "venv", "env", "__pycache__", ".pytest_cache",
         ".mypy_cache", ".ruff_cache", ".tox", ".idea", ".vscode", "node_modules",
         "bower_components", ".next", ".nuxt", ".output", ".turbo", "coverage",
         "dist", "build", "target", ".gradle", ".cache", "vendor",
@@ -55,7 +57,7 @@ class CheckpointManager:
 
         if storage_root is None:
             digest = hashlib.sha256(str(self.workspace).encode("utf-8")).hexdigest()[:16]
-            storage_root = Path.home() / ".nexus" / "checkpoints" / digest
+            storage_root = NOLTHIRA_HOME / "checkpoints" / digest
         self.storage_root = Path(storage_root).expanduser().resolve()
         if self.storage_root == self.workspace or self.workspace in self.storage_root.parents:
             raise CheckpointError("Checkpoint storage must be outside the workspace.")
