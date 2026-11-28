@@ -10,7 +10,7 @@ from nexus.tools.processes import ProcessManager
 from nexus.tools.terminal import get_terminal_tools
 
 
-class BackgroundProcessManagerTests(unittest.TestCase):
+class BackgroundProcessManagerTests(unittest.IsolatedAsyncioTestCase):
     def make_command(self, script):
         return f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
 
@@ -65,19 +65,19 @@ class BackgroundProcessManagerTests(unittest.TestCase):
             self.assertIn("Unknown process session", manager.poll("12345")["error"])
             self.assertIn("Unknown process session", manager.kill("12345")["error"])
 
-    def test_terminal_registry_exposes_background_and_process_tools(self):
+    async def test_terminal_registry_exposes_background_and_process_tools(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with patch.object(config, "NEXUS_HOME", root / ".nexus"):
                 tools = {tool.name: tool for tool in get_terminal_tools(root)}
 
                 self.assertIn("process", tools)
-                started = tools["run_command"].execute(
+                started = await tools["run_command"].execute(
                     command=self.make_command("print('registered process', flush=True)"),
                     background=True,
                 )
                 self.assertIn("session_id", started)
-                result = tools["process"].execute(action="wait", session_id=started["session_id"], timeout=10)
+                result = await tools["process"].execute(action="wait", session_id=started["session_id"], timeout=10)
 
                 self.assertEqual(result["status"], "completed")
                 self.assertIn("registered process", result["output"])
