@@ -8,13 +8,13 @@ class NolthiraLogoTests(unittest.TestCase):
         self.assertEqual(set(LOGO_GLYPHS), set("NOLTHIRA"))
         for letter, rows in LOGO_GLYPHS.items():
             with self.subTest(letter=letter):
-                self.assertEqual(len(rows), 6)
-                self.assertTrue(all(len(row) == 6 for row in rows))
+                self.assertEqual(len(rows), 7)
+                self.assertTrue(all(len(row) == 5 for row in rows))
 
     def test_composed_wordmark_has_aligned_rows_and_fits_compact_terminal_width(self):
-        self.assertEqual(len(RAW_LOGO), 6)
+        self.assertEqual(len(RAW_LOGO), 7)
         self.assertEqual(len({len(row) for row in RAW_LOGO}), 1)
-        self.assertLessEqual(len(RAW_LOGO[0]), 55)
+        self.assertEqual(len(RAW_LOGO[0]), 47)
 
 
 if __name__ == "__main__":
