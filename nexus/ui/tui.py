@@ -249,7 +249,7 @@ def render_token_usage(usage: Dict[str, Any]) -> None:
             return "—"
 
     source = str(usage.get("source", "unavailable"))
-    label = "provider-reported" if source == "provider" else ("estimated" if source.startswith("estimated") else "unavailable")
+    label = "API-reported" if source in {"provider", "api_reported"} else ("estimated" if source.startswith("estimated") else "unavailable")
     input_tokens = int(usage.get("input_tokens", 0) or 0)
     output_tokens = int(usage.get("output_tokens", 0) or 0)
     total_tokens = int(usage.get("total_tokens", input_tokens + output_tokens) or 0)

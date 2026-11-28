@@ -142,7 +142,7 @@ class LLMClient:
 
         async def _finalize(response_msg: Dict[str, Any]) -> Dict[str, Any]:
             usage = normalize_token_usage(response_msg.pop("_nexus_usage", None))
-            source = "provider" if usage else "estimated"
+            source = "api_reported" if usage else "estimated"
             if usage is None:
                 input_tokens = _estimate_text_tokens(clean_messages)
                 output_tokens = _estimate_text_tokens({
@@ -320,9 +320,8 @@ class LLMClient:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
-        if "ai-router.mallss-nexus.sbs" in self.api_base:
-            payload["stream_options"] = {"include_usage": True}
-
+        # Mallss Nexus Route emits final usage in choices[0].usage; standard
+        # OpenAI providers may emit the usage-only top-level SSE chunk.
         stream_usage: Optional[Dict[str, Any]] = None
         accumulated_content = ""
         tool_calls_dict: Dict[int, Dict[str, Any]] = {}
@@ -359,6 +358,8 @@ class LLMClient:
                             if isinstance(chunk.get("usage"), dict):
                                 stream_usage = chunk["usage"]
                             choices = chunk.get("choices", [])
+                            if choices and isinstance(choices[0].get("usage"), dict):
+                                stream_usage = choices[0]["usage"]
                             if not choices:
                                 continue
                             delta = choices[0].get("delta") or choices[0].get("message") or {}
