@@ -9,6 +9,7 @@
 *.sqlite
 *.sqlite3
 nexus_memory.db*
+nolthira_memory.db*
 test_*.db
 
 # Python bytecode & caches
