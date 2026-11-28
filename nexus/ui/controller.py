@@ -8,7 +8,7 @@ from rich.live import Live
 from rich.markdown import Markdown
 
 from .tui import (
-    build_nexus_mascot_renderable,
+    build_nolthira_mascot_renderable,
     render_tool_call,
     render_tool_result,
     render_subagent_event,
@@ -50,7 +50,7 @@ class AgentUIController:
         self.mode_id = new_mode_id
 
     def _render_mascot(self, frame_idx: int, elapsed: float):
-        return build_nexus_mascot_renderable(
+        return build_nolthira_mascot_renderable(
             frame_idx=frame_idx,
             elapsed=elapsed,
             message=self._current_message,
