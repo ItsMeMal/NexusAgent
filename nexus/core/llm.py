@@ -135,13 +135,13 @@ class LLMClient:
             "Authorization": f"Bearer {self.api_key}",
         }
         if "openrouter.ai" in self.api_base:
-            headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NexusAgent"
-            headers["X-Title"] = "Nexus Agent CLI"
+            headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NolthiraAgent"
+            headers["X-Title"] = "Nolthira Agent CLI"
 
         clean_messages = sanitize_messages(messages)
 
         async def _finalize(response_msg: Dict[str, Any]) -> Dict[str, Any]:
-            usage = normalize_token_usage(response_msg.pop("_nexus_usage", None))
+            usage = normalize_token_usage(response_msg.pop("_nolthira_usage", None))
             source = "api_reported" if usage else "estimated"
             if usage is None:
                 input_tokens = _estimate_text_tokens(clean_messages)
@@ -299,7 +299,7 @@ class LLMClient:
             if msg.get("content") is None:
                 msg["content"] = ""
             if isinstance(data.get("usage"), dict):
-                msg["_nexus_usage"] = data["usage"]
+                msg["_nolthira_usage"] = data["usage"]
             return msg
 
     async def _stream_completion(
@@ -440,6 +440,6 @@ class LLMClient:
         if tool_calls_dict:
             final_msg["tool_calls"] = [tool_calls_dict[i] for i in sorted(tool_calls_dict.keys())]
         if stream_usage:
-            final_msg["_nexus_usage"] = stream_usage
+            final_msg["_nolthira_usage"] = stream_usage
 
         return final_msg
