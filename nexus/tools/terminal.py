@@ -93,6 +93,14 @@ def get_terminal_tools(root_dir: Path):
         background: bool = False,
     ) -> str:
         """Run a shell command asynchronously in local, docker, or ssh execution backend."""
+        # Block shell-based attempts to bypass filesystem secret-file protections.
+        if SecurityGuard.is_secret_file_access_command(command):
+            return (
+                "Security Guard: Explicit shell/script access to .env files is blocked. "
+                "Do not read or edit dotenv files through the terminal. For explicitly requested "
+                "key changes, use update_env with only the required variable names and values."
+            )
+
         # Security Guardrail Check
         risk_level, reason = SecurityGuard.assess_command_risk(command)
         if risk_level == RiskLevel.DANGEROUS:
@@ -198,6 +206,7 @@ def get_terminal_tools(root_dir: Path):
             name="run_command",
             description=(
                 f"Execute a shell command directly in workspace root ({root_dir}); do NOT prefix 'cd <workspace> &&'. "
+                "Explicit shell/script reads or writes of .env files are blocked; use update_env for targeted configuration changes. "
                 "Supports local, docker, or ssh backends; slow installs/builds auto-extend from 120s to 300s (max 900s). "
                 "Set background=true for a long-running server/build/test and manage the returned session_id with process."
             ),
