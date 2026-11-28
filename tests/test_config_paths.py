@@ -1,0 +1,71 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from nexus.config import NOLTHIRA_HOME, NEXUS_HOME, migrate_legacy_home
+
+
+class LegacyHomeMigrationTests(unittest.TestCase):
+    def test_legacy_home_is_renamed_when_new_home_does_not_exist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old, new = root / ".nexus", root / ".nolthira"
+            (old / "oauth").mkdir(parents=True)
+            (old / ".env").write_text("API_KEY=keep-me\n", encoding="utf-8")
+            (old / "oauth" / "tokens.json").write_text('{"refresh_token":"keep-me"}', encoding="utf-8")
+            (old / "engine" / ".git").mkdir(parents=True)
+            (old / "engine" / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+
+            self.assertTrue(migrate_legacy_home(old, new))
+            self.assertFalse(old.exists())
+            self.assertEqual((new / ".env").read_text(encoding="utf-8"), "API_KEY=keep-me\n")
+            self.assertTrue((new / "oauth" / "tokens.json").exists())
+            self.assertTrue((new / "engine" / ".git" / "HEAD").exists())
+
+    def test_existing_new_home_wins_conflicts_but_receives_missing_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old, new = root / ".nexus", root / ".nolthira"
+            old.mkdir()
+            new.mkdir()
+            (old / ".env").write_text("API_KEY=legacy\n", encoding="utf-8")
+            (new / ".env").write_text("API_KEY=current\n", encoding="utf-8")
+            (old / "oauth").mkdir()
+            (new / "oauth").mkdir()
+            (old / "oauth" / "missing.json").write_text("old-token", encoding="utf-8")
+            (old / "oauth" / "shared.json").write_text("old", encoding="utf-8")
+            (new / "oauth" / "shared.json").write_text("new", encoding="utf-8")
+
+            self.assertTrue(migrate_legacy_home(old, new))
+            self.assertEqual((new / ".env").read_text(encoding="utf-8"), "API_KEY=current\n")
+            self.assertEqual((new / "oauth" / "missing.json").read_text(encoding="utf-8"), "old-token")
+            self.assertEqual((new / "oauth" / "shared.json").read_text(encoding="utf-8"), "new")
+            self.assertEqual((old / ".env").read_text(encoding="utf-8"), "API_KEY=legacy\n")
+            self.assertEqual((old / "oauth" / "shared.json").read_text(encoding="utf-8"), "old")
+
+    def test_existing_engine_and_venv_are_kept_separate_on_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old, new = root / ".nexus", root / ".nolthira"
+            (old / "engine" / ".git").mkdir(parents=True)
+            (new / "engine" / ".git").mkdir(parents=True)
+            (old / "engine" / ".git" / "HEAD").write_text("old", encoding="utf-8")
+            (new / "engine" / ".git" / "HEAD").write_text("new", encoding="utf-8")
+            (old / "venv" / "bin").mkdir(parents=True)
+            (new / "venv" / "bin").mkdir(parents=True)
+            (old / "venv" / "bin" / "python").write_text("old", encoding="utf-8")
+            (new / "venv" / "bin" / "python").write_text("new", encoding="utf-8")
+
+            migrate_legacy_home(old, new)
+            self.assertEqual((new / "engine" / ".git" / "HEAD").read_text(encoding="utf-8"), "new")
+            self.assertEqual((old / "engine" / ".git" / "HEAD").read_text(encoding="utf-8"), "old")
+            self.assertEqual((new / "venv" / "bin" / "python").read_text(encoding="utf-8"), "new")
+            self.assertEqual((old / "venv" / "bin" / "python").read_text(encoding="utf-8"), "old")
+
+    def test_nexus_home_compatibility_alias_points_to_new_path(self):
+        self.assertEqual(NEXUS_HOME, NOLTHIRA_HOME)
+        self.assertEqual(NOLTHIRA_HOME.name, ".nolthira")
+
+
+if __name__ == "__main__":
+    unittest.main()
