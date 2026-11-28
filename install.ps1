@@ -224,5 +224,4 @@ Write-Host "     1. Configure your API key:" -ForegroundColor DarkGray
 Write-Host "        notepad $globalEnv" -ForegroundColor Cyan
 Write-Host "     2. Launch Nolthira from any folder:" -ForegroundColor DarkGray
 Write-Host "        nolthira" -ForegroundColor Yellow
-Write-Host "        (legacy alias: nexus)" -ForegroundColor DarkGray
 Write-Host ""
