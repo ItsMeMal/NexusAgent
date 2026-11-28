@@ -146,7 +146,7 @@ class GatewayManager:
 
                 self._apply_platform_profile(key)
                 gw.last_error = ""
-                task = asyncio.create_task(gw.start(), name=f"nexus-gateway-{key}")
+                task = asyncio.create_task(gw.start(), name=f"nolthira-gateway-{key}")
                 task.add_done_callback(
                     lambda completed, gateway_key=key: self._on_gateway_task_done(gateway_key, completed)
                 )
@@ -216,7 +216,7 @@ class GatewayManager:
             if gateway and gateway.is_configured():
                 self._apply_platform_profile(key)
                 gateway.last_error = ""
-                task = asyncio.create_task(gateway.start(), name=f"nexus-gateway-{key}")
+                task = asyncio.create_task(gateway.start(), name=f"nolthira-gateway-{key}")
                 task.add_done_callback(
                     lambda completed, gateway_key=key: self._on_gateway_task_done(gateway_key, completed)
                 )
