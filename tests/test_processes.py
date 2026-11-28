@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from nexus.config import config
-from nexus.tools.processes import ProcessManager
-from nexus.tools.terminal import get_terminal_tools
+from nolthira.config import config
+from nolthira.tools.processes import ProcessManager
+from nolthira.tools.terminal import get_terminal_tools
 
 
 class BackgroundProcessManagerTests(unittest.IsolatedAsyncioTestCase):
@@ -68,7 +68,7 @@ class BackgroundProcessManagerTests(unittest.IsolatedAsyncioTestCase):
     async def test_terminal_registry_exposes_background_and_process_tools(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            with patch.object(config, "NEXUS_HOME", root / ".nexus"):
+            with patch.object(config, "NOLTHIRA_HOME", root / ".nolthira"):
                 tools = {tool.name: tool for tool in get_terminal_tools(root)}
 
                 self.assertIn("process", tools)
