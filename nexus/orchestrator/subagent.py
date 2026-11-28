@@ -199,8 +199,8 @@ Execution contract:
         tasks: List[Dict[str, Any]],
     ) -> str:
         """Execute up to eight independent subagent tasks concurrently, preserving input order."""
-        if not isinstance(tasks, list) or not tasks:
-            return "Error: tasks must be a non-empty list."
+        if not isinstance(tasks, list) or len(tasks) < 2:
+            return "Error: delegate_tasks requires at least 2 independent tasks."
         if len(tasks) > 8:
             return "Error: delegate_tasks accepts at most 8 tasks per batch."
 
