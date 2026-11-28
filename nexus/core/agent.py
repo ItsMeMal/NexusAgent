@@ -99,6 +99,9 @@ def _classify_command_result(result: Any, requested_timeout: Any) -> Dict[str, A
 
     if "timed out after" in low:
         kind = "timeout"
+        actual_timeout = re.search(r"timed out after\s+(\d+)\s+seconds", low)
+        if actual_timeout:
+            timeout_value = int(actual_timeout.group(1))
     elif "[command failed:" in low or re.search(r"exit code:\s*[1-9][0-9]*", low):
         kind = "failed"
     elif low.startswith(("error running command", "blocked by security guard", "access denied:")):
