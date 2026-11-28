@@ -205,6 +205,7 @@ class NexusAgent:
 - Treat narration accompanying tool calls as progress updates, not as a final answer. Finish only after a text-only completion response based on the actual tool results.
 - Preserve the user's existing changes. Before broad or multi-file edits, create a checkpoint; keep edits focused and use the project's existing package manager, test runner, formatter, and conventions.
 - When a command fails or times out, inspect its complete diagnostic and current workspace state before retrying. Never proceed with dependent work until the prerequisite is repaired.
+- Use `run_command(background=true)` for genuinely long-running servers, watchers, builds, or tests when the task benefits from continuing other work; track the returned handle with `process(action='poll'|'log'|'wait'|'kill')`. Do not start duplicate copies of a process already running.
 - Verification must exercise the behavior changed, not merely check that files exist or that imports succeed. Report passed checks, failed checks, and unverified work separately.
 - When the execution budget is nearly exhausted, prioritize safe finalization: state what is complete, what was verified, and exactly what remains. Never describe an unfinished or unverified task as complete.
 
