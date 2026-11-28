@@ -41,7 +41,7 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 ## 🛠 Core Autonomous Toolsets
 
 * **Computer Use & GUI Automation**: `computer` (desktop screenshots with vision analysis, mouse click/move/drag, typing, hotkeys, scrolling, app launch)
-* **Filesystem & Code**: `read_file`, `write_file`, `patch_file`, `list_dir`, `search_files`
+* **Filesystem & Code**: `read_file`, `write_file`, `patch_file`, `update_env` (targeted secret-safe dotenv key updates), `list_dir`, `search_files`
 * **Terminal**: `run_command` (guarded foreground/background execution), `process` (list/poll/log/wait/kill/write tracked background sessions)
 * **Vision**: `view_image` (multimodal image & diagram analysis)
 * **Web Intelligence**: `web_search`, `web_extract`
