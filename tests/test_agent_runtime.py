@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nexus.core.agent import NexusAgent
+from nolthira.core.agent import NolthiraAgent
 
 
 class FakeMemory:
@@ -92,7 +92,7 @@ class AgentRuntimeContinuationTests(unittest.IsolatedAsyncioTestCase):
     def make_agent(self, llm, max_steps=6):
         memory = FakeMemory()
         registry = FakeRegistry()
-        agent = NexusAgent(
+        agent = NolthiraAgent(
             llm_client=llm,
             memory=memory,
             skill_manager=FakeSkills(),
@@ -266,7 +266,7 @@ def env_update_tool_call(call_id, updates):
 class AgentCommandRecoveryTests(unittest.IsolatedAsyncioTestCase):
     def make_agent(self, llm, registry, max_steps=8):
         memory = FakeMemory()
-        agent = NexusAgent(
+        agent = NolthiraAgent(
             llm_client=llm,
             memory=memory,
             skill_manager=FakeSkills(),
@@ -407,7 +407,7 @@ class RepeatableProcessReadTests(unittest.IsolatedAsyncioTestCase):
         ])
         memory = FakeMemory()
         registry = FakeRepeatableProcessRegistry()
-        agent = NexusAgent(
+        agent = NolthiraAgent(
             llm_client=llm,
             memory=memory,
             skill_manager=FakeSkills(),
