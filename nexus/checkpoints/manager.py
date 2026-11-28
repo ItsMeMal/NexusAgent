@@ -322,12 +322,17 @@ class CheckpointManager:
         with self._lock:
             safety_checkpoint = self.create_checkpoint(label=f"pre-restore-{checkpoint_id}")
             _, safety_manifest = self._read_manifest(safety_checkpoint["id"])
-            safety_preserved = set(safety_manifest.get("preserved_paths", []))
-            target_paths = {
+            safety_captured = {
+                str(item.get("path", ""))
+                for item in safety_manifest.get("files", [])
+                if isinstance(item, dict)
+            }
+            unprotected_targets = sorted(
                 str(target.relative_to(self.workspace).as_posix())
                 for target, _, _ in restore_items
-            }
-            unprotected_targets = sorted(target_paths & safety_preserved)
+                if target.exists()
+                and str(target.relative_to(self.workspace).as_posix()) not in safety_captured
+            )
             if unprotected_targets:
                 raise CheckpointError(
                     "Restore cancelled because the safety checkpoint could not capture files that would be overwritten: "
