@@ -1,6 +1,6 @@
 import unittest
 
-from nexus.tools.base import Tool, ToolRegistry
+from nolthira.tools.base import Tool, ToolRegistry
 
 
 class ToolAliasTests(unittest.IsolatedAsyncioTestCase):
