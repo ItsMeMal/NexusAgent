@@ -316,6 +316,7 @@ class LLMClient:
             "messages": messages,
             "temperature": self.temperature,
             "stream": True,
+            "stream_options": {"include_usage": True},
         }
         if tools:
             payload["tools"] = tools
