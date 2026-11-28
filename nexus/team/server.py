@@ -1,8 +1,8 @@
 """
 nexus/team/server.py
-Always-on Nexus AI-Team Dashboard Server (FastAPI + WebSocket).
+Always-on Nolthira AI Team Dashboard Server (FastAPI + WebSocket).
 
-Runs in background when Nexus CLI starts (http://127.0.0.1:7891 by default).
+Runs in background when Nolthira CLI starts (http://127.0.0.1:7891 by default).
 Streams real-time AI-Team execution (TeamBoard, Roster, Tool Calls, Mailbox,
 Files Touched) and lets users launch new missions, steer follow-ups, inspect
 created workspace files, or stop an active run directly from the browser.
@@ -199,7 +199,7 @@ class DashboardState:
 
 
 state = DashboardState()
-app = FastAPI(title="Nexus AI-Team Dashboard")
+app = FastAPI(title="Nolthira AI Team Dashboard")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -352,7 +352,7 @@ async def start_dashboard_server(
     uv_cfg = uvicorn.Config(app, host="127.0.0.1", port=chosen_port, log_level="error", access_log=False)
     _server_instance = uvicorn.Server(uv_cfg)
     _server_task = asyncio.create_task(_server_instance.serve())
-    logger.info("Nexus AI-Team Dashboard started at http://127.0.0.1:%d", chosen_port)
+    logger.info("Nolthira AI Team Dashboard started at http://127.0.0.1:%d", chosen_port)
     return chosen_port
 
 
