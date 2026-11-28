@@ -153,7 +153,7 @@ def get_filesystem_tools(root_dir: Path):
                 )
                 if not success:
                     return f"Error: Could not safely update environment key '{key}'."
-                # Child processes launched by Nexus inherit the updated value immediately.
+                # Child processes launched by Nolthira inherit the updated value immediately.
                 os.environ[key] = value
                 updated_keys.append(key)
             return (
@@ -291,7 +291,7 @@ def get_filesystem_tools(root_dir: Path):
                 "Safely set only explicitly provided environment variables in a root-level .env file. "
                 "Use this when project setup requires changing DATABASE_URL, API endpoints, or other env keys. "
                 "It preserves unrelated entries, never reads or returns existing secret values, and updates the "
-                "current Nexus process environment for subsequent child commands. Never bypass .env protections "
+                "current Nolthira process environment for subsequent child commands. Never bypass .env protections "
                 "with PowerShell, Node, Python, shell redirection, or other terminal file-write tricks."
             ),
             parameters={
