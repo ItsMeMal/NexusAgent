@@ -1,6 +1,6 @@
 from .tui import (
     render_banner,
-    build_nexus_mascot_renderable,
+    build_nolthira_mascot_renderable,
     render_tool_call,
     render_tool_result,
     render_subagent_event,
@@ -23,7 +23,7 @@ from .tui import (
 )
 from .controller import AgentUIController
 from .interactive import (
-    NexusCommandCompleter,
+    NolthiraCommandCompleter,
     render_command_palette,
     interactive_select_provider,
     interactive_select_model,
@@ -36,7 +36,7 @@ from .interactive import (
 
 __all__ = [
     "render_banner",
-    "build_nexus_mascot_renderable",
+    "build_nolthira_mascot_renderable",
     "render_tool_call",
     "render_tool_result",
     "render_subagent_event",
@@ -57,7 +57,7 @@ __all__ = [
     "render_gateway_card",
     "console",
     "AgentUIController",
-    "NexusCommandCompleter",
+    "NolthiraCommandCompleter",
     "render_command_palette",
     "interactive_select_provider",
     "interactive_select_model",
