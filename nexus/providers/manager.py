@@ -36,7 +36,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
     "mallss_nexus_route": ProviderProfile(
         id="mallss_nexus_route",
         name="Mallss Nexus Route (Account Login)",
-        default_base="https://ai-router.mallss-nexus.sbs/v1",
+        default_base="https://ai-router.mallss-nolthira.sbs/v1",
         env_key="",
         description="Mallss-owned AI gateway. Browser login uses OAuth 2.0 Authorization Code + PKCE; no API key entry is needed.",
         protocol="openai-chat-completions",
@@ -556,7 +556,7 @@ class ProviderManager:
 
         # Match dedicated provider hostnames before falling back to legacy profiles.
         provider_hosts = (
-            (("ai-router.mallss-nexus.sbs",), "mallss_nexus_route"),
+            (("ai-router.mallss-nolthira.sbs",), "mallss_nexus_route"),
             (("api.cerebras.ai",), "cerebras"),
             (("api.sambanova.ai",), "sambanova"),
             (("api.deepinfra.com",), "deepinfra"),
@@ -660,7 +660,7 @@ class ProviderManager:
         candidate_keys: List[str] = []
         if api_key and api_key != "your_api_key_here":
             candidate_keys.append(api_key)
-        for env_var in ("MALLSS_NEXUS_API_KEY", "NEXUS_API_KEY", "OPENAI_API_KEY"):
+        for env_var in ("MALLSS_NEXUS_API_KEY", "NOLTHIRA_API_KEY", "OPENAI_API_KEY"):
             val = os.getenv(env_var, "").strip()
             if val and val != "your_api_key_here" and val not in candidate_keys:
                 candidate_keys.append(val)
@@ -670,7 +670,7 @@ class ProviderManager:
             from dotenv import dotenv_values
             if hasattr(config, "ENV_PATH") and config.ENV_PATH.exists():
                 file_vals = dotenv_values(config.ENV_PATH)
-                for k in ("OPENAI_API_KEY", "NEXUS_API_KEY", "MALLSS_NEXUS_API_KEY"):
+                for k in ("OPENAI_API_KEY", "NOLTHIRA_API_KEY", "MALLSS_NEXUS_API_KEY"):
                     v = (file_vals.get(k) or "").strip()
                     if v and v != "your_api_key_here" and v not in candidate_keys:
                         candidate_keys.append(v)
