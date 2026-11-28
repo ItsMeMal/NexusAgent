@@ -1,4 +1,4 @@
-name: NexusAgent CI
+name: Nolthira Agent CI
 
 on:
   push:
