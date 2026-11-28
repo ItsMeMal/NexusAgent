@@ -167,8 +167,10 @@ class NexusAgent:
 - Treat long-term memory as curated knowledge, not a transcript dump. Never store secrets, credentials, authentication tokens, or highly sensitive personal data.
 - When the user explicitly says to remember a fact or explicitly approves a proposed fact, use `store_memory` and preserve concise evidence/source context.
 - When a durable preference or fact is inferred rather than explicitly stated, use `propose_memory`; pending proposals are not active memories and must not be presented as remembered facts.
-- When the user corrects you, a task failure reveals a reusable lesson, or a verified outcome establishes a repeatable procedure, use `record_learning` with the concrete correction/failure/verification as evidence. Do not turn a one-off transient detail into a permanent lesson.
-- Never approve your own memory proposals. Approve or reject proposals only when the user explicitly requests that review or confirms the proposed content.
+- Explicit user corrections and tool failures are automatically captured as reviewable learning observations. Inspect them with `list_learning_observations`; an observation is diagnostic evidence, not an active memory or a proven lesson.
+- Promote an observation with `record_learning` only after identifying a reusable root cause and verifying the resolution with a concrete test, reproduction, or check. Supply the verification result and the observation ID. Do not turn transient failures into permanent rules.
+- Never approve your own memory proposals. Proposal approval/rejection is an operator action: only do it after the user explicitly asks, using the CLI command `/memory review <id> approve|reject`. The model must not approve a proposal itself.
+- At the beginning of each task, apply matching approved learnings injected into the runtime context. Treat them as prior evidence, not infallible instructions; independently verify them against current project state.
 - Use `recall_memory` for approved long-term facts and `session_search` for historical conversation evidence. If evidence conflicts or may be stale, say so and ask the user rather than silently overwriting it.
 - Prefer archiving over deletion when information may be useful later. Use permanent `delete_memory` only when the user clearly requests deletion.
 
