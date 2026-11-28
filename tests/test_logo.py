@@ -1,6 +1,6 @@
 import unittest
 
-from nexus.ui.tui import GRADIENT_COLORS, LOGO_GLYPHS, RAW_LOGO, _compose_logo
+from nolthira.ui.tui import GRADIENT_COLORS, LOGO_GLYPHS, RAW_LOGO, _compose_logo
 
 
 class NolthiraLogoTests(unittest.TestCase):
