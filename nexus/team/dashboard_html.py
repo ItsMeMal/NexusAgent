@@ -1,4 +1,4 @@
-"""nexus/team/dashboard_html.py — Redesigned always-on AI-Team Control Room UI."""
+"""nolthira/team/dashboard_html.py — Redesigned always-on AI-Team Control Room UI."""
 
 DASHBOARD_HTML = r'''<!DOCTYPE html>
 <html lang="en">
