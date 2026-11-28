@@ -42,7 +42,7 @@ _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$")
 def _default_config() -> Dict[str, Any]:
     all_toolsets = sorted(BUILTIN_TOOLSETS)
     return {
-        "version": 1,
+        "version": 2,
         "default_profile": "default",
         "profiles": {
             "default": {
@@ -141,15 +141,16 @@ class ToolsetManager:
         return value.strip()
 
     def _validate(self, raw: Any) -> Dict[str, Any]:
-        if not isinstance(raw, dict) or raw.get("version") != 1:
-            raise ToolsetConfigError("Toolset config must be a JSON object with version=1.")
+        if not isinstance(raw, dict) or raw.get("version") not in {1, 2}:
+            raise ToolsetConfigError("Toolset config must be a JSON object with version=1 or version=2.")
+        legacy_config = raw.get("version", 1) < 2
         profiles = raw.get("profiles")
         if not isinstance(profiles, dict) or not profiles:
             raise ToolsetConfigError("Toolset config must define at least one profile.")
 
         builtins = _default_config()
         normalized: Dict[str, Any] = {
-            "version": 1,
+            "version": 2,
             "default_profile": self._valid_name(raw.get("default_profile", "default"), "default_profile"),
             "profiles": {},
             # New built-in role/platform defaults are merged into older user config files.
@@ -177,18 +178,19 @@ class ToolsetManager:
                 profile[field] = sorted(set(clean))
             normalized["profiles"][name] = profile
 
-        # Migrate profiles created by earlier Nexus versions without discarding user customizations.
+        # Migrate v1 profiles once. v2 profiles retain deliberate operator customizations.
         for builtin_name, builtin_profile in builtins["profiles"].items():
             current = normalized["profiles"].get(builtin_name)
             if current is None:
                 normalized["profiles"][builtin_name] = copy.deepcopy(builtin_profile)
                 continue
-            if builtin_profile.get("extends") and not current.get("extends"):
-                current["extends"] = builtin_profile["extends"]
-            if builtin_profile.get("enabled_toolsets") and not current.get("enabled_toolsets"):
-                current["enabled_toolsets"] = list(builtin_profile["enabled_toolsets"])
-            for field in ("disabled_toolsets", "disabled_tools"):
-                current[field] = sorted(set(current.get(field, [])) | set(builtin_profile.get(field, [])))
+            if legacy_config:
+                if builtin_profile.get("extends") and not current.get("extends"):
+                    current["extends"] = builtin_profile["extends"]
+                if builtin_profile.get("enabled_toolsets") and not current.get("enabled_toolsets"):
+                    current["enabled_toolsets"] = list(builtin_profile["enabled_toolsets"])
+                for field in ("disabled_toolsets", "disabled_tools"):
+                    current[field] = sorted(set(current.get(field, [])) | set(builtin_profile.get(field, [])))
 
         if normalized["default_profile"] not in normalized["profiles"]:
             raise ToolsetConfigError("default_profile does not exist.")
