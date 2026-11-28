@@ -76,6 +76,40 @@ def _looks_like_tool_failure(value: Any) -> bool:
     return any(marker in text for marker in _LEARNING_FAILURE_MARKERS)
 
 
+def _tool_call_signature(tool_name: str, arguments: Dict[str, Any]) -> str:
+    """Build a stable repeat signature; timeout is an execution condition, not command identity."""
+    identity: Any = arguments
+    if str(tool_name or "").lower() in {"run_command", "terminal", "shell", "bash", "cmd"} and isinstance(arguments, dict):
+        identity = {
+            "command": str(arguments.get("command") or "").strip(),
+            "backend": str(arguments.get("backend") or "").strip().lower(),
+            "background": bool(arguments.get("background", False)),
+        }
+    return f"{tool_name}:{json.dumps(identity, sort_keys=True, ensure_ascii=False, default=str)}"
+
+
+def _classify_command_result(result: Any, requested_timeout: Any) -> Dict[str, Any]:
+    """Remember the last run_command outcome so failed commands cannot be retried by changing timeout."""
+    output = str(result or "")
+    low = output.lower()
+    try:
+        timeout_value = max(1, int(requested_timeout or 120))
+    except (TypeError, ValueError):
+        timeout_value = 120
+
+    if "timed out after" in low:
+        kind = "timeout"
+    elif "[command failed:" in low or re.search(r"exit code:\\s*[1-9][0-9]*", low):
+        kind = "failed"
+    elif low.startswith(("error running command", "blocked by security guard", "access denied:")):
+        kind = "failed"
+    elif re.search(r"exit code:\\s*0(?:\\D|$)", low):
+        kind = "success"
+    else:
+        kind = "unknown"
+    return {"kind": kind, "timeout": timeout_value}
+
+
 class NexusAgent:
     def __init__(
         self,
@@ -206,6 +240,8 @@ class NexusAgent:
 - Treat narration accompanying tool calls as progress updates, not as a final answer. Finish only after a text-only completion response based on the actual tool results.
 - Preserve the user's existing changes. Before broad or multi-file edits, create a checkpoint; keep edits focused and use the project's existing package manager, test runner, formatter, and conventions.
 - When a command fails or times out, inspect its complete diagnostic and current workspace state before retrying. Never proceed with dependent work until the prerequisite is repaired.
+- A repeated-tool loop-guard result means that invocation was NOT executed; it is not a task-completion signal. Do not finalize merely because a loop guard fired. Inspect the last output/state and choose a materially different diagnostic or corrective action. For run_command, changing only the timeout does not repair a non-zero exit; only retry the same command with a longer timeout when the previous attempt explicitly timed out, and do so at most once.
+- Never bypass secret-file protections with terminal commands, scripts, shell redirection, PowerShell, Node, or Python. For explicitly requested environment configuration, use `update_env(path=".env", updates={...})`: it changes only named keys, preserves unrelated entries, never returns existing values, and makes updated values available to later child commands. Never read or print secret values.
 - Use `run_command(background=true)` for genuinely long-running servers, watchers, builds, or tests when the task benefits from continuing other work; track the returned handle with `process(action='poll'|'log'|'wait'|'kill')`. Do not start duplicate copies of a process already running.
 - Verification must exercise the behavior changed, not merely check that files exist or that imports succeed. Report passed checks, failed checks, and unverified work separately.
 - When the execution budget is nearly exhausted, prioritize safe finalization: state what is complete, what was verified, and exactly what remains. Never describe an unfinished or unverified task as complete.
@@ -433,6 +469,8 @@ class NexusAgent:
         final_response_text = ""
         empty_response_retries = 0
         recent_call_signatures: List[str] = []
+        recent_command_outcomes: Dict[str, Dict[str, Any]] = {}
+        timeout_retry_used: set[str] = set()
         pending_tc_ids: List[str] = []
         files_written = 0
         code_nudge_sent = False
@@ -568,23 +606,59 @@ class NexusAgent:
                     if self.on_tool_call:
                         self.on_tool_call(tool_name, args)
 
-                    # Generate signature for duplicate loop detection (skip malformed truncated JSON so distinct files don't collide)
+                    # Detect repeated calls by semantic identity. For run_command, changing only
+                    # timeout does not create a new command or bypass the guard.
+                    sig: Optional[str] = None
+                    same_call_count = 0
+                    loop_guard_reason = ""
                     if not arg_parse_err:
-                        sig = f"{tool_name}:{json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args)}"
+                        sig = _tool_call_signature(tool_name, args if isinstance(args, dict) else {})
                         same_call_count = recent_call_signatures.count(sig)
-                        recent_call_signatures.append(sig)
-                    else:
-                        same_call_count = 0
+                        if str(tool_name or "").lower() in {"run_command", "terminal", "shell", "bash", "cmd"}:
+                            previous = recent_command_outcomes.get(sig)
+                            try:
+                                requested_timeout = max(1, int(args.get("timeout", 120) or 120))
+                            except (TypeError, ValueError):
+                                requested_timeout = 120
+
+                            if previous and previous.get("kind") == "failed":
+                                loop_guard_reason = (
+                                    "The previous identical command returned a non-zero/error result. "
+                                    "Changing only its timeout does not fix that failure."
+                                )
+                            elif previous and previous.get("kind") == "timeout":
+                                can_retry_timeout = (
+                                    requested_timeout > int(previous.get("timeout", 120))
+                                    and sig not in timeout_retry_used
+                                )
+                                if can_retry_timeout:
+                                    timeout_retry_used.add(sig)
+                                else:
+                                    loop_guard_reason = (
+                                        "The previous identical command timed out. One retry with a longer timeout "
+                                        "has already been used or the requested timeout is not longer."
+                                    )
+                            elif same_call_count >= 2:
+                                loop_guard_reason = "This exact command has already been attempted repeatedly."
+                        elif same_call_count >= 2:
+                            loop_guard_reason = "This tool has already been called repeatedly with identical arguments."
+
+                        if not loop_guard_reason:
+                            recent_call_signatures.append(sig)
 
                     if arg_parse_err:
                         result = arg_parse_err
                         had_trunc_error = True
                         elapsed = 0.001
-                    elif same_call_count >= 2:
-                        # Halt loop locally to avoid spinning and prevent upstream StalledToolLoopDetected
+                    elif loop_guard_reason:
+                        # A loop guard blocks only this invocation; it must guide recovery,
+                        # never tell the model to end an otherwise unfinished task.
                         result = (
-                            f"[System Loop Guard]: You have called '{tool_name}' multiple times with identical arguments. "
-                            "Stop repeating this call. Synthesize your final answer for the user using the information already retrieved."
+                            f"[System Loop Guard]: '{tool_name}' was NOT executed. {loop_guard_reason} "
+                            "Do not claim the task is complete. Inspect the previous diagnostic and current "
+                            "workspace/process state, then choose a materially different, safe diagnostic or "
+                            "corrective action. Do not repeat the same command with cosmetic argument changes. "
+                            "If no safe recovery path exists, report the exact blocker and what remains unverified."
                         )
                         elapsed = 0.001
                     elif tool_name in mode_spec.blocked_tools:
@@ -601,6 +675,12 @@ class NexusAgent:
                         if tool_name in ("write_file", "append_file", "patch_file") and str(result).startswith("Successfully"):
                             files_written += 1
                             had_trunc_error = False
+
+                    if sig and not arg_parse_err and str(tool_name or "").lower() in {"run_command", "terminal", "shell", "bash", "cmd"} and not loop_guard_reason:
+                        recent_command_outcomes[sig] = _classify_command_result(
+                            result,
+                            args.get("timeout", 120) if isinstance(args, dict) else 120,
+                        )
 
                     if self.on_tool_result:
                         self.on_tool_result(tool_name, result, elapsed)
