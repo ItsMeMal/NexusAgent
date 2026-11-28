@@ -46,8 +46,11 @@ _SECRET_ENV_ACCESS_RE = re.compile(
     r"\b(?:Get-Content|Set-Content|Add-Content|Out-File|type|cat|more|"
     r"Select-String|findstr|grep|rg|readFile(?:Sync)?|writeFile(?:Sync)?|"
     r"appendFile(?:Sync)?|createWriteStream|read_text|read_bytes|write_text|"
-    r"write_bytes|set_key|open|Copy-Item|Move-Item|cp|copy|mv|move|del|rm)\b|"
-    r">>?",
+    r"write_bytes|set_key|open|Copy-Item|Move-Item|cp|copy|mv|move|del|rm)\b",
+    re.IGNORECASE,
+)
+_SECRET_ENV_REDIRECTION_RE = re.compile(
+    r">>?\s*['\"]?(?:[^ \t\"'<>|&]+[\\/])?\.env(?!\.example\b)(?:\.[A-Za-z0-9_-]+)*(?![\w-])",
     re.IGNORECASE,
 )
 
@@ -123,9 +126,10 @@ class SecurityGuard:
     def is_secret_file_access_command(command: str) -> bool:
         """Block explicit shell/script reads or writes of .env files; listing names remains allowed."""
         text = str(command or "")
-        return bool(
-            _SECRET_ENV_REFERENCE_RE.search(text)
-            and _SECRET_ENV_ACCESS_RE.search(text)
+        has_secret_reference = bool(_SECRET_ENV_REFERENCE_RE.search(text))
+        return has_secret_reference and bool(
+            _SECRET_ENV_ACCESS_RE.search(text)
+            or _SECRET_ENV_REDIRECTION_RE.search(text)
         )
 
     @staticmethod
