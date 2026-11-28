@@ -181,40 +181,45 @@ class SkillManager:
         return skills
 
     def get_skill(self, name: str) -> Optional[Skill]:
-        """Search all directories for a skill by name (exact, then normalized fallback)."""
-        raw_name = (name or "").strip()
-        if not raw_name:
-            return None
-        # Skill identifiers are names, never paths. Prevent traversal through read_skill.
-        if raw_name.lower().endswith(".md"):
-            raw_name = raw_name[:-3]
+        """Search configured skill sources without allowing identifiers to escape a source root."""
         try:
-            clean = self._normalize_skill_name(raw_name)
+            clean = self._normalize_skill_name(name)
         except ValueError:
             return None
+        if not clean:
+            return None
+
         for directory in self.all_search_dirs():
-            for candidate in [
+            try:
+                source_root = directory.resolve()
+            except OSError:
+                continue
+            for candidate in (
                 directory / f"{clean}.md",
                 directory / clean / "SKILL.md",
                 directory / clean / f"{clean}.md",
-            ]:
-                if candidate.exists():
-                    try:
-                        text = candidate.read_text(encoding="utf-8")
-                        return Skill(
-                            name=clean,
-                            description=_extract_skill_description(text),
-                            content=text,
-                            file_path=candidate,
-                            source=str(directory.resolve()),
-                            writable=self._is_primary_file(candidate),
-                        )
-                    except Exception:
+            ):
+                try:
+                    resolved = candidate.resolve()
+                    if not resolved.is_relative_to(source_root) or not resolved.is_file():
                         continue
-        # Normalized case-insensitive / hyphen-underscore fallback
-        norm_target = re.sub(r"[-_\s]+", "", clean.lower())
+                    text = resolved.read_text(encoding="utf-8")
+                    skill_name = resolved.parent.name if resolved.name == "SKILL.md" else resolved.stem
+                    return Skill(
+                        name=skill_name,
+                        description=_extract_skill_description(text),
+                        content=text,
+                        file_path=resolved,
+                        source=str(source_root),
+                        writable=self._is_primary_file(resolved),
+                    )
+                except (OSError, ValueError):
+                    continue
+
+        # Normalized case-insensitive / hyphen-underscore fallback.
+        norm_target = re.sub(r"[-_\\s]+", "", clean.lower())
         for skill in self.load_all_skills():
-            if re.sub(r"[-_\s]+", "", skill.name.lower()) == norm_target:
+            if re.sub(r"[-_\\s]+", "", skill.name.lower()) == norm_target:
                 return skill
         return None
 
@@ -345,6 +350,11 @@ class SkillManager:
         file_path = self.skills_dir / f"{clean_name}.md"
         if file_path.exists() or self._find_primary_skill_file(clean_name):
             raise FileExistsError(f"Skill '{clean_name}' already exists in the writable skill directory.")
+        existing = self.get_skill(clean_name)
+        if existing and not existing.writable:
+            raise PermissionError(
+                f"Skill name '{clean_name}' is already supplied by a read-only source ({existing.source})."
+            )
         full_text = self._format_skill_file(clean_name, description, content)
         self._atomic_write_skill(file_path, full_text)
         return file_path
