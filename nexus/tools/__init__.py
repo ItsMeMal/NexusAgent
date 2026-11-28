@@ -18,6 +18,12 @@ from ..memory import SQLiteMemory
 from ..skills import SkillManager
 from ..cron import CronScheduler
 
+
+def _register_group(registry: ToolRegistry, toolset: str, tools) -> None:
+    for tool in tools:
+        registry.register(tool, toolset=toolset)
+
+
 def create_default_registry(
     root_dir: Path,
     memory: SQLiteMemory,
@@ -25,65 +31,51 @@ def create_default_registry(
     cron_scheduler: Optional[CronScheduler] = None,
     subagent_manager: Optional[Any] = None,
     session_id_getter: Optional[Callable[[], str]] = None,
-    llm_client: Optional[Any] = None
+    llm_client: Optional[Any] = None,
+    toolset_manager: Optional[Any] = None,
+    profile: Optional[str] = None,
 ) -> ToolRegistry:
+    """Build every available tool once, then enforce the selected named profile."""
     registry = ToolRegistry()
-    
-    # 1. Filesystem Tools (read_file, write_file, patch_file, list_dir, search_files)
-    for t in get_filesystem_tools(root_dir):
-        registry.register(t)
-        
-    # 2. Terminal Shell Tools
-    for t in get_terminal_tools(root_dir):
-        registry.register(t)
-        
-    # 3. Persistent Memory Tools (SQLite + FTS5)
-    for t in get_memory_tools(memory):
-        registry.register(t)
-        
-    # 4. Dynamic Skills Tools
-    for t in get_skill_tools(skill_manager):
-        registry.register(t)
 
-    # 5. Web & Native Browser Automation Tools
-    for t in get_web_tools():
-        registry.register(t)
-    for t in get_browser_tools(root_dir):
-        registry.register(t)
+    # Toolsets are explicit categories rather than an unclassified global tool list.
+    _register_group(registry, "filesystem", get_filesystem_tools(root_dir))
+    _register_group(registry, "terminal", get_terminal_tools(root_dir))
+    _register_group(registry, "memory", get_memory_tools(memory))
+    _register_group(registry, "skills", get_skill_tools(skill_manager))
+    _register_group(registry, "web", get_web_tools())
+    _register_group(registry, "browser", get_browser_tools(root_dir))
 
-    # 6. Cron / Background Scheduling Tools
     if cron_scheduler:
-        for t in get_cron_tools(cron_scheduler):
-            registry.register(t)
+        _register_group(registry, "cron", get_cron_tools(cron_scheduler))
 
-    # 7. Subagent Orchestration (delegate_task)
     if subagent_manager and session_id_getter:
-        for t in get_orchestration_tools(subagent_manager, session_id_getter):
-            registry.register(t)
+        _register_group(
+            registry,
+            "orchestration",
+            get_orchestration_tools(subagent_manager, session_id_getter),
+        )
 
-    # 8. Multimodal Vision & Media Output Tools (view_image, image_generate, text_to_speech)
     if llm_client:
-        for t in get_vision_tools(llm_client, root_dir):
-            registry.register(t)
-    for t in get_media_tools(
-        root_dir=root_dir,
-        api_key=getattr(llm_client, "api_key", "") if llm_client else "",
-        api_base=getattr(llm_client, "api_base", "") if llm_client else "",
-    ):
-        registry.register(t)
+        _register_group(registry, "vision", get_vision_tools(llm_client, root_dir))
 
-    # 9. Project inspection for context-aware coding workflows
-    for t in get_project_tools(root_dir):
-        registry.register(t)
+    _register_group(
+        registry,
+        "media",
+        get_media_tools(
+            root_dir=root_dir,
+            api_key=getattr(llm_client, "api_key", "") if llm_client else "",
+            api_base=getattr(llm_client, "api_base", "") if llm_client else "",
+        ),
+    )
+    _register_group(registry, "project", get_project_tools(root_dir))
+    _register_group(registry, "checkpoints", get_checkpoint_tools(root_dir))
+    _register_group(registry, "computer", get_computer_tools(llm_client))
 
-    # 10. Workspace checkpoints and safe rollback
-    for t in get_checkpoint_tools(root_dir):
-        registry.register(t)
+    if toolset_manager:
+        toolset_manager.apply(registry, profile=profile)
 
-    # 11. Computer Use Tools (GUI automation: screenshot, mouse, keyboard, hotkey, scroll, app_launch)
-    for t in get_computer_tools(llm_client):
-        registry.register(t)
-        
     return registry
+
 
 __all__ = ["Tool", "ToolRegistry", "create_default_registry"]
