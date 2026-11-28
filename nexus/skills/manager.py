@@ -162,7 +162,7 @@ class SkillManager:
                         skill_name = file.stem
 
                     # Normalized deduplication: the first configured source wins.
-                    normalized_name = re.sub(r"[-_\\s]+", "", skill_name.lower())
+                    normalized_name = re.sub(r"[-_\s]+", "", skill_name.lower())
                     if normalized_name in seen_names:
                         continue
                     seen_names[normalized_name] = True
@@ -280,7 +280,7 @@ class SkillManager:
     @staticmethod
     def _normalize_skill_name(name: str) -> str:
         raw = str(name or "").strip()
-        if not raw or "/" in raw or "\\\\" in raw:
+        if not raw or "/" in raw or "\\" in raw:
             raise ValueError("Skill name must be a non-empty identifier, not a path.")
         clean = re.sub(r"[^a-zA-Z0-9_-]+", "-", raw).strip("-").lower()
         if not clean or len(clean) > 80 or clean in {".", ".."}:
@@ -310,7 +310,7 @@ class SkillManager:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
         try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\\n") as handle:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(full_text)
                 handle.flush()
                 os.fsync(handle.fileno())
@@ -330,7 +330,7 @@ class SkillManager:
             raise ValueError("Skill description must not be empty.")
         if not instructions:
             raise ValueError("Skill instructions must not be empty.")
-        return f"# Skill: {name}\\nDescription: {clean_description}\\n\\n{instructions}\\n"
+        return f"# Skill: {name}\nDescription: {clean_description}\n\n{instructions}\n"
 
     def save_skill(self, name: str, description: str, content: str) -> Path:
         """Create a new skill in the primary writable directory; never overwrite silently."""
@@ -389,7 +389,7 @@ class SkillManager:
 
         if skill.description == "No description":
             issues.append("Add a concise description so the skill can be discovered.")
-        instructions = "\\n".join(lines[body_start:]).strip()
+        instructions = "\n".join(lines[body_start:]).strip()
         if len(instructions) < 40:
             issues.append("Instruction body is too short; add actionable steps and constraints.")
         if not skill.writable:
