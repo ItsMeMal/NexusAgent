@@ -74,6 +74,32 @@ class ToolsetManagerTests(unittest.TestCase):
         self.assertEqual(reloaded.profile_for_platform("telegram"), "researcher")
         self.assertEqual(reloaded.profile_for_role("researcher"), "coder")
 
+    def test_gateway_registry_uses_read_oriented_profile_by_default(self):
+        from nexus.gateways.manager import GatewayManager
+
+        registry = ToolRegistry()
+        registry.register(make_tool("read_file"), toolset="filesystem")
+        registry.register(make_tool("write_file"), toolset="filesystem")
+        registry.register(make_tool("run_command"), toolset="terminal")
+        registry.register(make_tool("gateway_send"), toolset="gateway")
+
+        gateways = GatewayManager(
+            llm_client=object(),
+            memory=object(),
+            skill_manager=object(),
+            registry=registry,
+            toolset_manager=self.manager,
+        )
+
+        telegram_registry = gateways.gateways["telegram"].registry
+        self.assertIsNotNone(telegram_registry.get("read_file"))
+        self.assertIsNone(telegram_registry.get("write_file"))
+        self.assertIsNone(telegram_registry.get("run_command"))
+        self.assertIsNone(telegram_registry.get("gateway_send"))
+        # The main interactive registry remains unchanged.
+        self.assertIsNotNone(registry.get("write_file"))
+        self.assertIsNotNone(registry.get("run_command"))
+
     def test_unknown_profiles_and_toolsets_are_rejected(self):
         with self.assertRaises(ToolsetConfigError):
             self.manager.resolve_profile("does-not-exist")
