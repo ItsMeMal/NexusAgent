@@ -17,6 +17,7 @@ class NolthiraLogoTests(unittest.TestCase):
         self.assertEqual(len(RAW_LOGO[0]), 75)
         self.assertEqual(LOGO_GLYPHS["I"][0], "╔══════╗")
         self.assertEqual(LOGO_GLYPHS["I"][-1], "╚══════╝")
+        self.assertTrue(all(row == "   ║║   " for row in LOGO_GLYPHS["I"][1:5]))
         self.assertTrue(all(len(row) <= 80 for row in RAW_LOGO))
 
     def test_gradient_palette_covers_every_logo_row(self):
