@@ -642,8 +642,9 @@ class MCPManager:
         prefix = f"mcp_{name}_"
         self._registered_tools = [t for t in self._registered_tools if not t.name.startswith(prefix)]
         if registry and hasattr(registry, "_tools"):
-            for k in [k for k in list(registry._tools.keys()) if k.startswith(prefix)]:
-                registry._tools.pop(k, None)
+            for key in [key for key in list(registry._tools.keys()) if key.startswith(prefix)]:
+                registry._tools.pop(key, None)
+                getattr(registry, "_toolsets", {}).pop(key, None)
 
         removed_from_disk = False
         for cfg_path in self._get_config_files():
@@ -693,8 +694,9 @@ class MCPManager:
         """Reload configs from disk, restart MCP servers, and re-register tools."""
         await self.stop_all()
         if hasattr(registry, "_tools"):
-            for k in [k for k in list(registry._tools.keys()) if k.startswith("mcp_")]:
-                registry._tools.pop(k, None)
+            for key in [key for key in list(registry._tools.keys()) if key.startswith("mcp_")]:
+                registry._tools.pop(key, None)
+                getattr(registry, "_toolsets", {}).pop(key, None)
         self.servers.clear()
         self._errors.clear()
         self._registered_tools.clear()
