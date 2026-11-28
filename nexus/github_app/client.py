@@ -1,6 +1,6 @@
 """
-nexus/github_app/client.py
-High-level GitHub App API client for NexusAgent.
+nolthira/github_app/client.py
+High-level GitHub App API client for NolthiraAgent.
 
 Wraps common GitHub API operations using the Installation Token from GitHubAppAuth.
 Supports: repos, issues, pull requests, file content, webhooks, search.
