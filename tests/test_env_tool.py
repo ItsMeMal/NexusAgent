@@ -6,6 +6,8 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from nexus.tools.filesystem import get_filesystem_tools
+from nexus.tools.terminal import get_terminal_tools
+from nexus.security import SecurityGuard
 from nexus.tools.base import ToolRegistry
 from nexus.toolsets import ToolsetManager
 
@@ -76,6 +78,22 @@ class SafeEnvironmentUpdateTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("single-line strings", bad_value)
             self.assertEqual(dotenv_values(env_path)["KEEP"], "unchanged")
             self.assertIsNone(dotenv_values(env_path).get("NEW_VALUE"))
+
+    async def test_terminal_cannot_bypass_dotenv_file_protection(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            node_write = "node -e \"require('fs').writeFileSync('.env','LEAK=1')\""
+            powershell_read = 'powershell -Command "Get-Content .env"'
+
+            self.assertTrue(SecurityGuard.is_secret_file_access_command(node_write))
+            self.assertTrue(SecurityGuard.is_secret_file_access_command(powershell_read))
+            self.assertFalse(SecurityGuard.is_secret_file_access_command("dir /b /a .env*"))
+            self.assertFalse(SecurityGuard.is_secret_file_access_command("npx prisma migrate deploy"))
+
+            run_command = next(tool for tool in get_terminal_tools(root) if tool.name == "run_command")
+            result = await run_command.execute(command=node_write)
+            self.assertIn("Security Guard", result)
+            self.assertFalse((root / ".env").exists())
 
     async def test_researcher_toolset_cannot_mutate_environment(self):
         with tempfile.TemporaryDirectory() as temp_dir:
