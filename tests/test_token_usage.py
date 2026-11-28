@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 from nexus.core.llm import LLMClient, normalize_token_usage
 
 
-class TokenUsageNormalizationTests(unittest.TestCase):
+class TokenUsageNormalizationTests(unittest.IsolatedAsyncioTestCase):
     def test_normalizes_openai_usage(self):
         self.assertEqual(
             normalize_token_usage({"prompt_tokens": 120, "completion_tokens": 35, "total_tokens": 155}),
