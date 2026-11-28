@@ -217,9 +217,9 @@ class SkillManager:
                     continue
 
         # Normalized case-insensitive / hyphen-underscore fallback.
-        norm_target = re.sub(r"[-_\\s]+", "", clean.lower())
+        norm_target = re.sub(r"[-_\s]+", "", clean.lower())
         for skill in self.load_all_skills():
-            if re.sub(r"[-_\\s]+", "", skill.name.lower()) == norm_target:
+            if re.sub(r"[-_\s]+", "", skill.name.lower()) == norm_target:
                 return skill
         return None
 
