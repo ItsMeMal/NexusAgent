@@ -37,7 +37,7 @@ class ToolsetManagerTests(unittest.TestCase):
         self.assertIn("record_learning", researcher["disabled_tools"])
         self.assertIn("dismiss_learning_observation", researcher["disabled_tools"])
         self.assertNotIn("write_file", coder["disabled_tools"])
-        self.assertIn("memory", self.manager.resolve_profile("gateway")["disabled_toolsets"])
+        self.assertNotIn("memory", self.manager.resolve_profile("gateway")["enabled_toolsets"])
 
     def test_registry_policy_blocks_tools_and_aliases_at_execution_time(self):
         registry = ToolRegistry()
@@ -114,6 +114,7 @@ class ToolsetManagerTests(unittest.TestCase):
         from nexus.toolsets import _default_config
 
         legacy = _default_config()
+        legacy["version"] = 1
         legacy["profiles"].pop("gateway", None)
         legacy["platform_profiles"] = {}
         legacy["profiles"]["researcher"]["disabled_tools"] = [
