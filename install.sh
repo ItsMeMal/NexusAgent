@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 #  ⚡ Nolthira Agent Orchestrator - Universal Linux & macOS Installer
-#  Usage: curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh | bash
+#  Usage: curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.sh | bash
 # ==============================================================================
 
 set -e
@@ -89,12 +89,14 @@ mkdir -p "${BIN_DIR}"
 if [ -d "${ENGINE_DIR}/.git" ]; then
     printf "${CYAN}  [..] Updating existing Nolthira engine...\n${NC}"
     cd "${ENGINE_DIR}"
-    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt 2>/dev/null || true
-    git pull origin main --quiet || true
+    git remote set-url origin https://github.com/ItsMeMal/NolthiraAgent.git || git remote add origin https://github.com/ItsMeMal/NolthiraAgent.git
+    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt
+    git fetch origin main --quiet
+    git pull --ff-only origin main --quiet
 else
     printf "${CYAN}  [..] Downloading Nolthira Agent Engine from GitHub...\n${NC}"
     rm -rf "${ENGINE_DIR}"
-    git clone https://github.com/ItsMeMal/NexusAgent.git "${ENGINE_DIR}" --quiet
+    git clone https://github.com/ItsMeMal/NolthiraAgent.git "${ENGINE_DIR}" --quiet
     cd "${ENGINE_DIR}" 2>/dev/null || true
     git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt 2>/dev/null || true
 fi
