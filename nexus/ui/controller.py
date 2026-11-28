@@ -20,7 +20,7 @@ _CALLING_TOOLS_RE = re.compile(r"^(?:\s*\[calling tools\]\s*)+", re.IGNORECASE)
 
 
 class AgentUIController:
-    """Coordinates live output, animated Nexus Mascot thinking/loading indicator, and streaming tokens without stdout collisions."""
+    """Coordinates live output, animated Nolthira Mascot thinking/loading indicator, and streaming tokens without stdout collisions."""
 
     def __init__(self, model_name: str, console_instance: Optional[Console] = None, mode_id: str = "auto"):
         self.console = console_instance or console
@@ -60,7 +60,7 @@ class AgentUIController:
         )
 
     def start_thinking(self, message: str = "Thinking & coordinating..."):
-        """Start the animated Nexus Mascot with a live ticking elapsed timer."""
+        """Start the animated Nolthira Mascot with a live ticking elapsed timer."""
         self.stop_status()
         self._thinking_active = True
         self._start_time = time.perf_counter()
@@ -84,7 +84,7 @@ class AgentUIController:
             pass
 
     async def _thinking_ticker(self):
-        """Background coroutine that smoothly animates the Nexus Mascot frames and updates elapsed seconds."""
+        """Background coroutine that smoothly animates the Nolthira Mascot frames and updates elapsed seconds."""
         idx = 1
         while self._thinking_active and self.live:
             elapsed = time.perf_counter() - self._start_time
@@ -122,7 +122,7 @@ class AgentUIController:
             mode_spec = get_mode(self.mode_id)
             model_short = self.model_name.split("/")[-1] if "/" in self.model_name else self.model_name
             self.console.print(
-                f"\n[bold #00ffd7]◈ Nexus[/bold #00ffd7] "
+                f"\n[bold #00ffd7]◈ Nolthira[/bold #00ffd7] "
                 f"[bold {mode_spec.color}]\\[{mode_spec.icon} {mode_spec.label}][/bold {mode_spec.color}] "
                 f"[dim]({model_short})[/dim]"
             )
@@ -217,7 +217,7 @@ class AgentUIController:
         render_subagent_event(event_type, message)
 
     def on_retry(self, attempt: int, max_retries: int, err_summary: str):
-        """Update the animated Nexus Mascot when retrying a transient API error."""
+        """Update the animated Nolthira Mascot when retrying a transient API error."""
         self.start_thinking(f"API retry {attempt}/{max_retries} ({err_summary})...")
 
     def finish_stream(self):
