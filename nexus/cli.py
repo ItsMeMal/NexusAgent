@@ -23,7 +23,7 @@ from .gateways import GatewayManager
 from .security import SecurityGuard
 from .updater import check_for_update, perform_update
 from .tools import create_default_registry
-from .core import LLMClient, NexusAgent, get_mode, cycle_mode
+from .core import LLMClient, NolthiraAgent, get_mode, cycle_mode
 from .ui import (
     render_banner,
     render_memories_table,
@@ -191,8 +191,8 @@ async def main_async():
 
     # Restore first-party Mallss Nexus Route OAuth automatically when it is the active endpoint.
     if ProviderManager.detect_active_provider(config.API_BASE).id == "mallss_nexus_route":
-        from .providers.nexus_route_oauth import NexusRouteOAuth
-        llm.token_provider = NexusRouteOAuth().get_access_token
+        from .providers.NOLTHIRA_ROUTE_MODULE import NOLTHIRA_ROUTE_CLASS
+        llm.token_provider = NOLTHIRA_ROUTE_CLASS().get_access_token
         llm.api_key = ""
 
     # Subagent orchestrator manager
@@ -240,7 +240,7 @@ async def main_async():
     )
     gateway_manager.register_tools(registry)
 
-    agent = NexusAgent(
+    agent = NolthiraAgent(
         llm_client=llm,
         memory=memory,
         skill_manager=skill_manager,
@@ -264,7 +264,7 @@ async def main_async():
             if cmd_tool:
                 return await cmd_tool.execute(command=instr)
             return "Error: run_command tool unavailable."
-        cron_agent = NexusAgent(
+        cron_agent = NolthiraAgent(
             llm_client=llm,
             memory=memory,
             skill_manager=skill_manager,
@@ -369,7 +369,7 @@ async def main_async():
 
     # Always-on AI-Team dashboard server (background)
     try:
-        from nexus.team.server import start_dashboard_server
+        from nolthira.team.server import start_dashboard_server
         dash_port = await start_dashboard_server(
             llm,
             port=7891,
@@ -390,10 +390,10 @@ async def main_async():
         spec = cycle_mode(agent.mode)
         agent.mode = spec.id
         config.AGENT_MODE = spec.id
-        os.environ["NEXUS_AGENT_MODE"] = spec.id
+        os.environ["NOLTHIRA_AGENT_MODE"] = spec.id
         ui_controller.update_mode(spec.id)
         try:
-            ProviderManager.update_env_file({"NEXUS_AGENT_MODE": spec.id}, env_path)
+            ProviderManager.update_env_file({"NOLTHIRA_AGENT_MODE": spec.id}, env_path)
         except Exception:
             pass
         event.app.invalidate()
@@ -450,7 +450,7 @@ async def main_async():
                 await gateway_manager.stop_gateway("all")
                 await mcp_manager.stop_all()
                 try:
-                    from nexus.team.server import stop_dashboard_server
+                    from nolthira.team.server import stop_dashboard_server
                     await stop_dashboard_server()
                 except Exception:
                     pass
@@ -533,8 +533,8 @@ async def main_async():
                 elif cmd.startswith("/auth"):
                     parts = text.strip().split()
                     action = parts[1].lower() if len(parts) > 1 else "status"
-                    from .providers.nexus_route_oauth import NexusRouteOAuth
-                    route_oauth = NexusRouteOAuth()
+                    from .providers.NOLTHIRA_ROUTE_MODULE import NOLTHIRA_ROUTE_CLASS
+                    route_oauth = NOLTHIRA_ROUTE_CLASS()
                     if action == "logout":
                         await route_oauth.logout()
                         if ProviderManager.detect_active_provider(config.API_BASE).id == "mallss_nexus_route":
@@ -626,7 +626,7 @@ async def main_async():
                     render_plugins_table(plugin_manager.list_plugins())
                     continue
                 elif cmd == "/github":
-                    from nexus.github_app.commands import handle_github_command, HELP_TEXT
+                    from nolthira.github_app.commands import handle_github_command, HELP_TEXT
                     gh_args = text.strip().split()[1:]
                     _gh_replies = []
                     async def _gh_send(t):
@@ -637,10 +637,10 @@ async def main_async():
                     console.print(Markdown(output_text))
                     continue
                 elif cmd in ("/team", "/ai-team"):
-                    from nexus.team.commands import HELP_TEXT as TEAM_HELP
-                    from nexus.team.ui import run_team_with_ui
-                    from nexus.team.agent import BUILTIN_ROLES_BY_ID, BUILTIN_ROLES
-                    from nexus.team.manager import PRESET_TEAMS, TeamManager, auto_mode
+                    from nolthira.team.commands import HELP_TEXT as TEAM_HELP
+                    from nolthira.team.ui import run_team_with_ui
+                    from nolthira.team.agent import BUILTIN_ROLES_BY_ID, BUILTIN_ROLES
+                    from nolthira.team.manager import PRESET_TEAMS, TeamManager, auto_mode
                     from rich.markdown import Markdown
 
                     team_args = text.strip().split()[1:]
@@ -668,14 +668,14 @@ async def main_async():
 
                     if sub_t == "open":
                         import webbrowser
-                        from nexus.team.server import state as _dash_state
+                        from nolthira.team.server import state as _dash_state
                         url = f"http://127.0.0.1:{_dash_state.port}"
                         webbrowser.open(url)
                         console.print(f"\n  [bold #14f1d9]Opened AI-Team dashboard:[/bold #14f1d9] {url}\n")
                         continue
 
                     if sub_t == "stop":
-                        from nexus.team.server import state as _dash_state
+                        from nolthira.team.server import state as _dash_state
                         stopped = await _dash_state.stop_active_run()
                         msg = "Stopped active AI-Team mission." if stopped else "No active AI-Team mission running."
                         console.print(f"\n  [yellow]{msg}[/yellow]\n")
@@ -976,8 +976,8 @@ async def main_async():
                     sub = parts[1].lower() if len(parts) > 1 else "status"
                     if sub in ("local", "docker", "ssh"):
                         config.EXEC_BACKEND = sub
-                        os.environ["NEXUS_EXEC_BACKEND"] = sub
-                        ProviderManager.update_env_file({"NEXUS_EXEC_BACKEND": sub}, env_path)
+                        os.environ["NOLTHIRA_EXEC_BACKEND"] = sub
+                        ProviderManager.update_env_file({"NOLTHIRA_EXEC_BACKEND": sub}, env_path)
                         console.print(f"\n  [bold #22c55e]✔ Execution sandbox backend set to:[/bold #22c55e] [bold #00ffd7]{sub}[/bold #00ffd7]\n")
                     else:
                         console.print(f"\n  [bold #00ffd7]🛡 Terminal Execution Sandbox[/bold #00ffd7]")
@@ -998,7 +998,7 @@ async def main_async():
                     parts = text.strip().split()
                     sub = parts[1].lower() if len(parts) > 1 else ""
                     if sub in ("auto", "pixel", "kitty", "iterm2", "sixel"):
-                        os.environ["NEXUS_MASCOT_MODE"] = sub
+                        os.environ["NOLTHIRA_MASCOT_MODE"] = sub
                         console.print(f"\n  [bold #22c55e]✔ Mascot renderer mode:[/bold #22c55e] [bold #00ffd7]{sub}[/bold #00ffd7] (active: {detect_graphics_protocol(sub)})\n")
                     else:
                         proto = detect_graphics_protocol()
@@ -1108,7 +1108,7 @@ async def _watch_interrupt_keys(target_task: asyncio.Task, stop_evt: asyncio.Eve
         await asyncio.sleep(0.06)
 
 
-async def _run_interruptible_agent(agent: NexusAgent, text: str, ui_controller: AgentUIController, console_out):
+async def _run_interruptible_agent(agent: NolthiraAgent, text: str, ui_controller: AgentUIController, console_out):
     """Run agent.run(text) with Ctrl+C and Esc interruption that stops the AI without exiting CLI."""
     loop = asyncio.get_running_loop()
     agent_task = asyncio.create_task(agent.run(text))
@@ -1164,13 +1164,13 @@ def _install_win_proactor_pipe_fix() -> None:
     try:
         from asyncio import proactor_events
         orig_del = getattr(proactor_events._ProactorBasePipeTransport, "__del__", None)
-        if orig_del and not getattr(orig_del, "_nexus_safe", False):
+        if orig_del and not getattr(orig_del, "_nolthira_safe", False):
             def _safe_del(self, _orig=orig_del):
                 try:
                     _orig(self)
                 except (ValueError, RuntimeError):
                     pass
-            _safe_del._nexus_safe = True
+            _safe_del._nolthira_safe = True
             proactor_events._ProactorBasePipeTransport.__del__ = _safe_del
     except Exception:
         pass
