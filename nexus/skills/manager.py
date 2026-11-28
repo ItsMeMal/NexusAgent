@@ -4,6 +4,8 @@ import re
 import os
 import tempfile
 
+from ..config import NOLTHIRA_HOME
+
 
 class Skill:
     def __init__(
@@ -70,27 +72,28 @@ def _default_skill_search_paths() -> List[Path]:
     Return all candidate directories to search for skills, in priority order:
     1. Local workspace .skills/ (project-specific)
     2. NEXUS_SKILLS_DIR env override
-    3. ~/.nexus/skills/ (Nexus global)
+    3. ~/.nolthira/skills/ (Nolthira global)
     4. ~/.agents/skills/ (shared agents convention — Linux/Mac/Windows)
-    5. ~/.agents/nexus/skills/ (Nexus sub-namespace)
-    6. Codebase .skills/ (bundled)
+    5. ~/.agents/nolthira/skills/ (Nolthira sub-namespace)
+    6. ~/.agents/nexus/skills/ (legacy shared-agent namespace)
+    7. Codebase .skills/ (bundled)
     """
-    home = Path.home()
-    nexus_home = home / ".nexus"
-    agents_home = home / ".agents"
+    agents_home = Path.home() / ".agents"
+    nolthira_home = NOLTHIRA_HOME
     codebase_root = Path(__file__).resolve().parent.parent.parent
 
     candidates: List[Optional[Path]] = [
         Path.cwd() / ".skills",
         Path(os.getenv("NEXUS_SKILLS_DIR", "")) if os.getenv("NEXUS_SKILLS_DIR") else None,
-        nexus_home / "skills",
+        nolthira_home / "skills",
         agents_home / "skills",
-        agents_home / "nexus" / "skills",
+        agents_home / "nolthira" / "skills",
+        agents_home / "nexus" / "skills",  # legacy compatibility
         codebase_root / ".skills",  # bundled core skills (incl. vercel-labs/agent-skills)
     ]
 
     # Auto-discover skills bundled inside plugins (e.g., plugins/superpowers/skills)
-    for plugin_root in (Path.cwd() / "plugins", nexus_home / "plugins", codebase_root / "plugins"):
+    for plugin_root in (Path.cwd() / "plugins", nolthira_home / "plugins", codebase_root / "plugins"):
         if plugin_root.exists() and plugin_root.is_dir():
             for p_sub in sorted(plugin_root.iterdir()):
                 if p_sub.is_dir() and (p_sub / "skills").is_dir():
