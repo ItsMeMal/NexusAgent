@@ -191,8 +191,8 @@ async def main_async():
 
     # Restore first-party Mallss Nexus Route OAuth automatically when it is the active endpoint.
     if ProviderManager.detect_active_provider(config.API_BASE).id == "mallss_nexus_route":
-        from .providers.NOLTHIRA_ROUTE_MODULE import NOLTHIRA_ROUTE_CLASS
-        llm.token_provider = NOLTHIRA_ROUTE_CLASS().get_access_token
+        from .providers.nexus_route_oauth import NexusRouteOAuth
+        llm.token_provider = NexusRouteOAuth().get_access_token
         llm.api_key = ""
 
     # Subagent orchestrator manager
@@ -533,8 +533,8 @@ async def main_async():
                 elif cmd.startswith("/auth"):
                     parts = text.strip().split()
                     action = parts[1].lower() if len(parts) > 1 else "status"
-                    from .providers.NOLTHIRA_ROUTE_MODULE import NOLTHIRA_ROUTE_CLASS
-                    route_oauth = NOLTHIRA_ROUTE_CLASS()
+                    from .providers.nexus_route_oauth import NexusRouteOAuth
+                    route_oauth = NexusRouteOAuth()
                     if action == "logout":
                         await route_oauth.logout()
                         if ProviderManager.detect_active_provider(config.API_BASE).id == "mallss_nexus_route":
