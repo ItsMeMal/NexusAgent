@@ -33,6 +33,14 @@ class ProviderProfile:
     protocol: str = "unverified"
 
 PROVIDERS: Dict[str, ProviderProfile] = {
+    "mallss_nexus_route": ProviderProfile(
+        id="mallss_nexus_route",
+        name="Mallss Nexus Route (Account Login)",
+        default_base="https://ai-router.mallss-nexus.sbs/v1",
+        env_key="",
+        description="Mallss-owned AI gateway. Browser login uses OAuth 2.0 Authorization Code + PKCE; no API key entry is needed.",
+        protocol="openai-chat-completions",
+    ),
     "openrouter": ProviderProfile(
         id="openrouter",
         name="OpenRouter (Universal Gateway)",
@@ -548,6 +556,7 @@ class ProviderManager:
 
         # Match dedicated provider hostnames before falling back to legacy profiles.
         provider_hosts = (
+            (("ai-router.mallss-nexus.sbs",), "mallss_nexus_route"),
             (("api.cerebras.ai",), "cerebras"),
             (("api.sambanova.ai",), "sambanova"),
             (("api.deepinfra.com",), "deepinfra"),

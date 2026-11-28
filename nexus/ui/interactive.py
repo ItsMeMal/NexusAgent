@@ -12,6 +12,7 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
 from ..providers.manager import ProviderManager, ProviderProfile, ModelInfo, PROVIDERS
+from ..providers.nexus_route_oauth import NexusRouteOAuth
 from ..core.modes import AGENT_MODES, MODE_ORDER, get_mode
 from ..config import config
 
@@ -23,6 +24,9 @@ SLASH_COMMANDS = [
     ("/model", "Alias for /models", "Models"),
     ("/provider", "Select or switch router / provider (interactive arrow-key menu)", "Provider"),
     ("/connect", "Alias for /provider", "Provider"),
+    ("/tokens", "Show last request/session token usage and context remaining", "Utility"),
+    ("/usage", "Alias for /tokens", "Utility"),
+    ("/auth", "Manage account login (/auth logout)", "Provider"),
     ("/tools", "Inspect all active autonomous tools and their capabilities", "Tools"),
     ("/status", "Display agent system diagnostics and active telemetry", "Status"),
     ("/mcp", "Manage MCP servers — status, /mcp add, /mcp reload, /mcp remove <name>", "Tools"),
@@ -208,6 +212,10 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
         console.print("  [dim]Provider selection cancelled.[/dim]\n")
         return
 
+    # Mallss Nexus Route is OAuth-first: no password or manual API key is requested.
+    is_nexus_oauth = selected.id == "mallss_nexus_route"
+    oauth_client = NexusRouteOAuth() if is_nexus_oauth else None
+
     # Base URL configuration. Region-aware providers expose an override because
     # account region and API-key region must match for several hosted services.
     target_base = selected.default_base
@@ -227,41 +235,51 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
         elif selected.id == "custom" and not target_base:
             target_base = config.API_BASE
 
-    # Prefer the provider-specific credential when reconnecting. Keep the generic
-    # active credential as a compatibility fallback for existing installations.
-    target_key = (
-        os.getenv(selected.env_key, "").strip()
-        if selected.env_key
-        else ""
-    ) or config.API_KEY
-    if not selected.is_local:
-        existing_masked = f"{target_key[:6]}...{target_key[-4:]}" if len(target_key) > 10 else (target_key or "None")
-        console.print(f"  [dim]Current API Key for {selected.name}: {existing_masked}[/dim]")
+    # Ordinary providers use API keys. Mallss Nexus Route uses account OAuth,
+    # so the website password never enters this CLI or its project .env file.
+    if is_nexus_oauth:
+        console.print("  [dim]Opening Mallss Nexus Route account authorization...[/dim]")
         try:
-            new_key = (await session.prompt_async("  Enter API Key (press Enter to keep existing) ❯ ", is_password=True)).strip()
-        finally:
-            session.is_password = False
-        if new_key:
-            target_key = new_key
+            oauth_tokens = await oauth_client.login()
+            target_key = oauth_tokens["access_token"]
+        except Exception as exc:
+            console.print(f"  [bold red]Account login failed:[/bold red] {exc}\\n")
+            return
     else:
-        target_key = "ollama"
+        target_key = (
+            os.getenv(selected.env_key, "").strip()
+            if selected.env_key
+            else ""
+        ) or config.API_KEY
+        if not selected.is_local:
+            existing_masked = f"{target_key[:6]}...{target_key[-4:]}" if len(target_key) > 10 else (target_key or "None")
+            console.print(f"  [dim]Current API Key for {selected.name}: {existing_masked}[/dim]")
+            try:
+                new_key = (await session.prompt_async("  Enter API Key (press Enter to keep existing) ❯ ", is_password=True)).strip()
+            finally:
+                session.is_password = False
+            if new_key:
+                target_key = new_key
+        else:
+            target_key = "ollama"
 
-    # Save the active connection for the existing LLM client and also retain a
-    # provider-specific key so switching providers does not overwrite its secret.
     config.API_BASE = target_base
     config.API_KEY = target_key
     current_llm.api_base = target_base.rstrip("/")
     current_llm.api_key = target_key
     os.environ["OPENAI_API_BASE"] = target_base
-    os.environ["OPENAI_API_KEY"] = target_key
-
-    updates = {
-        "OPENAI_API_BASE": target_base,
-        "OPENAI_API_KEY": target_key,
-    }
-    if selected.env_key and target_key and not selected.is_local:
-        os.environ[selected.env_key] = target_key
-        updates[selected.env_key] = target_key
+    updates = {"OPENAI_API_BASE": target_base}
+    if is_nexus_oauth:
+        current_llm.token_provider = oauth_client.get_access_token
+        os.environ["NEXUS_AUTH_PROVIDER"] = "mallss_nexus_route"
+        updates["NEXUS_AUTH_PROVIDER"] = "mallss_nexus_route"
+    else:
+        current_llm.token_provider = None
+        os.environ["OPENAI_API_KEY"] = target_key
+        updates["OPENAI_API_KEY"] = target_key
+        if selected.env_key and target_key and not selected.is_local:
+            os.environ[selected.env_key] = target_key
+            updates[selected.env_key] = target_key
     ProviderManager.update_env_file(updates, env_path)
 
     console.print(f"\n  [dim cyan]⠋ Handshaking with {selected.name}...[/dim cyan]")
@@ -448,6 +466,15 @@ async def interactive_select_model(
     """Interactive model selector with live health check (aktif / belum dicek / down excluded)."""
     provider = provider_override or ProviderManager.detect_active_provider(config.API_BASE)
 
+    if getattr(current_llm, "token_provider", None) is not None:
+        try:
+            config.API_KEY = await current_llm.token_provider()
+            current_llm.api_key = config.API_KEY
+        except Exception as exc:
+            console.print(f"  [bold yellow]⚠ Account session expired:[/bold yellow] {exc}")
+            console.print("  [dim]Use /provider to sign in again.\\n[/dim]")
+            return
+
     # Check if provider is connected and authenticated before listing models
     is_connected = True
     if not provider.is_local:
@@ -515,6 +542,19 @@ async def interactive_select_model(
     if not selected_model_id:
         console.print("  [dim]Kept current active model.[/dim]\n")
         return
+
+    selected_info = next((item for item in models if item.id == selected_model_id), None)
+    if selected_info:
+        context_value = str(selected_info.context or "").strip().lower()
+        try:
+            if context_value.endswith("m"):
+                current_llm.context_window = int(float(context_value[:-1]) * 1_000_000)
+            elif context_value.endswith("k"):
+                current_llm.context_window = int(float(context_value[:-1]) * 1_000)
+            elif context_value.isdigit():
+                current_llm.context_window = int(context_value)
+        except (ValueError, TypeError):
+            current_llm.context_window = 0
 
     # Update runtime config & LLM
     config.MODEL = selected_model_id

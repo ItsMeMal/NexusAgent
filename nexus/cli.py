@@ -187,6 +187,13 @@ async def main_async():
 
     # Dedicated UI controller for collision-free live streaming & spinners
     ui_controller = AgentUIController(model_name=llm.model, console_instance=console, mode_id=active_mode)
+    llm.on_usage = ui_controller.on_usage
+
+    # Restore first-party Mallss Nexus Route OAuth automatically when it is the active endpoint.
+    if ProviderManager.detect_active_provider(config.API_BASE).id == "mallss_nexus_route":
+        from .providers.nexus_route_oauth import NexusRouteOAuth
+        llm.token_provider = NexusRouteOAuth().get_access_token
+        llm.api_key = ""
 
     # Subagent orchestrator manager
     subagent_manager = SubagentManager(
@@ -515,6 +522,28 @@ async def main_async():
                             console.print("\n  [dim]/toolsets use <profile> · /toolsets enable|disable <toolset> · /toolsets platform <gateway> <profile> · /toolsets role <role> <profile>[/dim]\n")
                     except ToolsetConfigError as exc:
                         console.print(f"  [bold red]Toolset configuration error:[/bold red] {exc}\n")
+                    continue
+                elif cmd in ("/tokens", "/usage"):
+                    from .ui.tui import render_token_usage
+                    if llm.last_usage.get("source") == "unavailable":
+                        console.print("  [dim]No completed model request has usage data yet.\\n[/dim]")
+                    else:
+                        render_token_usage(llm.last_usage)
+                    continue
+                elif cmd.startswith("/auth"):
+                    parts = text.strip().split()
+                    action = parts[1].lower() if len(parts) > 1 else "status"
+                    from .providers.nexus_route_oauth import NexusRouteOAuth
+                    route_oauth = NexusRouteOAuth()
+                    if action == "logout":
+                        await route_oauth.logout()
+                        if ProviderManager.detect_active_provider(config.API_BASE).id == "mallss_nexus_route":
+                            config.API_KEY = ""
+                            llm.api_key = ""
+                        console.print("  [bold #22c55e]✔ Mallss Nexus Route session revoked.[/bold #22c55e]\\n")
+                    else:
+                        state = "connected" if route_oauth.has_session() else "not connected"
+                        console.print(f"  [dim]Mallss Nexus Route OAuth: {state}. Use /provider to sign in; /auth logout to revoke.\\n[/dim]")
                     continue
                 elif cmd in ("/status", "/info"):
                     active_prov = ProviderManager.detect_active_provider(config.API_BASE)

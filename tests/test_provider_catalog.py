@@ -91,8 +91,18 @@ class ProviderCatalogTests(unittest.TestCase):
         self.assertEqual(PROVIDERS["anthropic"].protocol, "unverified")
         self.assertEqual(PROVIDERS["cohere"].protocol, "unverified")
 
+    def test_mallss_route_profile_uses_owned_gateway_and_oauth_login(self):
+        profile = PROVIDERS["mallss_nexus_route"]
+        self.assertEqual(profile.default_base, "https://ai-router.mallss-nexus.sbs/v1")
+        self.assertEqual(profile.env_key, "")
+        self.assertEqual(profile.protocol, "openai-chat-completions")
+        self.assertEqual(
+            ProviderManager.detect_active_provider("https://ai-router.mallss-nexus.sbs/v1").id,
+            "mallss_nexus_route",
+        )
+
     def test_provider_list_contains_all_legacy_and_new_profiles(self):
-        self.assertEqual(len(ProviderManager.list_providers()), 31)
+        self.assertEqual(len(ProviderManager.list_providers()), 32)
 
 
 if __name__ == "__main__":
