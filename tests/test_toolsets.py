@@ -125,7 +125,6 @@ class ToolsetManagerTests(unittest.TestCase):
         migrated = ToolsetManager(self.path)
 
         self.assertEqual(migrated.profile_for_platform("telegram"), "gateway")
-        self.assertIn("memory", migrated.resolve_profile("gateway")["enabled_toolsets"])
         self.assertNotIn("memory", migrated.resolve_profile("gateway")["enabled_toolsets"])
         self.assertIn("record_learning", migrated.resolve_profile("researcher")["disabled_tools"])
         self.assertIn("dismiss_learning_observation", migrated.resolve_profile("researcher")["disabled_tools"])
