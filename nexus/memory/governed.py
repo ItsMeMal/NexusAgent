@@ -22,6 +22,10 @@ class MemoryGovernanceMixin:
             for name, declaration in migrations.items():
                 if name not in columns:
                     cursor.execute(f"ALTER TABLE memories ADD COLUMN {name} {declaration}")
+            # Backfill the external-content FTS index before updating legacy rows.
+            # Otherwise its UPDATE trigger may try to delete a row that was never indexed.
+            if getattr(self, "has_fts", False):
+                cursor.execute("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
             cursor.execute(
                 "UPDATE memories SET created_at = COALESCE(created_at, updated_at, CURRENT_TIMESTAMP)"
             )
