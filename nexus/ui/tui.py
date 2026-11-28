@@ -13,95 +13,118 @@ console = Console()
 
 LOGO_GLYPHS = {
     "N": (
-        "██  █",
-        "███ █",
-        "█ ███",
-        "█  ██",
-        "█   █",
-        "█   █",
-        "█   █",
+        "██   ██",
+        "███  ██",
+        "████ ██",
+        "██ ████",
+        "██  ███",
+        "██   ██",
+        "██   ██",
     ),
     "O": (
-        " ███ ",
-        "█   █",
-        "█   █",
-        "█   █",
-        "█   █",
-        "█   █",
-        " ███ ",
+        " █████ ",
+        "██   ██",
+        "██   ██",
+        "██   ██",
+        "██   ██",
+        "██   ██",
+        " █████ ",
     ),
     "L": (
-        "█    ",
-        "█    ",
-        "█    ",
-        "█    ",
-        "█    ",
-        "█    ",
-        "█████",
+        "██     ",
+        "██     ",
+        "██     ",
+        "██     ",
+        "██     ",
+        "██     ",
+        "███████",
     ),
     "T": (
-        "█████",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-        "  █  ",
+        "███████",
+        "  ███  ",
+        "  ███  ",
+        "  ███  ",
+        "  ███  ",
+        "  ███  ",
+        "  ███  ",
     ),
     "H": (
-        "█   █",
-        "█   █",
-        "█   █",
-        "█████",
-        "█   █",
-        "█   █",
-        "█   █",
+        "██   ██",
+        "██   ██",
+        "██   ██",
+        "███████",
+        "██   ██",
+        "██   ██",
+        "██   ██",
     ),
     "I": (
-        "█████",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-        "  █  ",
-        "█████",
+        "███████",
+        "  ███  ",
+        "  ███  ",
+        "  ███  ",
+        "  ███  ",
+        "  ███  ",
+        "███████",
     ),
     "R": (
-        "████ ",
-        "█   █",
-        "█   █",
-        "████ ",
-        "█ █  ",
-        "█  █ ",
-        "█   █",
+        "██████ ",
+        "██   ██",
+        "██   ██",
+        "██████ ",
+        "██ ██  ",
+        "██  ██ ",
+        "██   ██",
     ),
     "A": (
-        " ███ ",
-        "█   █",
-        "█   █",
-        "█████",
-        "█   █",
-        "█   █",
-        "█   █",
+        "  ███  ",
+        " ██ ██ ",
+        "██   ██",
+        "███████",
+        "██   ██",
+        "██   ██",
+        "██   ██",
     ),
 }
 
-def _compose_logo(word: str) -> list[str]:
-    """Build a fixed-cell terminal wordmark so glyphs never collide."""
+
+def _compose_logo(word: str, gap: int = 2) -> list[str]:
+    """Compose a fixed-cell block wordmark with a one-cell offset shadow."""
+    if not word or any(letter not in LOGO_GLYPHS for letter in word):
+        raise ValueError("Logo word contains an unsupported character.")
+
     glyphs = [LOGO_GLYPHS[letter] for letter in word]
     row_count = len(glyphs[0])
     cell_width = len(glyphs[0][0])
-    if any(len(glyph) != row_count or any(len(row) != cell_width for row in glyph) for glyph in glyphs):
-        raise ValueError("Logo glyphs must use a consistent fixed-size cell.")
+    if any(
+        len(glyph) != row_count
+        or any(len(row) != cell_width for row in glyph)
+        for glyph in glyphs
+    ):
+        raise ValueError("Logo glyphs must use consistent fixed-size cells.")
+
+    face_width = len(glyphs) * cell_width + (len(glyphs) - 1) * gap
+    face = {
+        (letter_index * (cell_width + gap) + column, row_index)
+        for letter_index, glyph in enumerate(glyphs)
+        for row_index, row in enumerate(glyph)
+        for column, pixel in enumerate(row)
+        if pixel != " "
+    }
+    # Add a subtle lower-right extrusion like the original NEXUS wordmark.
     return [
-        " ".join(glyph[row_index] for glyph in glyphs)
-        for row_index in range(row_count)
+        "".join(
+            "█" if (column, row) in face
+            else "░" if (column - 1, row - 1) in face
+            else " "
+            for column in range(face_width + 1)
+        )
+        for row in range(row_count + 1)
     ]
 
 
 RAW_LOGO = _compose_logo("NOLTHIRA")
 
-GRADIENT_COLORS = ["#00ffd7", "#00d7af", "#38bdf8", "#60a5fa", "#818cf8", "#a78bfa"]
+GRADIENT_COLORS = ["#00ffd7", "#00d7af", "#00bde8", "#38bdf8", "#60a5fa", "#818cf8", "#a78bfa"]
 
 def render_banner(
     model_name: str,
@@ -132,6 +155,8 @@ def render_banner(
                             t.append(char, style="bold #00ffd7")
                         elif dist <= 9:
                             t.append(char, style="bold #38bdf8")
+                        elif char == "░":
+                            t.append(char, style="bold #493b9b")
                         else:
                             t.append(char, style="bold #4f46e5")
                     t.append("\n")
@@ -141,7 +166,16 @@ def render_banner(
     # 2. Print final persistent glowing logo
     console.print()
     for idx, line in enumerate(RAW_LOGO):
-        console.print(line, style=f"bold {GRADIENT_COLORS[idx]}")
+        row_color = GRADIENT_COLORS[min(idx, len(GRADIENT_COLORS) - 1)]
+        rendered_line = Text()
+        for char in line:
+            if char == "█":
+                rendered_line.append(char, style=f"bold {row_color}")
+            elif char == "░":
+                rendered_line.append(char, style="bold #493b9b")
+            else:
+                rendered_line.append(char)
+        console.print(rendered_line)
 
     # 3. Animated diagnostic bootloader checklist
     if animate:
