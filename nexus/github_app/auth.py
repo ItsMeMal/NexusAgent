@@ -1,5 +1,5 @@
 """
-nexus/github_app/auth.py
+nolthira/github_app/auth.py
 GitHub App JWT authentication + Installation Token manager.
 
 Flow:
