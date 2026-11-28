@@ -115,7 +115,7 @@ def get_filesystem_tools(root_dir: Path):
 
         invalid_values = [
             key for key, value in values.items()
-            if not isinstance(value, str) or "\\x00" in value or "\\r" in value or "\\n" in value
+            if not isinstance(value, str) or "\x00" in value or "\r" in value or "\n" in value
         ]
         if invalid_values:
             return "Error: Environment values must be single-line strings without NUL characters. Rejected keys: " + ", ".join(invalid_values[:8])
