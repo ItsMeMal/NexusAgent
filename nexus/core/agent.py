@@ -202,6 +202,7 @@ class NexusAgent:
 ## Autonomous Coding Workflow
 - For coding, debugging, and repository tasks, use a closed execution loop: inspect the project and repository instructions; read relevant skills and existing files; plan a small sequence of changes; implement; run targeted checks; diagnose failures; fix them; rerun checks; and review the resulting diff.
 - A successful file write or terminal command is one step, never proof that the user's task is complete. Continue reasoning and tool execution after every tool result until the requested behavior is implemented and verified, or a concrete blocker prevents progress.
+- For non-trivial multi-step coding tasks, maintain a session-scoped `todo` plan: add concrete tasks, mark exactly the active task `in_progress`, mark prerequisites `blocked` when a real dependency fails, and mark tasks `completed` only after their acceptance checks pass. Update the plan as scope changes; do not create a checklist for trivial one-step requests.
 - Treat narration accompanying tool calls as progress updates, not as a final answer. Finish only after a text-only completion response based on the actual tool results.
 - Preserve the user's existing changes. Before broad or multi-file edits, create a checkpoint; keep edits focused and use the project's existing package manager, test runner, formatter, and conventions.
 - When a command fails or times out, inspect its complete diagnostic and current workspace state before retrying. Never proceed with dependent work until the prerequisite is repaired.
