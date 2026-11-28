@@ -74,7 +74,7 @@ def build_sandboxed_command(command: str, root_dir: Path, backend: Optional[str]
     if chosen == "ssh":
         host = getattr(config, "SSH_HOST", "").strip()
         if not host:
-            return command, "Error: NEXUS_EXEC_BACKEND is 'ssh' but NEXUS_SSH_HOST is not configured."
+            return command, "Error: NOLTHIRA_EXEC_BACKEND is 'ssh' but NOLTHIRA_SSH_HOST is not configured."
         user = getattr(config, "SSH_USER", "").strip()
         key_path = getattr(config, "SSH_KEY_PATH", "").strip()
         target = f"{user}@{host}" if user else host
@@ -96,7 +96,7 @@ def _workspace_child_environment(root_dir: Path) -> Dict[str, str]:
                         merged[key] = str(value)
             except Exception:
                 continue
-    # Environment explicitly inherited by Nexus takes precedence over dotenv values.
+    # Environment explicitly inherited by Nolthira takes precedence over dotenv values.
     merged.update({str(key): str(value) for key, value in os.environ.items()})
     return merged
 
