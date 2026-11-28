@@ -74,7 +74,7 @@ def migrate_legacy_home(legacy_home: Path, nolthira_home: Path) -> bool:
 try:
     migrate_legacy_home(LEGACY_NEXUS_HOME, NOLTHIRA_HOME)
     NOLTHIRA_HOME.mkdir(parents=True, exist_ok=True)
-    if LEGACY_NOLTHIRA_HOME.exists():
+    if LEGACY_NEXUS_HOME.exists():
         warnings.warn(
             f"Some legacy files remain in {LEGACY_NEXUS_HOME}: conflicting files or existing "
             "engine/venv directories were kept as backups and were not overwritten.",
