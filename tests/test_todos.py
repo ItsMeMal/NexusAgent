@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nexus.tools.todo import TodoStore, get_todo_tools
+from nolthira.tools.todo import TodoStore, get_todo_tools
 
 
 class TodoStoreTests(unittest.TestCase):
