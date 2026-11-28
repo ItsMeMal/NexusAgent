@@ -12,6 +12,7 @@ from .delegate import get_orchestration_tools
 from .vision import get_vision_tools
 from .media import get_media_tools
 from .computer import get_computer_tools
+from .project import get_project_tools
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
 from ..cron import CronScheduler
@@ -70,7 +71,11 @@ def create_default_registry(
     ):
         registry.register(t)
 
-    # 9. Computer Use Tools (GUI automation: screenshot, mouse, keyboard, hotkey, scroll, app_launch)
+    # 9. Project inspection for context-aware coding workflows
+    for t in get_project_tools(root_dir):
+        registry.register(t)
+
+    # 10. Computer Use Tools (GUI automation: screenshot, mouse, keyboard, hotkey, scroll, app_launch)
     for t in get_computer_tools(llm_client):
         registry.register(t)
         
