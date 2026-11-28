@@ -30,7 +30,7 @@ class ProviderProfile:
     is_local: bool = False
     curated_models: List[ModelInfo] = field(default_factory=list)
     # New cloud profiles use the exact Chat Completions shape consumed by LLMClient.
-    protocol: str = "openai-chat-completions"
+    protocol: str = "unverified"
 
 PROVIDERS: Dict[str, ProviderProfile] = {
     "openrouter": ProviderProfile(
@@ -196,6 +196,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.cerebras.ai/v1",
         env_key="CEREBRAS_API_KEY",
         description="Cerebras Inference API (OpenAI-compatible Chat Completions)",
+        protocol="openai-chat-completions",
     ),
     "sambanova": ProviderProfile(
         id="sambanova",
@@ -203,6 +204,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.sambanova.ai/v1",
         env_key="SAMBANOVA_API_KEY",
         description="SambaNova Cloud inference (OpenAI-compatible Chat Completions)",
+        protocol="openai-chat-completions",
     ),
     "deepinfra": ProviderProfile(
         id="deepinfra",
@@ -210,6 +212,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.deepinfra.com/v1/openai",
         env_key="DEEPINFRA_API_KEY",
         description="Open-model inference through DeepInfra's OpenAI-compatible API",
+        protocol="openai-chat-completions",
     ),
     "siliconflow": ProviderProfile(
         id="siliconflow",
@@ -217,6 +220,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.siliconflow.com/v1",
         env_key="SILICONFLOW_API_KEY",
         description="SiliconFlow hosted open models (OpenAI-compatible API)",
+        protocol="openai-chat-completions",
     ),
     "novita": ProviderProfile(
         id="novita",
@@ -224,6 +228,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.novita.ai/v3/openai",
         env_key="NOVITA_API_KEY",
         description="Novita AI inference API (OpenAI-compatible Chat Completions)",
+        protocol="openai-chat-completions",
     ),
     "nebius": ProviderProfile(
         id="nebius",
@@ -231,6 +236,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.tokenfactory.nebius.com/v1",
         env_key="NEBIUS_TOKEN_FACTORY_KEY",
         description="Nebius Token Factory OpenAI-compatible inference",
+        protocol="openai-chat-completions",
     ),
     "hyperbolic": ProviderProfile(
         id="hyperbolic",
@@ -238,6 +244,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.hyperbolic.ai/inference/v1",
         env_key="HYPERBOLIC_API_KEY",
         description="Hyperbolic Flux inference API (OpenAI-compatible Chat Completions)",
+        protocol="openai-chat-completions",
     ),
     "nvidia_nim": ProviderProfile(
         id="nvidia_nim",
@@ -245,6 +252,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://integrate.api.nvidia.com/v1",
         env_key="NVIDIA_API_KEY",
         description="NVIDIA hosted NIM inference API (OpenAI-compatible)",
+        protocol="openai-chat-completions",
     ),
     "moonshot": ProviderProfile(
         id="moonshot",
@@ -252,6 +260,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.moonshot.ai/v1",
         env_key="MOONSHOT_API_KEY",
         description="Moonshot AI / Kimi OpenAI-compatible API",
+        protocol="openai-chat-completions",
     ),
     "alibaba_model_studio": ProviderProfile(
         id="alibaba_model_studio",
@@ -259,6 +268,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
         env_key="DASHSCOPE_API_KEY",
         description="Alibaba Model Studio OpenAI-compatible endpoint (regional API keys)",
+        protocol="openai-chat-completions",
     ),
     "zai": ProviderProfile(
         id="zai",
@@ -266,6 +276,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.z.ai/api/paas/v4",
         env_key="ZAI_API_KEY",
         description="Z.ai GLM general API (OpenAI-compatible; not the Coding Plan endpoint)",
+        protocol="openai-chat-completions",
     ),
     "minimax": ProviderProfile(
         id="minimax",
@@ -273,6 +284,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://api.minimax.io/v1",
         env_key="MINIMAX_API_KEY",
         description="MiniMax OpenAI-compatible text generation API",
+        protocol="openai-chat-completions",
     ),
     "byteplus": ProviderProfile(
         id="byteplus",
@@ -280,6 +292,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://ark.ap-southeast.bytepluses.com/api/v3",
         env_key="ARK_API_KEY",
         description="BytePlus ModelArk OpenAI-compatible inference (Singapore endpoint)",
+        protocol="openai-chat-completions",
     ),
     "huggingface": ProviderProfile(
         id="huggingface",
@@ -287,6 +300,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://router.huggingface.co/v1",
         env_key="HF_TOKEN",
         description="Unified OpenAI-compatible chat router; use Hub model IDs and provider suffixes",
+        protocol="openai-chat-completions",
     ),
     # Bedrock Mantle exposes OpenAI-compatible /chat/completions and /models.
     # This profile uses an API key; AWS SigV4 credentials are not implemented here.
@@ -296,6 +310,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         default_base="https://bedrock-mantle.us-east-1.api.aws/v1",
         env_key="AWS_BEDROCK_API_KEY",
         description="Bedrock Mantle OpenAI-compatible API-key endpoint (default region: us-east-1)",
+        protocol="openai-chat-completions",
     ),
     "ollama": ProviderProfile(
         id="ollama",
