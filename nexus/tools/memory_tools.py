@@ -69,7 +69,7 @@ def get_memory_tools(memory: SQLiteMemory):
                 "It is not active memory until explicitly approved."
             )
 
-        proof = f"{evidence.strip()}\\nVerification: {verification.strip()}"
+        proof = f"{evidence.strip()}\nVerification: {verification.strip()}"
         proposal_id = memory.propose_memory(
             key=key,
             content=lesson,
@@ -90,10 +90,10 @@ def get_memory_tools(memory: SQLiteMemory):
             lines.append(
                 f"- [observation #{item['id']} · {item['event_type']} · session {item.get('session_id') or 'n/a'}] "
                 f"{item['subject']}: {item['observation']}"
-                + (f"\\n  Task: {item['task_context']}" if item.get("task_context") else "")
-                + (f"\\n  Evidence: {item['evidence']}" if item.get("evidence") else "")
+                + (f"\n  Task: {item['task_context']}" if item.get("task_context") else "")
+                + (f"\n  Evidence: {item['evidence']}" if item.get("evidence") else "")
             )
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     def dismiss_learning_observation(observation_id: int, reason: str = "") -> str:
         """Dismiss an unhelpful or transient observation without creating long-term memory."""
