@@ -9,8 +9,8 @@ Config file locations (searched in order):
   .mcp.json               — workspace root (Claude Code compatible)
   mcp.json                — workspace root
   mcp_servers.json        — workspace root
-  ~/.nexus/mcp.json       — global Nexus config
-  ~/.nexus/mcp_servers.json
+  ~/.nolthira/mcp.json   — global Nolthira config
+  ~/.nolthira/mcp_servers.json
   ~/.agents/mcp.json      — shared agents convention
   ~/.config/nexus/mcp.json
   <codebase>/.mcp.json
@@ -528,8 +528,8 @@ class MCPManager:
             self.workspace_dir / ".mcp.json",
             self.workspace_dir / "mcp.json",
             self.workspace_dir / "mcp_servers.json",
-            home / ".nexus" / "mcp.json",
-            home / ".nexus" / "mcp_servers.json",
+            config.NOLTHIRA_HOME / "mcp.json",
+            config.NOLTHIRA_HOME / "mcp_servers.json",
             home / ".agents" / "mcp.json",
             home / ".config" / "nexus" / "mcp.json",
             self.codebase_dir / ".mcp.json",
@@ -590,11 +590,11 @@ class MCPManager:
         cfg: MCPServerConfig,
         scope: str = "global",
     ) -> Path:
-        """Persist an MCP server entry to ~/.nexus/mcp.json (global) or .mcp.json (workspace)."""
+        """Persist an MCP server entry to ~/.nolthira/mcp.json (global) or .mcp.json (workspace)."""
         if scope == "workspace":
             target_path = self.workspace_dir / ".mcp.json"
         else:
-            target_path = Path.home() / ".nexus" / "mcp.json"
+            target_path = config.NOLTHIRA_HOME / "mcp.json"
 
         target_path.parent.mkdir(parents=True, exist_ok=True)
         data: Dict[str, Any] = {"mcpServers": {}}
