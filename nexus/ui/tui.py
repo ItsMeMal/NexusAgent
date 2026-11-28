@@ -181,6 +181,10 @@ def render_banner(
 
     if update_info and update_info.get("update_available"):
         render_update_alert(update_info)
+    elif update_info and update_info.get("check_error"):
+        console.print(
+            f"  [dim yellow]Update check unavailable: {update_info['check_error']}[/dim yellow]"
+        )
 
 
 def build_nexus_mascot_renderable(
@@ -529,8 +533,13 @@ def render_update_alert(update_info: Dict[str, Any]):
     console.print(f"    [dim]Type [bold #22c55e]/update[/bold #22c55e] to upgrade engine directly from CLI.[/dim]\n")
 
 def render_update_card(update_info: Optional[Dict[str, Any]]):
-    """Render update status information."""
-    if update_info and update_info.get("update_available"):
+    """Render update status information without masking check failures."""
+    if update_info and update_info.get("check_error"):
+        console.print(
+            f"\n  [bold yellow]⚠ Could not check for updates:[/bold yellow] "
+            f"{update_info['check_error']}\n"
+        )
+    elif update_info and update_info.get("update_available"):
         rem_sha = update_info.get("remote_sha", "latest")
         msg = update_info.get("message", "New release available")
         console.print(f"\n  [bold #f59e0b]⚡ UPDATE AVAILABLE:[/bold #f59e0b] [bold white]A newer version of Nolthira Agent is available![/bold white]")
