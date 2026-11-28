@@ -116,7 +116,7 @@ Open PowerShell or Command Prompt in any project folder:
 ```bash
 nolthira
 ```
-*(legacy aliases `nexus` and `nexuss` remain available)*
+*(legacy launch aliases remain available for existing installations)*
 
 ### 2. Single-Shot Prompt Execution
 ```bash
