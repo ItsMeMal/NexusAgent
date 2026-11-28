@@ -1,6 +1,6 @@
 import unittest
 
-from nexus.providers.manager import PROVIDERS, ProviderManager
+from nolthira.providers.manager import PROVIDERS, ProviderManager
 
 
 class ProviderCatalogTests(unittest.TestCase):
@@ -93,11 +93,11 @@ class ProviderCatalogTests(unittest.TestCase):
 
     def test_mallss_route_profile_uses_owned_gateway_and_oauth_login(self):
         profile = PROVIDERS["mallss_nexus_route"]
-        self.assertEqual(profile.default_base, "https://ai-router.mallss-nexus.sbs/v1")
+        self.assertEqual(profile.default_base, "https://ai-router.mallss-nolthira.sbs/v1")
         self.assertEqual(profile.env_key, "")
         self.assertEqual(profile.protocol, "openai-chat-completions")
         self.assertEqual(
-            ProviderManager.detect_active_provider("https://ai-router.mallss-nexus.sbs/v1").id,
+            ProviderManager.detect_active_provider("https://ai-router.mallss-nolthira.sbs/v1").id,
             "mallss_nexus_route",
         )
 
