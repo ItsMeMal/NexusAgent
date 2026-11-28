@@ -45,7 +45,7 @@ class _AsyncWebSocket:
             f"Connection: Upgrade\r\n"
             f"Sec-WebSocket-Key: {sec_key}\r\n"
             f"Sec-WebSocket-Version: 13\r\n"
-            f"User-Agent: NexusAgent/1.0\r\n\r\n"
+            f"User-Agent: NolthiraAgent/1.0\r\n\r\n"
         )
         writer.write(req.encode("ascii"))
         await writer.drain()
@@ -199,7 +199,7 @@ class DiscordGateway(BaseGateway):
         return {
             "Authorization": f"Bot {self.token}",
             "Content-Type": "application/json",
-            "User-Agent": "NexusAgent (https://github.com/ItsMeMal/NexusAgent, 1.0)",
+            "User-Agent": "NolthiraAgent (https://github.com/ItsMeMal/NolthiraAgent, 1.0)",
         }
 
     async def _send_typing_loop(self, client: httpx.AsyncClient, channel_id: str, stop_evt: asyncio.Event):
@@ -385,8 +385,8 @@ class DiscordGateway(BaseGateway):
                             "intents": intents,
                             "properties": {
                                 "os": os.name,
-                                "browser": "NexusAgent",
-                                "device": "NexusAgent",
+                                "browser": "NolthiraAgent",
+                                "device": "NolthiraAgent",
                             },
                         },
                     })
