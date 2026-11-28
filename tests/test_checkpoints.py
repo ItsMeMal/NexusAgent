@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from nexus.checkpoints import CheckpointError, CheckpointManager
 from nexus.tools.checkpoint_tools import get_checkpoint_tools
@@ -106,7 +107,8 @@ class CheckpointManagerTests(unittest.TestCase):
                     self.manager._safe_relative_path(path)
 
     def test_checkpoint_tools_are_registered(self):
-        names = {tool.name for tool in get_checkpoint_tools(self.workspace)}
+        with patch("nexus.checkpoints.manager.Path.home", return_value=self.workspace.parent):
+            names = {tool.name for tool in get_checkpoint_tools(self.workspace)}
         self.assertEqual(
             names,
             {"create_checkpoint", "list_checkpoints", "inspect_checkpoint", "restore_checkpoint"},
