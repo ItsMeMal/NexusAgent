@@ -205,7 +205,6 @@ try {
         `$env:PYTHONPATH = `$previousPythonPath
     }
 }
-exit `$LASTEXITCODE
 "@ | Set-Content $launcherPs1 -Encoding UTF8
 
 # Remove aliases created by previous installer versions.
