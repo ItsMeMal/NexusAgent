@@ -132,8 +132,8 @@ else
     printf "${CYAN}  [..] Downloading Nolthira Agent Engine from GitHub...\n${NC}"
     rm -rf "${ENGINE_DIR}"
     git clone https://github.com/ItsMeMal/NolthiraAgent.git "${ENGINE_DIR}" --quiet
-    cd "${ENGINE_DIR}" 2>/dev/null || true
-    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt 2>/dev/null || true
+    cd "${ENGINE_DIR}"
+    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt
 fi
 
 # Prune non-engine artifacts (website, tests, installers) from runtime engine directory
