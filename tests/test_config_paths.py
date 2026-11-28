@@ -95,5 +95,26 @@ class LegacyHomeMigrationTests(unittest.TestCase):
             self.assertIn("MALLSS_NEXUS_API_KEY=gateway-key", updated)
 
 
+class WindowsInstallerRegressionTests(unittest.TestCase):
+    def test_install_script_has_no_bom_for_irm_pipe_iex(self):
+        installer = Path(__file__).resolve().parents[1] / "install.ps1"
+        raw = installer.read_bytes()
+        self.assertFalse(raw.startswith(bytes.fromhex("efbbbf")))
+
+    def test_windows_launchers_add_engine_root_to_pythonpath(self):
+        installer = (Path(__file__).resolve().parents[1] / "install.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('set "PYTHONPATH=$engineDir;%PYTHONPATH%"', installer)
+        self.assertIn("`$env:PYTHONPATH = if", installer)
+
+    def test_installer_checks_cli_import_before_success(self):
+        installer = (Path(__file__).resolve().parents[1] / "install.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('& $venvPython -c "import nolthira.cli"', installer)
+        self.assertIn("Nolthira CLI import check failed", installer)
+
+
 if __name__ == "__main__":
     unittest.main()
