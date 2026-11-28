@@ -1,6 +1,8 @@
 import os
 import json
 import asyncio
+import hashlib
+import hmac
 import datetime
 from typing import List, Optional, Dict, Any
 
@@ -17,6 +19,8 @@ class WhatsAppGateway(BaseGateway):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._server = None
+        self._message_tasks = set()
+        self._seen_message_ids = {}
 
     @property
     def api_token(self) -> str:
@@ -28,7 +32,23 @@ class WhatsAppGateway(BaseGateway):
 
     @property
     def verify_token(self) -> str:
-        return os.getenv("WHATSAPP_VERIFY_TOKEN", "nexus_verify_token").strip()
+        return os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip
+
+    @property
+    def app_secret(self) -> str:
+        return os.getenv("WHATSAPP_APP_SECRET", "").strip()
+
+    @property
+    def require_signature(self) -> bool:
+        return os.getenv("WHATSAPP_REQUIRE_SIGNATURE", "true").strip().lower() in ("true", "1", "yes")
+
+    @staticmethod
+    def verify_meta_signature(app_secret: str, body: bytes, signature: str) -> bool:
+        """Verify Meta's X-Hub-Signature-256 HMAC before parsing a Cloud API webhook."""
+        if not app_secret or not signature or not signature.startswith("sha256="):
+            return False
+        digest = hmac.new(app_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature[len("sha256="):].strip(), digest)
 
     @property
     def bridge_url(self) -> str:
@@ -56,8 +76,11 @@ class WhatsAppGateway(BaseGateway):
         return bool(self.bridge_url)
 
     def is_configured(self) -> bool:
-        enabled = os.getenv("WHATSAPP_ENABLED", "false").lower() in ("true", "1", "yes")
-        return self.is_cloud_api() or self.is_bridge() or enabled
+        toggle = os.getenv("WHATSAPP_ENABLED", "").strip().lower()
+        if toggle in ("false", "0", "no"):
+            return False
+        # An enable flag cannot replace the credentials/transport required to send replies.
+        return self.is_cloud_api() or self.is_bridge()
 
     def get_allowed_users(self) -> List[str]:
         return parse_allow_list(os.getenv("WHATSAPP_ALLOWED_NUMBERS", ""))
@@ -135,84 +158,154 @@ class WhatsAppGateway(BaseGateway):
         """Parse incoming messages from Meta Cloud API, Evolution API, Baileys, or generic bridge JSON."""
         extracted: List[GatewayMessage] = []
 
+        if not isinstance(payload, dict):
+            return extracted
+
         # 1. Meta WhatsApp Cloud API webhook payload
-        if "entry" in payload and isinstance(payload["entry"], list):
-            for entry in payload["entry"]:
+        if isinstance(payload.get("entry"), list):
+            for entry in payload.get("entry", []):
+                if not isinstance(entry, dict):
+                    continue
                 for change in entry.get("changes", []):
-                    val = change.get("value", {})
-                    contacts = {c.get("wa_id"): c.get("profile", {}).get("name", "") for c in val.get("contacts", [])}
-                    for m in val.get("messages", []):
-                        m_type = m.get("type", "")
-                        if m_type == "text":
-                            body = m.get("text", {}).get("body", "")
-                        elif m_type == "button":
-                            body = m.get("button", {}).get("text", "")
-                        elif m_type == "interactive":
-                            inter = m.get("interactive", {})
-                            body = (inter.get("button_reply") or inter.get("list_reply") or {}).get("title", "")
+                    if not isinstance(change, dict):
+                        continue
+                    val = change.get("value") or {}
+                    if not isinstance(val, dict):
+                        continue
+                    contacts = {
+                        str(c.get("wa_id", "")): str((c.get("profile") or {}).get("name", ""))
+                        for c in val.get("contacts", []) if isinstance(c, dict)
+                    }
+                    for message in val.get("messages", []):
+                        if not isinstance(message, dict):
+                            continue
+                        msg_type = message.get("type", "")
+                        if msg_type == "text":
+                            body = (message.get("text") or {}).get("body", "")
+                        elif msg_type == "button":
+                            body = (message.get("button") or {}).get("text", "")
+                        elif msg_type == "interactive":
+                            interactive = message.get("interactive") or {}
+                            reply_obj = interactive.get("button_reply") or interactive.get("list_reply") or {}
+                            body = reply_obj.get("title", "") if isinstance(reply_obj, dict) else ""
                         else:
                             body = ""
-                        sender = str(m.get("from", ""))
+                        sender = str(message.get("from", ""))
                         if sender and body:
                             extracted.append(GatewayMessage(
                                 platform="whatsapp",
                                 user_id=self.normalize_phone(sender),
                                 chat_id=sender,
-                                text=body,
+                                text=str(body),
                                 display_name=contacts.get(sender, ""),
-                                message_id=str(m.get("id", "")),
-                                metadata={"source": "meta_cloud", "raw": m},
+                                message_id=str(message.get("id", "")),
+                                metadata={"source": "meta_cloud", "raw": message},
                             ))
             return extracted
 
         # 2. Evolution API / Baileys nested webhook format
         data = payload.get("data")
         if isinstance(data, dict) and "key" in data:
-            key = data.get("key", {})
-            if key.get("fromMe"):
+            key = data.get("key") or {}
+            if not isinstance(key, dict) or key.get("fromMe"):
                 return extracted
             remote_jid = str(key.get("remoteJid", ""))
-            msg_obj = data.get("message", {})
+            is_group = remote_jid.endswith("@g.us")
+            participant = str(key.get("participant") or data.get("participant") or "")
+            sender = participant if is_group and participant else remote_jid
+            msg_obj = data.get("message") or {}
+            if not isinstance(msg_obj, dict):
+                msg_obj = {}
+            extended = msg_obj.get("extendedTextMessage") or {}
+            image = msg_obj.get("imageMessage") or {}
             body = (
                 msg_obj.get("conversation")
-                or msg_obj.get("extendedTextMessage", {}).get("text")
-                or msg_obj.get("imageMessage", {}).get("caption")
+                or (extended.get("text") if isinstance(extended, dict) else "")
+                or (image.get("caption") if isinstance(image, dict) else "")
                 or ""
             )
             if remote_jid and body:
                 extracted.append(GatewayMessage(
                     platform="whatsapp",
-                    user_id=self.normalize_phone(remote_jid),
+                    user_id=self.normalize_phone(sender),
                     chat_id=remote_jid,
-                    text=body,
-                    display_name=data.get("pushName", ""),
-                    is_group=remote_jid.endswith("@g.us"),
+                    text=str(body),
+                    display_name=str(data.get("pushName", "")),
+                    is_group=is_group,
                     message_id=str(key.get("id", "")),
                     metadata={"source": "baileys", "raw": payload},
                 ))
             return extracted
 
-        # 3. Generic local bridge format: {"from": "...", "text": "..."} or {"sender": "...", "message": "..."}
-        sender = str(payload.get("from") or payload.get("sender") or payload.get("chatId") or payload.get("number") or "")
+        # 3. Generic bridge format. For group messages, authorize the participant, not the group JID.
+        chat_id = str(payload.get("chatId") or payload.get("remoteJid") or payload.get("from") or payload.get("sender") or "")
+        is_group = chat_id.endswith("@g.us")
+        sender = str(
+            payload.get("participant")
+            or payload.get("senderId")
+            or (payload.get("from") if is_group else "")
+            or payload.get("sender")
+            or payload.get("from")
+            or payload.get("number")
+            or chat_id
+        )
         body = str(payload.get("text") or payload.get("message") or payload.get("body") or "")
-        if sender and body:
+        if chat_id and body:
             extracted.append(GatewayMessage(
                 platform="whatsapp",
                 user_id=self.normalize_phone(sender),
-                chat_id=sender,
+                chat_id=chat_id,
                 text=body,
                 display_name=str(payload.get("name") or payload.get("pushName") or ""),
-                is_group="@g.us" in sender,
+                is_group=is_group,
+                message_id=str(payload.get("messageId") or payload.get("id") or ""),
                 metadata={"source": "bridge", "raw": payload},
             ))
 
         return extracted
 
+    def _is_duplicate_message(self, message: GatewayMessage) -> bool:
+        if not message.message_id:
+            return False
+        key = f"{message.platform}:{message.message_id}"
+        if key in self._seen_message_ids:
+            return True
+        self._seen_message_ids[key] = None
+        if len(self._seen_message_ids) > 5000:
+            self._seen_message_ids.pop(next(iter(self._seen_message_ids)))
+        return False
+
     async def _handle_parsed_message(self, gmsg: GatewayMessage) -> Optional[str]:
-        reply = await self.process_message(gmsg)
-        if reply:
-            await self.send_text(gmsg.chat_id, reply)
-        return reply
+        try:
+            reply = await self.process_message(gmsg)
+            if reply and not await self.send_text(gmsg.chat_id, reply):
+                self.log("ERROR", f"Reply delivery failed for message {gmsg.message_id or '(no id)'}: {self.last_error or 'unknown error'}")
+            return reply
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.log("ERROR", f"Incoming message processing failed: {exc}")
+            return None
+
+    def _schedule_message(self, gmsg: GatewayMessage) -> None:
+        if self._is_duplicate_message(gmsg):
+            self.log("WARN", f"Duplicate WhatsApp message ignored: {gmsg.message_id}")
+            return
+        task = asyncio.create_task(self._handle_parsed_message(gmsg))
+        self._message_tasks.add(task)
+
+        def _finished(done_task):
+            self._message_tasks.discard(done_task)
+            try:
+                error = done_task.exception()
+            except asyncio.CancelledError:
+                return
+            if error:
+                self.last_error = str(error)
+                self.log("ERROR", f"Background message task failed: {error}")
+
+        task.add_done_callback(_finished)
 
     async def start(self):
         if not self.is_configured():
@@ -236,27 +329,40 @@ class WhatsAppGateway(BaseGateway):
             hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
             hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
         ):
-            if hub_mode == "subscribe" and hub_verify_token == self.verify_token:
+            if self.verify_token and hub_mode == "subscribe" and hmac.compare_digest(hub_verify_token or "", self.verify_token):
                 return PlainTextResponse(content=hub_challenge or "", status_code=200)
             return Response(status_code=403)
 
         @app.post("/webhook")
         @app.post("/webhook/whatsapp")
         async def receive_webhook(request: Request):
+            body = await request.body()
+            if self.is_cloud_api() and self.require_signature:
+                if not self.app_secret:
+                    self.last_error = "WHATSAPP_APP_SECRET is required when WHATSAPP_REQUIRE_SIGNATURE=true."
+                    return JSONResponse({"ok": False, "error": self.last_error}, status_code=503)
+                signature = request.headers.get("X-Hub-Signature-256", "")
+                if not self.verify_meta_signature(self.app_secret, body, signature):
+                    self.last_error = "Invalid Meta webhook signature."
+                    self.log("WARN", self.last_error)
+                    return JSONResponse({"ok": False, "error": "Invalid webhook signature"}, status_code=403)
+
             try:
-                payload = await request.json()
-            except Exception:
+                payload = json.loads(body.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
                 return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+            if not isinstance(payload, dict):
+                return JSONResponse({"ok": False, "error": "Webhook body must be a JSON object"}, status_code=400)
 
             msgs = self.extract_incoming_messages(payload)
-            # If caller asks synchronous reply (e.g. local bridge testing), wait & return reply
-            sync_mode = payload.get("sync") is True
+            # Sync replies are reserved for trusted local bridge test clients.
+            sync_mode = payload.get("sync") is True and not self.is_cloud_api()
             if sync_mode and msgs:
                 reply = await self.process_message(msgs[0])
                 return JSONResponse({"ok": True, "reply": reply})
 
-            for m in msgs:
-                asyncio.create_task(self._handle_parsed_message(m))
+            for message in msgs:
+                self._schedule_message(message)
 
             return JSONResponse({"ok": True, "queued": len(msgs)})
 
@@ -265,7 +371,7 @@ class WhatsAppGateway(BaseGateway):
                 pass
 
         self.running = True
-        self.mode = "Cloud API + Webhook" if self.is_cloud_api() else ("Bridge Webhook" if self.is_bridge() else "Webhook Server")
+        self.mode = "Cloud API + Webhook" if self.is_cloud_api() else "Bridge Webhook"
         self.identity = f"http://{self.host}:{self.port}/webhook"
         self.last_error = ""
         self.started_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -287,3 +393,7 @@ class WhatsAppGateway(BaseGateway):
         self.running = False
         if self._server:
             self._server.should_exit = True
+        for task in list(self._message_tasks):
+            task.cancel()
+        if self._message_tasks:
+            await asyncio.gather(*self._message_tasks, return_exceptions=True)

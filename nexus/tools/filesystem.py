@@ -1,4 +1,5 @@
 import os
+import tempfile
 from pathlib import Path
 from typing import Dict, Any
 from .base import Tool
@@ -13,6 +14,37 @@ def _resolve_workspace_path(root_dir: Path, raw_path: str) -> Path:
         if os.name == "nt" or not Path(p).exists():
             p = stripped or "."
     return (root_dir / p).resolve()
+
+
+def _atomic_write_text(file_path: Path, content: str) -> None:
+    """Write a complete file through a same-directory temporary file and atomic replace."""
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode = None
+    try:
+        if file_path.exists():
+            existing_mode = file_path.stat().st_mode & 0o777
+    except OSError:
+        existing_mode = None
+
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{file_path.name}.",
+        suffix=".tmp",
+        dir=str(file_path.parent),
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, existing_mode if existing_mode is not None else 0o644)
+        os.replace(temp_path, file_path)
+    except Exception:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def get_filesystem_tools(root_dir: Path):
@@ -52,10 +84,8 @@ def get_filesystem_tools(root_dir: Path):
             return f"Security Guard: Overwriting secret or credential file '{path}' is prohibited."
 
         try:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            return f"Successfully wrote {len(content)} characters to '{path}'."
+            _atomic_write_text(file_path, content)
+            return f"Successfully wrote {len(content)} characters atomically to '{path}'."
         except Exception as e:
             return f"Error writing file '{path}': {str(e)}"
 
@@ -75,7 +105,7 @@ def get_filesystem_tools(root_dir: Path):
         except Exception as e:
             return f"Error appending to file '{path}': {str(e)}"
 
-    def patch_file(path: str, target: str, replacement: str) -> str:
+    def patch_file(path: str, target: str, replacement: str, replace_all: bool = False) -> str:
         """Replace an exact string target in a file with replacement."""
         file_path = _resolve_workspace_path(root_dir, path)
         if not SecurityGuard.is_path_safe(file_path, root_dir):
@@ -92,10 +122,14 @@ def get_filesystem_tools(root_dir: Path):
                 return f"Error: Target text not found in '{path}'. Make sure whitespace and characters match exactly."
             
             occurrences = content.count(target)
-            new_content = content.replace(target, replacement)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(new_content)
-            return f"Successfully patched '{path}' ({occurrences} occurrence(s) replaced)."
+            if occurrences != 1 and not replace_all:
+                return (
+                    f"Error: Patch target in '{path}' matched {occurrences} times; no changes made. "
+                    "Make the target more specific or pass replace_all=true when every match should change."
+                )
+            new_content = content.replace(target, replacement) if replace_all else content.replace(target, replacement, 1)
+            _atomic_write_text(file_path, new_content)
+            return f"Successfully patched '{path}' ({occurrences if replace_all else 1} occurrence(s) replaced)."
         except Exception as e:
             return f"Error patching file '{path}': {str(e)}"
 
@@ -165,7 +199,7 @@ def get_filesystem_tools(root_dir: Path):
         ),
         Tool(
             name="write_file",
-            description="Create or overwrite a file with full content (keep under ~120 lines; use append_file to add more).",
+            description="Create or atomically replace a file with its complete content. Use for whole source files, schemas, and configuration; do not split files into append chunks.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -178,7 +212,7 @@ def get_filesystem_tools(root_dir: Path):
         ),
         Tool(
             name="append_file",
-            description="Append additional content to the end of a file (ideal for writing long files cleanly in chunks).",
+            description="Append text only when the requested operation is genuinely append-only (for example, a log or append-only data file). Do not use to assemble source files, schemas, manifests, or configuration.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -197,7 +231,8 @@ def get_filesystem_tools(root_dir: Path):
                 "properties": {
                     "path": {"type": "string", "description": "Relative path to the file"},
                     "target": {"type": "string", "description": "Exact text to be replaced"},
-                    "replacement": {"type": "string", "description": "Replacement text"}
+                    "replacement": {"type": "string", "description": "Replacement text"},
+                    "replace_all": {"type": "boolean", "description": "Set true only when intentionally replacing every exact match", "default": False}
                 },
                 "required": ["path", "target", "replacement"]
             },
