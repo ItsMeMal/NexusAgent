@@ -57,7 +57,7 @@ def _default_config() -> Dict[str, Any]:
                     "browser", "cron", "mcp", "plugins", "custom",
                 ],
                 "disabled_tools": [
-                    "write_file", "append_file", "patch_file", "run_command",
+                    "write_file", "append_file", "patch_file", "update_env", "run_command",
                     "create_skill", "update_skill", "delete_skill",
                     "schedule_task", "cancel_scheduled_task", "restore_checkpoint",
                     "store_memory", "propose_memory", "record_learning",
