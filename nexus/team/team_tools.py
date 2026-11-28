@@ -1,8 +1,8 @@
 """
-nexus/team/team_tools.py
+nolthira/team/team_tools.py
 Builds role-scoped ToolRegistry instances for Team Lead and Team Agents.
 
-Combines real Nexus workspace tools (filesystem, terminal, web, memory, skills, MCP)
+Combines real Nolthira workspace tools (filesystem, terminal, web, memory, skills, MCP)
 with live AI-Team coordination tools (Shared Task Board, Mailbox, Fix Requests).
 """
 
