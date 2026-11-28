@@ -905,10 +905,10 @@ class NolthiraAgent:
             if website_build_task:
                 final_frontend_issues = _nextjs_frontend_delivery_issues(config.WORKSPACE_DIR)
                 if final_frontend_issues:
-                    final_issue_text = "\\n".join("- " + item for item in final_frontend_issues)
+                    final_issue_text = "\n".join("- " + item for item in final_frontend_issues)
                     final_response_text = (
-                        "Website implementation is incomplete. The automatic frontend check still detects:\\n"
-                        + final_issue_text + "\\n"
+                        "Website implementation is incomplete. The automatic frontend check still detects:\n"
+                        + final_issue_text + "\n"
                         "The Next.js homepage is not a finished implementation, so this task must not be considered complete."
                     )
 
