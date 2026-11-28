@@ -1,7 +1,9 @@
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Dict, Any
+from dotenv import set_key
 from .base import Tool
 from ..security import SecurityGuard
 
@@ -88,6 +90,59 @@ def get_filesystem_tools(root_dir: Path):
             return f"Successfully wrote {len(content)} characters atomically to '{path}'."
         except Exception as e:
             return f"Error writing file '{path}': {str(e)}"
+
+    def update_env(path: str = ".env", updates: Dict[str, str] = None) -> str:
+        """Safely update selected root-level dotenv keys without exposing existing secret values."""
+        values = updates or {}
+        if not isinstance(values, dict) or not values:
+            return "Error: 'updates' must be a non-empty object of environment variable names and string values."
+
+        file_path = _resolve_workspace_path(root_dir, path)
+        workspace_root = root_dir.resolve()
+        if not SecurityGuard.is_path_safe(file_path, root_dir):
+            return f"Security Guard: Updating environment path '{path}' is blocked."
+        if file_path.parent != workspace_root:
+            return "Security Guard: Environment updates are restricted to dotenv files at the workspace root."
+        if file_path.name == ".env.example" or not re.fullmatch(r"\.env(?:\.[A-Za-z0-9_-]+)*", file_path.name):
+            return "Security Guard: update_env only supports root-level .env files (not .env.example)."
+
+        invalid_keys = [
+            str(key) for key in values
+            if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key)
+        ]
+        if invalid_keys:
+            return "Error: Invalid environment variable name(s): " + ", ".join(invalid_keys[:8])
+
+        invalid_values = [
+            key for key, value in values.items()
+            if not isinstance(value, str) or "\\x00" in value or "\\r" in value or "\\n" in value
+        ]
+        if invalid_values:
+            return "Error: Environment values must be single-line strings without NUL characters. Rejected keys: " + ", ".join(invalid_values[:8])
+
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            updated_keys = []
+            for key, value in values.items():
+                success, _, _ = set_key(
+                    str(file_path),
+                    key,
+                    value,
+                    quote_mode="always",
+                    export=False,
+                )
+                if not success:
+                    return f"Error: Could not safely update environment key '{key}'."
+                # Child processes launched by Nexus inherit the updated value immediately.
+                os.environ[key] = value
+                updated_keys.append(key)
+            return (
+                f"Successfully updated {len(updated_keys)} environment variable(s) in '{path}': "
+                + ", ".join(sorted(updated_keys))
+                + ". Existing values were not read or returned."
+            )
+        except Exception as e:
+            return f"Error updating environment file '{path}': {type(e).__name__}: {e}"
 
     def append_file(path: str, content: str) -> str:
         """Append content to an existing file (or create if missing) for chunked writing of large files."""
@@ -199,7 +254,7 @@ def get_filesystem_tools(root_dir: Path):
         ),
         Tool(
             name="write_file",
-            description="Create or atomically replace a file with its complete content. Use for whole source files, schemas, and configuration; do not split files into append chunks.",
+            description="Create or atomically replace a non-secret file with its complete content. Direct writes to .env and credential files are blocked; use update_env for explicitly requested environment-variable changes. Do not split files into append chunks.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -209,6 +264,33 @@ def get_filesystem_tools(root_dir: Path):
                 "required": ["path", "content"]
             },
             handler=write_file
+        ),
+        Tool(
+            name="update_env",
+            description=(
+                "Safely set only explicitly provided environment variables in a root-level .env file. "
+                "Use this when project setup requires changing DATABASE_URL, API endpoints, or other env keys. "
+                "It preserves unrelated entries, never reads or returns existing secret values, and updates the "
+                "current Nexus process environment for subsequent child commands. Never bypass .env protections "
+                "with PowerShell, Node, Python, shell redirection, or other terminal file-write tricks."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Root-level dotenv file such as .env, .env.local, or .env.development",
+                        "default": ".env",
+                    },
+                    "updates": {
+                        "type": "object",
+                        "description": "Map of environment variable names to single-line string values. Values are never echoed back.",
+                        "additionalProperties": {"type": "string"},
+                    },
+                },
+                "required": ["updates"],
+            },
+            handler=update_env,
         ),
         Tool(
             name="append_file",
