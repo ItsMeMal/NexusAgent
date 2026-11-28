@@ -717,7 +717,7 @@ class MCPManager:
                 continue
             for tool_def in session.tools:
                 tool = self._make_tool(server_name, tool_def, session)
-                registry.register(tool)
+                registry.register(tool, toolset="mcp")
                 self._registered_tools.append(tool)
 
     def _register_stubs(self, registry: ToolRegistry):
@@ -728,7 +728,7 @@ class MCPManager:
                 tool_defs = _probe_tools_sync(cfg)
                 for tool_def in tool_defs:
                     tool = self._make_stub_tool(server_name, cfg, tool_def)
-                    registry.register(tool)
+                    registry.register(tool, toolset="mcp")
                     self._registered_tools.append(tool)
             except Exception as e:
                 self._errors[server_name] = str(e)
