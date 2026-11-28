@@ -62,7 +62,7 @@ class PluginManager:
                         self.plugins[p_name] = PluginInfo(
                             name=p_name,
                             version=meta.get("version", "1.0.0"),
-                            description=meta.get("description", "Nexus Agent Extension Plugin"),
+                            description=meta.get("description", "Nolthira Agent Extension Plugin"),
                             path=item,
                             author=author_str,
                             enabled=True,
