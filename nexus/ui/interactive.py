@@ -12,7 +12,7 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
 from ..providers.manager import ProviderManager, ProviderProfile, ModelInfo, PROVIDERS
-from ..providers.NOLTHIRA_ROUTE_MODULE import NOLTHIRA_ROUTE_CLASS
+from ..providers.nexus_route_oauth import NexusRouteOAuth
 from ..core.modes import AGENT_MODES, MODE_ORDER, get_mode
 from ..config import config
 
@@ -214,7 +214,7 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
 
     # Mallss Nexus Route is OAuth-first: no password or manual API key is requested.
     is_nexus_oauth = selected.id == "mallss_nexus_route"
-    oauth_client = NOLTHIRA_ROUTE_CLASS() if is_nexus_oauth else None
+    oauth_client = NexusRouteOAuth() if is_nexus_oauth else None
 
     # Base URL configuration. Region-aware providers expose an override because
     # account region and API-key region must match for several hosted services.
