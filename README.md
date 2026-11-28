@@ -58,7 +58,7 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 Install Nolthira globally into your existing home directory (`~/.nexus`). The existing path is retained so your current settings, sessions, OAuth login and memory remain available. The installer updates an existing engine checkout to the new GitHub remote before pulling updates:
 
-The GitHub repository URL below intentionally remains `ItsMeMal/NolthiraAgent` until the repository itself is renamed.
+Canonical repository: [`ItsMeMal/NolthiraAgent`](https://github.com/ItsMeMal/NolthiraAgent).
 
 ### Windows (PowerShell)
 ```powershell
