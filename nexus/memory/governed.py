@@ -362,16 +362,18 @@ class MemoryGovernanceMixin:
             return True
 
     def delete_memory(self, memory_id: int, reason: str = "", changed_by: str = "user") -> bool:
+        # Privacy deletion is intentionally different from archive: remove both the
+        # row and its historical snapshots so deleted content is not retained.
         with self._get_connection() as conn:
             cursor = conn.cursor()
             row = cursor.execute(
-                "SELECT * FROM memories WHERE id = ?", (int(memory_id),)
+                "SELECT id FROM memories WHERE id = ?", (int(memory_id),)
             ).fetchone()
             if not row:
                 return False
-            self._record_revision(cursor, row, "deleted", changed_by, reason)
+            cursor.execute("DELETE FROM memory_revisions WHERE memory_id = ?", (int(memory_id),))
             cursor.execute("DELETE FROM memories WHERE id = ?", (int(memory_id),))
-            return True
+            return cursor.rowcount == 1
 
     def get_memory_history(self, memory_id: int, limit: int = 20) -> List[Dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 100))
