@@ -1,6 +1,8 @@
 """Governed long-term memory: provenance, review queue, and change history."""
 
 import json
+import hashlib
+import re
 from typing import Any, Dict, List, Optional
 
 
@@ -64,6 +66,26 @@ class MemoryGovernanceMixin:
             )
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memory_revisions_memory ON memory_revisions(memory_id, created_at DESC)"
+            )
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS learning_observations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fingerprint TEXT NOT NULL UNIQUE,
+                    session_id TEXT,
+                    event_type TEXT NOT NULL,
+                    task_context TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    observation TEXT NOT NULL,
+                    evidence TEXT,
+                    status TEXT NOT NULL DEFAULT 'observed',
+                    proposal_id INTEGER,
+                    review_reason TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    reviewed_at TIMESTAMP
+                )
+            """)
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_learning_observations_status ON learning_observations(status, created_at DESC)"
             )
 
     @staticmethod
@@ -415,6 +437,196 @@ class MemoryGovernanceMixin:
             cursor.execute("DELETE FROM memory_revisions WHERE memory_id = ?", (int(memory_id),))
             cursor.execute("DELETE FROM memories WHERE id = ?", (int(memory_id),))
             return cursor.rowcount == 1
+
+    def record_learning_observation(
+        self,
+        event_type: str,
+        session_id: str,
+        task_context: str,
+        subject: str,
+        observation: str,
+        evidence: str = "",
+    ) -> int:
+        """Capture a bounded, deduplicated signal for later review; never activates memory."""
+        allowed = {"tool_failure", "user_correction", "verified_outcome"}
+        kind = str(event_type or "").strip().lower()
+        if kind not in allowed:
+            raise ValueError(f"event_type must be one of: {', '.join(sorted(allowed))}.")
+        task = self._clean_text(task_context, "task_context", 1200)
+        target = self._clean_text(subject, "subject", 160)
+        detail = self._clean_text(observation, "observation", 3000)
+        proof = str(evidence or "").strip()[:3000] or None
+        sid = str(session_id or "").strip()[:120] or None
+        fingerprint_source = "\\x1f".join((kind, sid or "", task, target, detail))
+        fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO learning_observations
+                    (fingerprint, session_id, event_type, task_context, subject, observation, evidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (fingerprint, sid, kind, task, target, detail, proof),
+            )
+            row = cursor.execute(
+                "SELECT id FROM learning_observations WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+            return int(row["id"])
+
+    def list_learning_observations(
+        self,
+        status: str = "observed",
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        clean_status = str(status or "observed").strip().lower()
+        if clean_status not in {"observed", "promoted", "dismissed"}:
+            raise ValueError("status must be observed, promoted, or dismissed.")
+        safe_limit = max(1, min(int(limit), 100))
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, session_id, event_type, task_context, subject, observation,
+                       evidence, status, proposal_id, review_reason, created_at, reviewed_at
+                FROM learning_observations
+                WHERE status = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (clean_status, safe_limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def dismiss_learning_observation(self, observation_id: int, reason: str = "") -> bool:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE learning_observations
+                SET status = 'dismissed', review_reason = ?, reviewed_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'observed'
+                """,
+                (str(reason or "").strip()[:1000] or None, int(observation_id)),
+            )
+            return cursor.rowcount == 1
+
+    def promote_learning_observation(
+        self,
+        observation_id: int,
+        key: str,
+        lesson: str,
+        verification: str,
+        confidence: float = 0.8,
+    ) -> Optional[int]:
+        """Turn a reviewed, verified observation into a pending memory proposal."""
+        clean_key = self._clean_text(key, "key", 160)
+        clean_lesson = self._clean_text(lesson, "lesson", 12000)
+        clean_verification = self._clean_text(verification, "verification", 2000)
+        score = float(confidence)
+        if not 0.0 <= score <= 1.0:
+            raise ValueError("confidence must be between 0.0 and 1.0.")
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            row = cursor.execute(
+                "SELECT * FROM learning_observations WHERE id = ?",
+                (int(observation_id),),
+            ).fetchone()
+            if not row:
+                return None
+            if row["status"] == "promoted":
+                return int(row["proposal_id"]) if row["proposal_id"] is not None else None
+            if row["status"] != "observed":
+                return None
+
+            evidence_parts = [
+                f"Observation #{observation_id} ({row['event_type']})",
+                f"Subject: {row['subject']}",
+                f"Observed: {row['observation']}",
+            ]
+            if row["evidence"]:
+                evidence_parts.append(f"Evidence: {row['evidence']}")
+            evidence_parts.append(f"Verification: {clean_verification}")
+            evidence = "\\n".join(evidence_parts)[:4000]
+
+            existing = cursor.execute(
+                """
+                SELECT id FROM memory_proposals
+                WHERE status = 'pending' AND category = 'learning' AND key = ? AND content = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (clean_key, clean_lesson),
+            ).fetchone()
+            if existing:
+                proposal_id = int(existing["id"])
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO memory_proposals
+                        (category, key, content, source, confidence, evidence, session_id)
+                    VALUES ('learning', ?, ?, 'agent_learning', ?, ?, ?)
+                    """,
+                    (
+                        clean_key, clean_lesson, score, evidence, row["session_id"],
+                    ),
+                )
+                proposal_id = int(cursor.lastrowid)
+
+            cursor.execute(
+                """
+                UPDATE learning_observations
+                SET status = 'promoted', proposal_id = ?,
+                    review_reason = ?, reviewed_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'observed'
+                """,
+                (proposal_id, "Promoted to a pending memory proposal after verification.", int(observation_id)),
+            )
+            return proposal_id if cursor.rowcount == 1 else None
+
+    def recall_relevant_learnings(self, query: str, limit: int = 4) -> List[Dict[str, Any]]:
+        """Retrieve only approved learning memories relevant to the current task."""
+        clean_query = re.sub(r"[^a-zA-Z0-9\\s]", " ", str(query or "")).strip()
+        tokens = list(dict.fromkeys(word for word in clean_query.split() if len(word) >= 3))[:12]
+        if not tokens:
+            return []
+        safe_limit = max(1, min(int(limit), 20))
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if getattr(self, "has_fts", False):
+                fts_query = " OR ".join(f'"{word}"' for word in tokens)
+                try:
+                    rows = cursor.execute(
+                        """
+                        SELECT m.id, m.key, m.content, m.evidence, m.confidence, m.updated_at
+                        FROM memories_fts f
+                        JOIN memories m ON f.rowid = m.id
+                        WHERE memories_fts MATCH ? AND m.category = 'learning' AND m.status = 'active'
+                        ORDER BY rank
+                        LIMIT ?
+                        """,
+                        (fts_query, safe_limit),
+                    ).fetchall()
+                    if rows:
+                        return [dict(row) for row in rows]
+                except Exception:
+                    pass
+
+            clauses = " OR ".join("(key LIKE ? OR content LIKE ?)" for _ in tokens)
+            params = [pattern for token in tokens for pattern in (f"%{token}%", f"%{token}%")]
+            rows = cursor.execute(
+                f"""
+                SELECT id, key, content, evidence, confidence, updated_at
+                FROM memories
+                WHERE category = 'learning' AND status = 'active' AND ({clauses})
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (*params, safe_limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def get_memory_history(self, memory_id: int, limit: int = 20) -> List[Dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 100))
