@@ -234,7 +234,7 @@ PROVIDERS: Dict[str, ProviderProfile] = {
         id="nebius",
         name="Nebius Token Factory",
         default_base="https://api.tokenfactory.nebius.com/v1",
-        env_key="NEBIUS_TOKEN_FACTORY_KEY",
+        env_key="NEBIUS_API_KEY",
         description="Nebius Token Factory OpenAI-compatible inference",
         protocol="openai-chat-completions",
     ),
