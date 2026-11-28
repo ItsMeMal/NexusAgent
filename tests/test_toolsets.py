@@ -34,7 +34,10 @@ class ToolsetManagerTests(unittest.TestCase):
         self.assertIn("filesystem", coder["enabled_toolsets"])
         self.assertIn("terminal", coder["enabled_toolsets"])
         self.assertIn("write_file", researcher["disabled_tools"])
+        self.assertIn("record_learning", researcher["disabled_tools"])
+        self.assertIn("dismiss_learning_observation", researcher["disabled_tools"])
         self.assertNotIn("write_file", coder["disabled_tools"])
+        self.assertIn("memory", self.manager.resolve_profile("gateway")["disabled_toolsets"])
 
     def test_registry_policy_blocks_tools_and_aliases_at_execution_time(self):
         registry = ToolRegistry()
@@ -82,6 +85,7 @@ class ToolsetManagerTests(unittest.TestCase):
         registry.register(make_tool("write_file"), toolset="filesystem")
         registry.register(make_tool("run_command"), toolset="terminal")
         registry.register(make_tool("gateway_send"), toolset="gateway")
+        registry.register(make_tool("recall_memory"), toolset="memory")
 
         gateways = GatewayManager(
             llm_client=object(),
@@ -96,6 +100,7 @@ class ToolsetManagerTests(unittest.TestCase):
         self.assertIsNone(telegram_registry.get("write_file"))
         self.assertIsNone(telegram_registry.get("run_command"))
         self.assertIsNone(telegram_registry.get("gateway_send"))
+        self.assertIsNone(telegram_registry.get("recall_memory"))
         # The main interactive registry remains unchanged.
         self.assertIsNotNone(registry.get("write_file"))
         self.assertIsNotNone(registry.get("run_command"))
