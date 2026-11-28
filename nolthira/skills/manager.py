@@ -75,8 +75,7 @@ def _default_skill_search_paths() -> List[Path]:
     3. ~/.nolthira/skills/ (Nolthira global)
     4. ~/.agents/skills/ (shared agents convention — Linux/Mac/Windows)
     5. ~/.agents/nolthira/skills/ (Nolthira sub-namespace)
-    6. ~/.agents/nolthira/skills/ (legacy shared-agent namespace)
-    7. Codebase .skills/ (bundled)
+    6. Codebase .skills/ (bundled)
     """
     agents_home = Path.home() / ".agents"
     nolthira_home = NOLTHIRA_HOME
