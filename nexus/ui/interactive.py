@@ -208,15 +208,32 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
         console.print("  [dim]Provider selection cancelled.[/dim]\n")
         return
 
-    # Base URL configuration
+    # Base URL configuration. Region-aware providers expose an override because
+    # account region and API-key region must match for several hosted services.
     target_base = selected.default_base
     if selected.id == "custom":
-        custom_base = (await session.prompt_async(f"\n  Enter Custom Base URL [{config.API_BASE}] ❯ ", is_password=False)).strip()
+        prompt_default = config.API_BASE
+    else:
+        prompt_default = selected.default_base
+    if selected.id in {"custom", "bedrock", "alibaba_model_studio", "byteplus"}:
+        custom_base = (
+            await session.prompt_async(
+                f"\n  Enter API Base URL [{prompt_default}] (Enter to keep) ❯ ",
+                is_password=False,
+            )
+        ).strip()
         if custom_base:
             target_base = custom_base
+        elif selected.id == "custom" and not target_base:
+            target_base = config.API_BASE
 
-    # API Key configuration
-    target_key = config.API_KEY
+    # Prefer the provider-specific credential when reconnecting. Keep the generic
+    # active credential as a compatibility fallback for existing installations.
+    target_key = (
+        os.getenv(selected.env_key, "").strip()
+        if selected.env_key
+        else ""
+    ) or config.API_KEY
     if not selected.is_local:
         existing_masked = f"{target_key[:6]}...{target_key[-4:]}" if len(target_key) > 10 else (target_key or "None")
         console.print(f"  [dim]Current API Key for {selected.name}: {existing_masked}[/dim]")
@@ -229,7 +246,8 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
     else:
         target_key = "ollama"
 
-    # Save to config and .env
+    # Save the active connection for the existing LLM client and also retain a
+    # provider-specific key so switching providers does not overwrite its secret.
     config.API_BASE = target_base
     config.API_KEY = target_key
     current_llm.api_base = target_base.rstrip("/")
@@ -239,8 +257,11 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
 
     updates = {
         "OPENAI_API_BASE": target_base,
-        "OPENAI_API_KEY": target_key
+        "OPENAI_API_KEY": target_key,
     }
+    if selected.env_key and target_key and not selected.is_local:
+        os.environ[selected.env_key] = target_key
+        updates[selected.env_key] = target_key
     ProviderManager.update_env_file(updates, env_path)
 
     console.print(f"\n  [dim cyan]⠋ Handshaking with {selected.name}...[/dim cyan]")
