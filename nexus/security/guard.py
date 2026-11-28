@@ -39,14 +39,14 @@ SUSPICIOUS_PATTERNS = [
 ]
 
 _SECRET_ENV_REFERENCE_RE = re.compile(
-    r"(?<![\\w.-])\\.env(?!\\.example\\b)(?:\\.[A-Za-z0-9_-]+)*(?![\\w-])",
+    r"(?<![\w.-])\.env(?!\.example\b)(?:\.[A-Za-z0-9_-]+)*(?![\w-])",
     re.IGNORECASE,
 )
 _SECRET_ENV_ACCESS_RE = re.compile(
-    r"\\b(?:Get-Content|Set-Content|Add-Content|Out-File|type|cat|more|"
+    r"\b(?:Get-Content|Set-Content|Add-Content|Out-File|type|cat|more|"
     r"Select-String|findstr|grep|rg|readFile(?:Sync)?|writeFile(?:Sync)?|"
     r"appendFile(?:Sync)?|createWriteStream|read_text|read_bytes|write_text|"
-    r"write_bytes|set_key|open|Copy-Item|Move-Item|cp|copy|mv|move|del|rm)\\b|"
+    r"write_bytes|set_key|open|Copy-Item|Move-Item|cp|copy|mv|move|del|rm)\b|"
     r">>?",
     re.IGNORECASE,
 )
