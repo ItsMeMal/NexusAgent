@@ -147,12 +147,14 @@ class ToolsetManager:
         if not isinstance(profiles, dict) or not profiles:
             raise ToolsetConfigError("Toolset config must define at least one profile.")
 
+        builtins = _default_config()
         normalized: Dict[str, Any] = {
             "version": 1,
             "default_profile": self._valid_name(raw.get("default_profile", "default"), "default_profile"),
             "profiles": {},
-            "platform_profiles": {},
-            "role_profiles": {},
+            # New built-in role/platform defaults are merged into older user config files.
+            "platform_profiles": dict(builtins["platform_profiles"]),
+            "role_profiles": dict(builtins["role_profiles"]),
             "limits": {},
         }
 
@@ -174,6 +176,19 @@ class ToolsetManager:
                         raise ToolsetConfigError(f"Profile '{name}' references unknown toolsets: {', '.join(unknown)}")
                 profile[field] = sorted(set(clean))
             normalized["profiles"][name] = profile
+
+        # Migrate profiles created by earlier Nexus versions without discarding user customizations.
+        for builtin_name, builtin_profile in builtins["profiles"].items():
+            current = normalized["profiles"].get(builtin_name)
+            if current is None:
+                normalized["profiles"][builtin_name] = copy.deepcopy(builtin_profile)
+                continue
+            if builtin_profile.get("extends") and not current.get("extends"):
+                current["extends"] = builtin_profile["extends"]
+            if builtin_profile.get("enabled_toolsets") and not current.get("enabled_toolsets"):
+                current["enabled_toolsets"] = list(builtin_profile["enabled_toolsets"])
+            for field in ("disabled_toolsets", "disabled_tools"):
+                current[field] = sorted(set(current.get(field, [])) | set(builtin_profile.get(field, [])))
 
         if normalized["default_profile"] not in normalized["profiles"]:
             raise ToolsetConfigError("default_profile does not exist.")
