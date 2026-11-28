@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional, Callable
 from pathlib import Path
 
 from ..core.llm import LLMClient
-from ..core.agent import NexusAgent
+from ..core.agent import NolthiraAgent
 from ..memory import SQLiteMemory
 from ..skills import SkillManager
 from ..tools.base import ToolRegistry
@@ -138,7 +138,7 @@ class SubagentManager:
 
         subagent_soul = f"""# Scoped Subagent Worker (Role: {role})
 
-You are a specialist subagent dispatched by the Nexus orchestrator.
+You are a specialist subagent dispatched by the Nolthira orchestrator.
 Your Goal: {goal}
 Additional Context from Orchestrator:
 {context}
@@ -150,7 +150,7 @@ Execution contract:
 4. Verify important findings or code changes before reporting completion.
 5. Report concrete findings, changed paths, test results, blockers, and remaining work.
 """
-        subagent = NexusAgent(
+        subagent = NolthiraAgent(
             llm_client=self.llm,
             memory=self.memory,
             skill_manager=self.skill_manager,
@@ -170,7 +170,7 @@ Execution contract:
             self._emit("start", f"Starting subagent [{role}] {sub_id}: {goal[:180]}")
             worker = asyncio.create_task(
                 subagent.run(f"Execute the delegated task: {goal}"),
-                name=f"nexus-subagent-{sub_id}",
+                name=f"nolthira-subagent-{sub_id}",
             )
             self._active[sub_id] = worker
             try:
