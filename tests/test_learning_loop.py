@@ -15,8 +15,10 @@ class FakeLLM:
 
     def __init__(self, responses):
         self.responses = list(responses)
+        self.seen_messages = []
 
     async def chat_completion(self, messages, tools=None, on_token=None):
+        self.seen_messages.append(messages)
         if not self.responses:
             raise AssertionError("Unexpected LLM call")
         return self.responses.pop(0)
@@ -156,6 +158,7 @@ class LearningGovernanceTests(unittest.TestCase):
         from nexus.tools.memory_tools import get_memory_tools
 
         tools = {tool.name: tool for tool in get_memory_tools(self.memory)}
+        self.assertNotIn("review_memory_proposal", tools)
         observation_id = self.memory.record_learning_observation(
             event_type="tool_failure",
             session_id="session-e",
@@ -229,6 +232,36 @@ class AgentLearningCaptureTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(observations[0]["event_type"], "tool_failure")
             self.assertEqual(observations[0]["subject"], "simulate_failure")
             self.assertEqual(memory.get_all_memories(), [])
+
+    async def test_approved_learning_is_injected_into_relevant_future_tasks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            memory = SQLiteMemory(root / "memory.db")
+            skills = SkillManager(root / ".skills", extra_dirs=[])
+            proposal_id = memory.propose_memory(
+                key="prisma_schema_rule",
+                content="Write the complete Prisma schema atomically, then run prisma validate.",
+                category="learning",
+                evidence="Verified by a schema validation regression test.",
+            )
+            self.assertTrue(memory.review_memory_proposal(proposal_id, "approve", reviewer="user"))
+            llm = FakeLLM([
+                {"content": "I will write the complete schema and validate it.", "tool_calls": None},
+            ])
+            agent = NexusAgent(
+                llm_client=llm,
+                memory=memory,
+                skill_manager=skills,
+                registry=ToolRegistry(),
+                soul_path=root / "missing-SOUL.md",
+                session_id="learning-recall-session",
+            )
+
+            await agent.run("Create a Prisma schema for the new project.")
+
+            system_message = llm.seen_messages[0][0]["content"]
+            self.assertIn("Relevant Approved Learning", system_message)
+            self.assertIn("Write the complete Prisma schema atomically", system_message)
 
     async def test_explicit_user_corrections_are_captured_and_redacted(self):
         with tempfile.TemporaryDirectory() as tmp:
