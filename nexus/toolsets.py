@@ -52,11 +52,16 @@ def _default_config() -> Dict[str, Any]:
             },
             "researcher": {
                 "extends": "default",
-                "disabled_toolsets": ["terminal", "computer", "checkpoints", "media", "gateway"],
+                "disabled_toolsets": [
+                    "terminal", "computer", "checkpoints", "media", "gateway",
+                    "browser", "cron", "mcp", "plugins", "custom",
+                ],
                 "disabled_tools": [
                     "write_file", "append_file", "patch_file", "run_command",
                     "create_skill", "update_skill", "delete_skill",
                     "schedule_task", "cancel_scheduled_task", "restore_checkpoint",
+                    "store_memory", "review_memory_proposal", "archive_memory",
+                    "delete_memory", "restore_memory",
                 ],
             },
             "analyst": {
