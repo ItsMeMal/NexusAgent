@@ -187,7 +187,7 @@ def render_banner(
         )
 
 
-def build_nexus_mascot_renderable(
+def build_nolthira_mascot_renderable(
     frame_idx: int,
     elapsed: float,
     message: str = "Thinking & coordinating...",
