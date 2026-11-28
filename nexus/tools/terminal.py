@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional
 from .base import Tool
 from ..config import config
 from ..security import SecurityGuard, RiskLevel
+from .processes import ProcessManager
 
 _SLOW_CMD_RE = re.compile(
     r"\b(?:npm\s+(?:install|i|ci|update|rebuild)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|"
@@ -83,7 +84,14 @@ def build_sandboxed_command(command: str, root_dir: Path, backend: Optional[str]
 
 
 def get_terminal_tools(root_dir: Path):
-    async def run_command(command: str, timeout: int = 120, backend: str = "") -> str:
+    process_manager = ProcessManager(config.NEXUS_HOME / "processes")
+
+    async def run_command(
+        command: str,
+        timeout: int = 120,
+        backend: str = "",
+        background: bool = False,
+    ) -> str:
         """Run a shell command asynchronously in local, docker, or ssh execution backend."""
         # Security Guardrail Check
         risk_level, reason = SecurityGuard.assess_command_risk(command)
@@ -93,6 +101,10 @@ def get_terminal_tools(root_dir: Path):
         eff_cmd, cfg_err = build_sandboxed_command(command, root_dir, backend=backend or None)
         if cfg_err:
             return cfg_err
+
+        if background:
+            # Only process sessions created by this manager can be inspected or stopped.
+            return process_manager.start(eff_cmd, root_dir)
 
         eff_timeout = compute_effective_timeout(command, timeout)
         popen_kwargs: Dict[str, Any] = {}
@@ -156,22 +168,69 @@ def get_terminal_tools(root_dir: Path):
             except Exception:
                 pass
 
+    async def manage_process(
+        action: str,
+        session_id: str = "",
+        timeout: int = 30,
+        data: str = "",
+        limit: int = 24000,
+    ):
+        """Inspect or control a background process started by this terminal tool."""
+        selected = (action or "").strip().lower()
+        if selected == "list":
+            return process_manager.list()
+        if not session_id:
+            return {"error": "session_id is required for this process action."}
+        if selected == "poll":
+            return process_manager.poll(session_id)
+        if selected == "log":
+            return process_manager.log(session_id, limit=limit)
+        if selected == "wait":
+            return await asyncio.to_thread(process_manager.wait, session_id, timeout)
+        if selected == "kill":
+            return await asyncio.to_thread(process_manager.kill, session_id)
+        if selected == "write":
+            return process_manager.write(session_id, data)
+        return {"error": "Unknown action. Use list, poll, log, wait, kill, or write."}
+
     return [
         Tool(
             name="run_command",
             description=(
                 f"Execute a shell command directly in workspace root ({root_dir}); do NOT prefix 'cd <workspace> &&'. "
-                "Supports local, docker, or ssh backends; slow installs/builds auto-extend from 120s to 300s (max 900s)."
+                "Supports local, docker, or ssh backends; slow installs/builds auto-extend from 120s to 300s (max 900s). "
+                "Set background=true for a long-running server/build/test and manage the returned session_id with process."
             ),
             parameters={
                 "type": "object",
                 "properties": {
                     "command": {"type": "string", "description": "The exact shell command to execute (already in workspace root)"},
-                    "timeout": {"type": "integer", "description": "Timeout in seconds (default 120; auto-extended to 300 for installs/builds, max 900)", "default": 120},
-                    "backend": {"type": "string", "enum": ["", "local", "docker", "ssh"], "description": "Optional backend override", "default": ""}
+                    "timeout": {"type": "integer", "description": "Timeout in seconds (default 120; auto-extended to 300 for installs/builds, max 900; ignored for background runs)", "default": 120},
+                    "backend": {"type": "string", "enum": ["", "local", "docker", "ssh"], "description": "Optional backend override", "default": ""},
+                    "background": {"type": "boolean", "description": "Start a tracked background process instead of waiting for completion", "default": false}
                 },
                 "required": ["command"]
             },
             handler=run_command
+        ),
+        Tool(
+            name="process",
+            description=(
+                "Manage background commands started with run_command(background=true). "
+                "Actions: list, poll, log, wait, kill, write. Use the returned session_id; "
+                "arbitrary system PIDs cannot be managed."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "poll", "log", "wait", "kill", "write"]},
+                    "session_id": {"type": "string", "description": "ID returned by run_command(background=true)"},
+                    "timeout": {"type": "integer", "description": "Maximum wait duration in seconds (1-300)", "default": 30},
+                    "data": {"type": "string", "description": "Text sent to process stdin for action='write'"},
+                    "limit": {"type": "integer", "description": "Maximum output bytes for action='log'", "default": 24000}
+                },
+                "required": ["action"]
+            },
+            handler=manage_process
         )
     ]
