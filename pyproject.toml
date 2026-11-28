@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nexus-agent-cli"
+name = "nolthira-agent-cli"
 version = "0.2.0"
-description = "Universal Autonomous Multi-Agent AI Orchestrator CLI with Persistent Memory, Vision, MCP, and Dynamic Skills"
+description = "Nolthira autonomous multi-agent AI orchestrator CLI with persistent memory, vision, MCP, and dynamic skills"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
