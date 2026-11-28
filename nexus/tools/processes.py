@@ -126,7 +126,7 @@ class ProcessManager:
                     pass
                 self._sessions.pop(sid, None)
 
-    def start(self, command: str, cwd: Path) -> Dict[str, Any]:
+    def start(self, command: str, cwd: Path, env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """Start a command and return a handle without waiting for completion."""
         command = str(command or "").strip()
         if not command:
@@ -157,6 +157,7 @@ class ProcessManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 bufsize=0,
+                env=env,
                 **popen_kwargs,
             )
         except Exception as exc:

@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
+from dotenv import dotenv_values
 from .base import Tool
 from ..config import config
 from ..security import SecurityGuard, RiskLevel
@@ -83,6 +84,23 @@ def build_sandboxed_command(command: str, root_dir: Path, backend: Optional[str]
     return command, None
 
 
+def _workspace_child_environment(root_dir: Path) -> Dict[str, str]:
+    """Load project dotenv values for children without printing their contents."""
+    merged: Dict[str, str] = {}
+    for filename in (".env", ".env.local", ".env.development", ".env.development.local"):
+        candidate = root_dir / filename
+        if candidate.is_file():
+            try:
+                for key, value in dotenv_values(candidate).items():
+                    if key and value is not None:
+                        merged[key] = str(value)
+            except Exception:
+                continue
+    # Environment explicitly inherited by Nexus takes precedence over dotenv values.
+    merged.update({str(key): str(value) for key, value in os.environ.items()})
+    return merged
+
+
 def get_terminal_tools(root_dir: Path):
     process_manager = ProcessManager(config.NEXUS_HOME / "processes")
 
@@ -110,9 +128,11 @@ def get_terminal_tools(root_dir: Path):
         if cfg_err:
             return cfg_err
 
+        # Workspace dotenv values are passed to child processes but never exposed in tool output.
+        child_env = _workspace_child_environment(root_dir)
         if background:
             # Only process sessions created by this manager can be inspected or stopped.
-            return process_manager.start(eff_cmd, root_dir)
+            return process_manager.start(eff_cmd, root_dir, env=child_env)
 
         eff_timeout = compute_effective_timeout(command, timeout)
         popen_kwargs: Dict[str, Any] = {}
@@ -127,6 +147,7 @@ def get_terminal_tools(root_dir: Path):
             process = await asyncio.create_subprocess_shell(
                 eff_cmd,
                 cwd=str(root_dir),
+                env=child_env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 **popen_kwargs,
@@ -207,6 +228,9 @@ def get_terminal_tools(root_dir: Path):
             description=(
                 f"Execute a shell command directly in workspace root ({root_dir}); do NOT prefix 'cd <workspace> &&'. "
                 "Explicit shell/script reads or writes of .env files are blocked; use update_env for targeted configuration changes. "
+                f"Native shell: {'cmd.exe' if sys.platform == 'win32' else '/bin/sh'} on this host. "
+                "Use cmd syntax on Windows unless explicitly invoking PowerShell; use POSIX syntax on Linux/macOS. "
+                "Project dotenv values are loaded into child processes without being printed. "
                 "Supports local, docker, or ssh backends; slow installs/builds auto-extend from 120s to 300s (max 900s). "
                 "Set background=true for a long-running server/build/test and manage the returned session_id with process."
             ),

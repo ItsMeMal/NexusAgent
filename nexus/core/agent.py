@@ -209,6 +209,8 @@ class NexusAgent:
 - Current Local Time: {now_str}
 - Working Directory: {cwd_str}
 - Operating System: {sys.platform}
+- Native shell: {"cmd.exe (PowerShell only when explicitly invoked)" if sys.platform == "win32" else "/bin/sh or configured POSIX shell"}.
+- Select OS-native syntax and paths; never mix PowerShell, cmd.exe, and POSIX syntax in one command.
 
 ## Learned Skills (.skills)
 {skills_summary}
@@ -261,7 +263,8 @@ class NexusAgent:
 - When a command fails or times out, inspect its complete diagnostic and current workspace state before retrying. Never proceed with dependent work until the prerequisite is repaired.
 - A repeated-tool loop-guard result means that invocation was NOT executed; it is not a task-completion signal. Do not finalize merely because a loop guard fired. Inspect the last output/state and choose a materially different diagnostic or corrective action. For run_command, changing only the timeout does not repair a non-zero exit; only retry the same command with a longer timeout when the previous attempt explicitly timed out, and do so at most once.
 - Never bypass secret-file protections with terminal commands, scripts, shell redirection, PowerShell, Node, or Python. For explicitly requested environment configuration, use `update_env(path=".env", updates={...})`: it changes only named keys, preserves unrelated entries, never returns existing values, and makes updated values available to later child commands. Never read or print secret values.
-- Use `run_command(background=true)` for genuinely long-running servers, watchers, builds, or tests when the task benefits from continuing other work; track the returned handle with `process(action='poll'|'log'|'wait'|'kill')`. Do not start duplicate copies of a process already running.
+- Use `run_command(background=true)` for genuinely long-running servers, watchers, builds, or tests when the task benefits from continuing other work; track the returned handle with `process(action='poll'|'log'|'wait'|'kill')`. Repeated `process(action='log'|'poll'|'list')` calls are normal read-only observations while process output/state changes; poll at sensible intervals and stop when it exits. Do not start duplicate copies of a process already running.
+- Match command syntax to the runtime OS. On Windows the native shell is cmd.exe: use `set NAME=value`, Windows paths, and cmd quoting; invoke PowerShell explicitly for `$env:NAME=value`, `Get-ChildItem`, and PowerShell pipelines. On Linux/macOS use POSIX shell syntax, `export NAME=value`, and slash-separated paths. Workspace dotenv files are inherited by child commands; do not shell-read them.
 - Verification must exercise the behavior changed, not merely check that files exist or that imports succeed. Report passed checks, failed checks, and unverified work separately.
 - When the execution budget is nearly exhausted, prioritize safe finalization: state what is complete, what was verified, and exactly what remains. Never describe an unfinished or unverified task as complete.
 
@@ -667,7 +670,12 @@ class NexusAgent:
                             elif same_call_count >= 2:
                                 loop_guard_reason = "This exact command has already been attempted repeatedly."
                         elif same_call_count >= 2:
-                            loop_guard_reason = "This tool has already been called repeatedly with identical arguments."
+                            repeatable_process_read = (
+                                str(tool_name or "").lower() == "process"
+                                and str(args.get("action", "")).lower() in {"list", "poll", "log"}
+                            )
+                            if not repeatable_process_read:
+                                loop_guard_reason = "This tool has already been called repeatedly with identical arguments."
 
                         if not loop_guard_reason:
                             recent_call_signatures.append(sig)

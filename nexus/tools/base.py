@@ -91,6 +91,8 @@ class ToolRegistry:
             "extract_web": "web_extract",
             "fetch_url": "web_extract",
             "curl": "web_extract",
+            "read": "read_file",
+            "cat": "read_file",
             "readfile": "read_file",
             "writefile": "write_file",
             "patchfile": "patch_file",

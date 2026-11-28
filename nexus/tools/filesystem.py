@@ -49,9 +49,27 @@ def _atomic_write_text(file_path: Path, content: str) -> None:
         raise
 
 
+def _safe_read_range(value: Any, default: int, maximum: int) -> int:
+    """Coerce model-generated integer strings safely and clamp untrusted file ranges."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        try:
+            parsed = int(value.strip())
+        except ValueError:
+            return default
+    else:
+        return default
+    return max(1, min(parsed, maximum))
+
+
 def get_filesystem_tools(root_dir: Path):
     def read_file(path: str, start_line: int = 1, line_count: int = 200) -> str:
-        """Read content of a file with line numbers."""
+        """Read file content with type-safe, bounded line ranges."""
+        start_line = _safe_read_range(start_line, default=1, maximum=10_000_000)
+        line_count = _safe_read_range(line_count, default=200, maximum=2000)
         file_path = _resolve_workspace_path(root_dir, path)
         if not SecurityGuard.is_path_safe(file_path, root_dir):
             return f"Security Guard: Access to path '{path}' is blocked (system directory restriction)."
@@ -67,9 +85,11 @@ def get_filesystem_tools(root_dir: Path):
                 lines = f.readlines()
             
             total_lines = len(lines)
-            start_idx = max(0, start_line - 1)
+            start_idx = min(total_lines, max(0, start_line - 1))
             end_idx = min(total_lines, start_idx + line_count)
-            
+            if start_idx >= total_lines:
+                return f"File: {path} (Lines {total_lines + 1}-{total_lines} of {total_lines})\\n(No lines in requested range)"
+
             output = [f"File: {path} (Lines {start_idx + 1}-{end_idx} of {total_lines})"]
             for i in range(start_idx, end_idx):
                 output.append(f"{i + 1:4d} | {lines[i].rstrip()}")
