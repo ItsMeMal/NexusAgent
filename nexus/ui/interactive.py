@@ -37,7 +37,7 @@ SLASH_COMMANDS = [
     ("/bot", "Alias for /gateway", "Gateway"),
     ("/security", "View security guardrails, command sandbox & safety policy", "Security"),
     ("/computer", "Inspect GUI automation status or capture screenshot (/computer screenshot)", "Computer"),
-    ("/update", "Check for updates and upgrade Nexus Agent engine from GitHub", "System"),
+    ("/update", "Check for updates and upgrade Nolthira Agent from GitHub", "System"),
     ("/upgrade", "Alias for /update", "System"),
     ("/skills", "View loaded dynamic skills & learned procedures", "Skills"),
     ("/memory", "Inspect persistent facts stored in SQLite FTS5", "Memory"),
@@ -53,8 +53,8 @@ SLASH_COMMANDS = [
     ("/new", "Start a new clean session context", "Session"),
     ("/clear", "Clear terminal screen and show banner", "Utility"),
     ("/help", "Display command palette", "Utility"),
-    ("exit", "Exit Nexus Agent CLI", "Utility"),
-    ("quit", "Exit Nexus Agent CLI", "Utility"),
+    ("exit", "Exit Nolthira Agent CLI", "Utility"),
+    ("quit", "Exit Nolthira Agent CLI", "Utility"),
 ]
 
 class NexusCommandCompleter(Completer):
@@ -94,7 +94,7 @@ def render_command_palette():
     }
 
     console.print()
-    console.print("  [bold #00ffd7]⚡ Nexus Command Palette[/bold #00ffd7]\n")
+    console.print("  [bold #00ffd7]⚡ Nolthira Command Palette[/bold #00ffd7]\n")
 
     for cat_title, items in categories.items():
         console.print(f"  [dim #94a3b8]{cat_title}[/dim #94a3b8]")
@@ -915,7 +915,7 @@ async def interactive_gateway_setup(session: PromptSession, env_path: Path) -> O
             os.environ[k] = v
         ProviderManager.update_env_file(updates, env_path)
         console.print(f"\n  [bold #22c55e]✔ Saved {choice.capitalize()} gateway config to .env![/bold #22c55e]")
-        console.print(f"  [dim]Run [bold #00ffd7]/gateway start {choice}[/bold #00ffd7] to start listening now, or [bold #00ffd7]nexus --gateway[/bold #00ffd7] in daemon mode.[/dim]\n")
+        console.print(f"  [dim]Run [bold #00ffd7]/gateway start {choice}[/bold #00ffd7] to start listening now, or [bold #00ffd7]nolthira --gateway[/bold #00ffd7] in daemon mode.[/dim]\n")
     else:
         console.print("\n  [dim]No changes made.[/dim]\n")
 
@@ -1134,7 +1134,7 @@ async def interactive_mcp_add(session: PromptSession, mcp_manager, registry) -> 
     if not cfg:
         return False
 
-    scope_ans = (await session.prompt_async("  Save to [1] Global (~/.nexus/mcp.json) or [2] Workspace (.mcp.json) [1] ❯ ", is_password=False)).strip()
+    scope_ans = (await session.prompt_async("  Save to [1] Global (~/.nolthira/mcp.json) or [2] Workspace (.mcp.json) [1] ❯ ", is_password=False)).strip()
     scope = "workspace" if scope_ans == "2" else "global"
 
     saved_path = mcp_manager.add_server_to_config(cfg, scope=scope)
@@ -1186,7 +1186,7 @@ async def _run_arrow_key_mode_picker(active_mode: str) -> Optional[str]:
 
     def get_header():
         return [
-            ("class:title", "Select Nexus AI Agent Operating Mode:"),
+            ("class:title", "Select Nolthira AI Agent Operating Mode:"),
             ("class:dim", "  (or press Shift+Tab anytime in prompt)\n\n"),
         ]
 
@@ -1256,8 +1256,8 @@ async def interactive_select_mode(agent, env_path: Path, requested_mode: Optiona
 
 
 async def interactive_onboarding_setup(session: PromptSession, current_llm, agent, env_path: Path) -> None:
-    """Unified first-run onboarding wizard (`nexus setup` / `/setup`)."""
-    console.print("\n  [bold #00ffd7]🚀 Nexus Agent Unified Setup Wizard[/bold #00ffd7]")
+    """Unified first-run onboarding wizard (`nolthira setup` / `/setup`)."""
+    console.print("\n  [bold #00ffd7]🚀 Nolthira Agent Setup Wizard[/bold #00ffd7]")
     console.print("  [dim]Configure provider, active model, default mode, execution sandbox, and messaging gateways.[/dim]\n")
 
     console.print("  [bold #38bdf8]Step 1/4 · Provider & Model[/bold #38bdf8]")
