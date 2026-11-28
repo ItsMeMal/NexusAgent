@@ -1,5 +1,5 @@
 """
-nexus/team/board.py
+nolthira/team/board.py
 Shared Task Board, Team Mailbox, Tool Execution Log, and Artifact Tracker.
 
 Provides the shared state that turns multiple isolated agents into a real AI-Team:
