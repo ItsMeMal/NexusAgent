@@ -1,6 +1,7 @@
 import os
 import asyncio
 import datetime
+import re
 from typing import List, Optional, Dict, Any
 
 import httpx
@@ -12,6 +13,10 @@ class TelegramGateway(BaseGateway):
     """Telegram Bot API long-polling gateway adapter (zero external SDK required)."""
 
     platform_name = "telegram"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._update_tasks = set()
 
     @property
     def token(self) -> str:
@@ -26,6 +31,35 @@ class TelegramGateway(BaseGateway):
 
     def _api_url(self, method: str) -> str:
         return f"https://api.telegram.org/bot{self.token}/{method}"
+
+    @staticmethod
+    def _api_error(response) -> Optional[str]:
+        if response.status_code != 200:
+            return f"Telegram Bot API HTTP {response.status_code}: {response.text[:200]}"
+        try:
+            data = response.json()
+        except ValueError:
+            return "Telegram Bot API returned invalid JSON"
+        if not isinstance(data, dict) or data.get("ok") is not True:
+            description = data.get("description") if isinstance(data, dict) else ""
+            return f"Telegram Bot API error: {description or 'ok=false'}"
+        return None
+
+    def _schedule_update(self, client: httpx.AsyncClient, update: Dict[str, Any]) -> None:
+        task = asyncio.create_task(self._handle_update(client, update))
+        self._update_tasks.add(task)
+
+        def _finished(done_task):
+            self._update_tasks.discard(done_task)
+            try:
+                error = done_task.exception()
+            except asyncio.CancelledError:
+                return
+            if error:
+                self.last_error = str(error)
+                self.log("ERROR", f"Telegram update task failed: {error}")
+
+        task.add_done_callback(_finished)
 
     async def _send_typing_loop(self, client: httpx.AsyncClient, chat_id: str, stop_evt: asyncio.Event):
         while not stop_evt.is_set():
@@ -55,14 +89,21 @@ class TelegramGateway(BaseGateway):
                         self._api_url("sendMessage"),
                         json={"chat_id": chat_id, "text": chunk, "parse_mode": "Markdown"},
                     )
-                    if resp.status_code != 200:
-                        # Fallback to plain text if Markdown syntax fails
+                    first_error = self._api_error(resp)
+                    if first_error:
+                        # Retry without Markdown because malformed Markdown entities are common.
                         resp2 = await client.post(
                             self._api_url("sendMessage"),
                             json={"chat_id": chat_id, "text": chunk},
                         )
-                        if resp2.status_code != 200:
+                        second_error = self._api_error(resp2)
+                        if second_error:
+                            self.last_error = second_error
                             ok = False
+                        else:
+                            self.last_error = ""
+                    else:
+                        self.last_error = ""
                 except Exception as e:
                     self.last_error = str(e)
                     ok = False
@@ -106,12 +147,14 @@ class TelegramGateway(BaseGateway):
         # In groups, respond when mentioned or replied to, unless group messages are explicitly routed
         if is_group and self.identity:
             bot_handle = f"@{self.identity.lstrip('@').lower()}"
-            reply_to = msg.get("reply_to_message", {}).get("from", {}).get("username", "").lower()
+            reply_message = msg.get("reply_to_message") or {}
+            reply_author = reply_message.get("from") or {}
+            reply_to = str(reply_author.get("username", "")).lower()
             is_cmd = text.startswith("/")
             if not is_cmd and bot_handle not in text.lower() and reply_to != self.identity.lstrip("@").lower():
                 return
             if bot_handle in text.lower():
-                text = text.replace(f"@{self.identity.lstrip('@')}", "").strip()
+                text = re.sub(re.escape(bot_handle), "", text, flags=re.IGNORECASE).strip()
 
         gmsg = GatewayMessage(
             platform="telegram",
@@ -160,13 +203,15 @@ class TelegramGateway(BaseGateway):
             # Verify identity via getMe
             try:
                 me_resp = await client.get(self._api_url("getMe"), timeout=10.0)
-                if me_resp.status_code == 200:
+                me_error = self._api_error(me_resp)
+                if not me_error:
                     me_data = me_resp.json().get("result", {})
                     self.identity = f"@{me_data.get('username', 'nexus_bot')}"
                     self.log("INFO", f"Connected to Telegram as {self.identity}")
                 else:
-                    self.last_error = f"getMe HTTP {me_resp.status_code}: {me_resp.text}"
+                    self.last_error = f"getMe failed: {me_error}"
                     self.running = False
+                    self.log("ERROR", self.last_error)
                     return
             except Exception as e:
                 self.last_error = str(e)
@@ -182,9 +227,14 @@ class TelegramGateway(BaseGateway):
                     )
                     if resp.status_code == 200:
                         data = resp.json()
+                        if not isinstance(data, dict) or data.get("ok") is not True:
+                            self.last_error = str((data or {}).get("description", "getUpdates returned ok=false"))
+                            self.log("ERROR", self.last_error)
+                            await asyncio.sleep(3.0)
+                            continue
                         for upd in data.get("result", []):
                             offset = max(offset, upd.get("update_id", 0) + 1)
-                            asyncio.create_task(self._handle_update(client, upd))
+                            self._schedule_update(client, upd)
                     elif resp.status_code == 409:
                         self.last_error = "Conflict (409): Another bot instance or webhook is active"
                         await asyncio.sleep(5.0)
@@ -201,3 +251,7 @@ class TelegramGateway(BaseGateway):
 
     async def stop(self):
         self.running = False
+        for task in list(self._update_tasks):
+            task.cancel()
+        if self._update_tasks:
+            await asyncio.gather(*self._update_tasks, return_exceptions=True)
