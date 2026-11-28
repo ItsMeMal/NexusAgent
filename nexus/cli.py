@@ -783,31 +783,31 @@ async def main_async():
                     if action_mem in ("proposals", "queue"):
                         proposals = memory.list_memory_proposals(status="pending", limit=30)
                         if not proposals:
-                            console.print("\\n  [dim]No pending memory proposals.[/dim]\\n")
+                            console.print("\n  [dim]No pending memory proposals.[/dim]\n")
                         else:
-                            console.print(f"\\n  [bold #38bdf8]Pending Memory Proposals ({len(proposals)})[/bold #38bdf8]")
+                            console.print(f"\n  [bold #38bdf8]Pending Memory Proposals ({len(proposals)})[/bold #38bdf8]")
                             for item in proposals:
                                 console.print(
-                                    f"  [bold]#{item['id']} · {item['key']}[/bold] [dim]({item['category']} · {item['source']} · confidence {item['confidence']})[/dim]\\n"
-                                    f"    {item['content']}\\n"
+                                    f"  [bold]#{item['id']} · {item['key']}[/bold] [dim]({item['category']} · {item['source']} · confidence {item['confidence']})[/dim]\n"
+                                    f"    {item['content']}\n"
                                     f"    [dim]Evidence: {item.get('evidence') or 'not supplied'}[/dim]"
                                 )
-                            console.print("\\n  [dim]/memory review <id> approve|reject [reason][/dim]\\n")
+                            console.print("\n  [dim]/memory review <id> approve|reject [reason][/dim]\n")
                     elif action_mem == "observations":
                         observations = memory.list_learning_observations(status="observed", limit=30)
                         if not observations:
-                            console.print("\\n  [dim]No unreviewed learning observations.[/dim]\\n")
+                            console.print("\n  [dim]No unreviewed learning observations.[/dim]\n")
                         else:
-                            console.print(f"\\n  [bold #38bdf8]Learning Observations ({len(observations)})[/bold #38bdf8]")
+                            console.print(f"\n  [bold #38bdf8]Learning Observations ({len(observations)})[/bold #38bdf8]")
                             for item in observations:
                                 console.print(
-                                    f"  [bold]#{item['id']} · {item['event_type']} · {item['subject']}[/bold]\\n"
-                                    f"    {item['observation']}\\n"
+                                    f"  [bold]#{item['id']} · {item['event_type']} · {item['subject']}[/bold]\n"
+                                    f"    {item['observation']}\n"
                                     f"    [dim]Task: {item['task_context']}[/dim]"
                                 )
-                            console.print("\\n  [dim]Promote only after verifying a reusable fix: record_learning with observation_id. Or /memory dismiss <id> [reason].[/dim]\\n")
-                    elif action_mem == "review" and len(parts_mem) >= 3 and parts_mem[1].isdigit() is False:
-                        console.print("  [yellow]Usage: /memory review <id> approve|reject [reason][/yellow]\\n")
+                            console.print("\n  [dim]Promote only after verifying a reusable fix: record_learning with observation_id. Or /memory dismiss <id> [reason].[/dim]\n")
+                    elif action_mem == "review" and len(parts_mem) >= 3 and not parts_mem[2].isdigit():
+                        console.print("  [yellow]Usage: /memory review <id> approve|reject [reason][/yellow]\n")
                     elif action_mem == "review" and len(parts_mem) >= 3:
                         proposal_id = int(parts_mem[2])
                         decision = parts_mem[3].split(maxsplit=1)[0].lower() if len(parts_mem) > 3 else ""
@@ -820,23 +820,23 @@ async def main_async():
                                 reason=reason,
                             )
                             console.print(
-                                f"\\n  [bold #22c55e]✔ Proposal #{proposal_id} reviewed: {decision}.[/bold #22c55e]\\n"
+                                f"\n  [bold #22c55e]✔ Proposal #{proposal_id} reviewed: {decision}.[/bold #22c55e]\n"
                                 if changed else
-                                f"\\n  [yellow]Proposal #{proposal_id} is missing or already reviewed.[/yellow]\\n"
+                                f"\n  [yellow]Proposal #{proposal_id} is missing or already reviewed.[/yellow]\n"
                             )
                         except ValueError as exc:
-                            console.print(f"\\n  [red]{exc}[/red]\\n")
+                            console.print(f"\n  [red]{exc}[/red]\n")
                     elif action_mem == "dismiss" and len(parts_mem) >= 3 and parts_mem[2].isdigit():
                         reason = parts_mem[3] if len(parts_mem) > 3 else "Dismissed from CLI."
                         changed = memory.dismiss_learning_observation(int(parts_mem[2]), reason=reason)
                         console.print(
-                            f"\\n  [bold #22c55e]✔ Observation #{parts_mem[2]} dismissed.[/bold #22c55e]\\n"
+                            f"\n  [bold #22c55e]✔ Observation #{parts_mem[2]} dismissed.[/bold #22c55e]\n"
                             if changed else
-                            f"\\n  [yellow]Observation #{parts_mem[2]} is missing or already reviewed.[/yellow]\\n"
+                            f"\n  [yellow]Observation #{parts_mem[2]} is missing or already reviewed.[/yellow]\n"
                         )
                     else:
                         render_memories_table(memory.get_all_memories(limit=25))
-                        console.print("  [dim]/memory proposals · /memory observations · /memory review <id> approve|reject · /memory dismiss <id>[/dim]\\n")
+                        console.print("  [dim]/memory proposals · /memory observations · /memory review <id> approve|reject · /memory dismiss <id>[/dim]\n")
                     continue
                 elif cmd in ("/cron", "/tasks"):
                     parts = text.strip().split()
