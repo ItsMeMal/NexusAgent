@@ -76,4 +76,4 @@ class PluginManager:
 
     def register_plugin_tools(self, registry: ToolRegistry):
         for t in self.plugin_tools:
-            registry.register(t)
+            registry.register(t, toolset="plugins")
