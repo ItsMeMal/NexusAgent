@@ -240,12 +240,19 @@ class MemoryGovernanceMixin:
         reviewer: str = "user",
         reason: str = "",
     ) -> bool:
-        """Approve a proposal into active memory or reject it without mutating active facts."""
+        """Atomically approve into active memory or reject without changing active facts."""
         choice = str(decision or "").strip().lower()
         if choice not in {"approve", "reject"}:
             raise ValueError("decision must be approve or reject.")
+        final_status = "approved" if choice == "approve" else "rejected"
+        review_reason = str(reason or "").strip()[:1000] or None
+
+        # Serialize concurrent reviewers. The proposal status and its approved memory
+        # mutation are committed together, so a double approval cannot partially apply.
         with self._get_connection() as conn:
-            row = conn.execute(
+            cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            row = cursor.execute(
                 "SELECT * FROM memory_proposals WHERE id = ? AND status = 'pending'",
                 (int(proposal_id),),
             ).fetchone()
@@ -253,26 +260,53 @@ class MemoryGovernanceMixin:
                 return False
             proposal = dict(row)
 
-        if choice == "approve":
-            self.store_memory(
-                key=proposal["key"],
-                content=proposal["content"],
-                category=proposal["category"],
-                source=proposal["source"],
-                confidence=proposal["confidence"],
-                evidence=proposal.get("evidence"),
-                session_id=proposal.get("session_id"),
-            )
-        final_status = "approved" if choice == "approve" else "rejected"
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
+            if choice == "approve":
+                cursor.execute(
+                    "SELECT * FROM memories WHERE key = ? AND category = ? ORDER BY id LIMIT 1",
+                    (proposal["key"], proposal["category"]),
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    self._record_revision(
+                        cursor,
+                        existing,
+                        action="updated",
+                        changed_by=reviewer or "user",
+                        reason=f"Approved learning proposal #{proposal_id}.",
+                    )
+                    cursor.execute(
+                        """
+                        UPDATE memories
+                        SET content = ?, source = ?, confidence = ?, evidence = ?,
+                            session_id = ?, status = 'active', updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """,
+                        (
+                            proposal["content"], proposal["source"], proposal["confidence"],
+                            proposal["evidence"], proposal["session_id"], existing["id"],
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO memories
+                            (category, key, content, status, source, confidence, evidence, session_id, created_at)
+                        VALUES (?, ?, ?, 'active', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        """,
+                        (
+                            proposal["category"], proposal["key"], proposal["content"],
+                            proposal["source"], proposal["confidence"], proposal["evidence"],
+                            proposal["session_id"],
+                        ),
+                    )
+
             cursor.execute(
                 """
                 UPDATE memory_proposals
                 SET status = ?, review_reason = ?, reviewed_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND status = 'pending'
                 """,
-                (final_status, str(reason or "").strip()[:1000] or None, int(proposal_id)),
+                (final_status, review_reason, int(proposal_id)),
             )
             return cursor.rowcount == 1
 
