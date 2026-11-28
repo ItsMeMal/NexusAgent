@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 #  ⚡ Nolthira Agent Orchestrator - One-Line Windows Installer
 #  Usage: irm https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.ps1 | iex
 # ==============================================================================
@@ -146,6 +146,26 @@ $reqFile = Join-Path $engineDir "requirements.txt"
 & $venvPython -m pip install --quiet -r $reqFile
 Write-Host "  [OK] Dependencies installed successfully." -ForegroundColor Green
 
+# Verify the engine package can actually be imported before reporting success.
+$previousPythonPath = $env:PYTHONPATH
+try {
+    if ($previousPythonPath) {
+        $env:PYTHONPATH = "$engineDir;$previousPythonPath"
+    } else {
+        $env:PYTHONPATH = $engineDir
+    }
+    & $venvPython -c "import nolthira.cli"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Nolthira CLI import check failed. Engine files may be incomplete at $engineDir."
+    }
+} finally {
+    if ($null -eq $previousPythonPath) {
+        Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+    } else {
+        $env:PYTHONPATH = $previousPythonPath
+    }
+}
+
 # 7. Setup default ~/.nolthira/.env if not present
 $globalEnv = Join-Path $nolthiraHome ".env"
 $exampleEnv = Join-Path $engineDir ".env.example"
@@ -169,11 +189,23 @@ $launcherPs1 = Join-Path $binDir "nolthira.ps1"
 
 @"
 @echo off
+set "PYTHONPATH=$engineDir;%PYTHONPATH%"
 "$venvPython" -m nolthira.cli %*
 "@ | Set-Content $launcherCmd -Encoding ASCII
 
 @"
-& "$venvPython" -m nolthira.cli @args
+`$previousPythonPath = `$env:PYTHONPATH
+`$env:PYTHONPATH = if (`$previousPythonPath) { "$engineDir;`$previousPythonPath" } else { "$engineDir" }
+try {
+    & "$venvPython" -m nolthira.cli @args
+} finally {
+    if (`$null -eq `$previousPythonPath) {
+        Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+    } else {
+        `$env:PYTHONPATH = `$previousPythonPath
+    }
+}
+exit `$LASTEXITCODE
 "@ | Set-Content $launcherPs1 -Encoding UTF8
 
 # Remove aliases created by previous installer versions.
