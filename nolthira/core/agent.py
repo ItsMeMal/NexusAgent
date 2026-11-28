@@ -900,6 +900,18 @@ class NolthiraAgent:
                         pending_tc_ids.remove(tc_id)
                     messages.append(tool_msg)
 
+            # Re-check frontend acceptance after the loop too, including step-budget exits.
+            # A model-generated synthesis must never bypass the untouched-starter guard.
+            if website_build_task:
+                final_frontend_issues = _nextjs_frontend_delivery_issues(config.WORKSPACE_DIR)
+                if final_frontend_issues:
+                    final_issue_text = "\\n".join("- " + item for item in final_frontend_issues)
+                    final_response_text = (
+                        "Website implementation is incomplete. The automatic frontend check still detects:\\n"
+                        + final_issue_text + "\\n"
+                        "The Next.js homepage is not a finished implementation, so this task must not be considered complete."
+                    )
+
             # A step budget may end immediately after a tool call. Never return an
             # earlier progress sentence as though it were the final task result.
             if not (final_response_text or "").strip():
