@@ -225,7 +225,7 @@ def get_memory_tools(memory: SQLiteMemory):
     return [
         tool(
             "store_memory",
-            "Persist a memory only when the user explicitly asks Nexus to remember it or approves a proposal. Existing values are versioned before replacement.",
+            "Persist a memory only when the user explicitly asks Nolthira to remember it or approves a proposal. Existing values are versioned before replacement.",
             {
                 "key": {"type": "string", "description": "Stable identifier for this fact"},
                 "content": {"type": "string", "description": "Fact or preference to remember"},
