@@ -822,10 +822,17 @@ class ProviderManager:
                                 if not mid:
                                     continue
 
+                                capabilities = m_dict.get("capabilities") if isinstance(m_dict.get("capabilities"), dict) else {}
+                                limits = m_dict.get("limits") if isinstance(m_dict.get("limits"), dict) else {}
                                 ctx_raw = (
                                     m_dict.get("context_length")
-                                    or (m_dict.get("capabilities") or {}).get("contextWindow")
                                     or m_dict.get("context_window")
+                                    or m_dict.get("contextWindow")
+                                    or m_dict.get("max_context_length")
+                                    or capabilities.get("contextWindow")
+                                    or capabilities.get("context_window")
+                                    or limits.get("context_length")
+                                    or limits.get("context_window")
                                 )
                                 ctx_formatted = _format_context_size(ctx_raw)
                                 tag = _detect_tags(mid, m_dict)
