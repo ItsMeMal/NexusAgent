@@ -99,12 +99,14 @@ class TeamManager:
         skill_manager=None,
         root_dir: Optional[Path] = None,
         parent_registry=None,
+        include_persistent_memory: bool = True,
     ) -> None:
         self.llm = llm_client
         self.memory = memory
         self.skill_manager = skill_manager
         self.root_dir = root_dir or config.ROOT_DIR
         self.parent_registry = parent_registry
+        self.include_persistent_memory = bool(include_persistent_memory)
         self._last_run: Optional[TeamRun] = None
 
     def _build_board(
@@ -151,6 +153,7 @@ class TeamManager:
             board=board,
             parent_registry=self.parent_registry,
             allow_task_creation=allow_task_creation,
+            include_persistent_memory=self.include_persistent_memory,
         )
 
     def _format_context_for_task(self, board: TeamBoard, task: TeamTask) -> str:
