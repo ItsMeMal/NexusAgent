@@ -499,7 +499,7 @@ def render_security_card():
     console.print("    [bold #22c55e]✔ Path Sandbox Guard:[/bold #22c55e]              [green]ACTIVE[/green] [dim](Blocks OS system files C:\\Windows, /etc, /bin)[/dim]")
     console.print("    [bold #22c55e]✔ Subagent Permission Boundary:[/bold #22c55e]     [green]ACTIVE[/green] [dim](Subagents run in scoped tool registries)[/dim]")
     console.print(f"    [bold #22c55e]✔ Auto-Approve Mode:[/bold #22c55e]                [yellow]{'ENABLED' if auto_approve else 'DISABLED (Safe Mode)'}[/yellow]")
-    console.print("    [dim]Tip: Set NEXUS_AUTO_APPROVE=true in .env only if you want fully autonomous unattended execution.[/dim]\n")
+    console.print("    [dim]Tip: Only enable unattended execution in workspaces and tasks you trust.[/dim]\n")
 
 def render_computer_card():
     """Render Computer Use GUI automation status and capabilities."""
@@ -572,7 +572,7 @@ def render_gateway_card(statuses: list):
     console.print("    [bold #38bdf8]/gateway setup[/bold #38bdf8]          [dim]Interactive setup wizard for Telegram / Discord / WhatsApp[/dim]")
     console.print("    [bold #38bdf8]/gateway start \\[all|name][/bold #38bdf8] [dim]Start configured gateways in background[/dim]")
     console.print("    [bold #38bdf8]/gateway stop \\[all|name][/bold #38bdf8]  [dim]Stop running gateways[/dim]")
-    console.print("    [bold #38bdf8]nexus --gateway[/bold #38bdf8]         [dim]Run standalone headless gateway daemon[/dim]\n")
+    console.print("    [bold #38bdf8]nolthira --gateway[/bold #38bdf8]         [dim]Run standalone headless gateway daemon[/dim]\n")
 
 
 
