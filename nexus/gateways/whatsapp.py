@@ -316,7 +316,7 @@ class WhatsAppGateway(BaseGateway):
         from fastapi.responses import PlainTextResponse, JSONResponse
         import uvicorn
 
-        app = FastAPI(title="Nexus WhatsApp Gateway")
+        app = FastAPI(title="Nolthira WhatsApp Gateway")
 
         @app.get("/health")
         async def health():
