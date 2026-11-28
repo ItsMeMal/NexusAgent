@@ -56,7 +56,7 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 ## ⚡ Quick One-Line Installation
 
-Install Nolthira globally into `~/.nolthira`. Existing data under `~/.nexus` is migrated automatically. If both directories exist, only missing files are moved; conflicting files and existing `engine` / `venv` directories remain in `~/.nolthira` as a backup rather than being overwritten.
+Install Nolthira globally into `~/.nolthira`. Existing data under `~/.nexus` is migrated automatically. If both directories exist, only missing files are moved; conflicting files and existing `engine` / `venv` directories remain in `~/.nexus` as a backup rather than being overwritten.
 
 Canonical repository: [`ItsMeMal/NolthiraAgent`](https://github.com/ItsMeMal/NolthiraAgent).
 
