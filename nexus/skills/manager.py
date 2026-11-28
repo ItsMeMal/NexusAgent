@@ -82,13 +82,34 @@ def _default_skill_search_paths() -> List[Path]:
     nolthira_home = NOLTHIRA_HOME
     codebase_root = Path(__file__).resolve().parent.parent.parent
 
+    # Migrate skills previously stored under ~/.agents/nexus/skills.
+    legacy_skills = agents_home / "nexus" / "skills"
+    nolthira_skills = agents_home / "nolthira" / "skills"
+    if legacy_skills.is_dir():
+        try:
+            if not nolthira_skills.exists():
+                nolthira_skills.parent.mkdir(parents=True, exist_ok=True)
+                legacy_skills.replace(nolthira_skills)
+            else:
+                import shutil
+                for legacy_item in legacy_skills.iterdir():
+                    target = nolthira_skills / legacy_item.name
+                    if not target.exists():
+                        shutil.move(str(legacy_item), str(target))
+                try:
+                    legacy_skills.rmdir()
+                except OSError:
+                    pass
+        except OSError:
+            # Keep any conflicting or locked legacy skill files untouched.
+            pass
+
     candidates: List[Optional[Path]] = [
         Path.cwd() / ".skills",
         Path(os.getenv("NOLTHIRA_SKILLS_DIR", "")) if os.getenv("NOLTHIRA_SKILLS_DIR") else None,
         nolthira_home / "skills",
         agents_home / "skills",
         agents_home / "nolthira" / "skills",
-        agents_home / "nolthira" / "skills",  # legacy compatibility
         codebase_root / ".skills",  # bundled core skills (incl. vercel-labs/agent-skills)
     ]
 
