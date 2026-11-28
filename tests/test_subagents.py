@@ -100,7 +100,8 @@ class SubagentConcurrencyTests(unittest.IsolatedAsyncioTestCase):
                 skill_manager=object(),
                 root_dir=Path(tmp),
             )
-            self.assertIn("non-empty list", await manager.delegate_many("s", []))
+            self.assertIn("at least 2", await manager.delegate_many("s", []))
+            self.assertIn("at least 2", await manager.delegate_many("s", [{"goal": "only one"}]))
             self.assertIn("at most 8", await manager.delegate_many(
                 "s", [{"goal": str(i)} for i in range(9)]
             ))
