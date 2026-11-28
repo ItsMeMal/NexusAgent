@@ -399,7 +399,7 @@ _DOWN_STATUS_VALUES = {
 _ACTIVE_STATUS_VALUES = {
     "active", "online", "available", "healthy", "ok", "up", "ready", "enabled",
 }
-_DEFAULT_HEALTH_CACHE_PATH = Path.home() / ".nexus" / "model_health.json"
+_DEFAULT_HEALTH_CACHE_PATH = config.NOLTHIRA_HOME / "model_health.json"
 
 
 class ModelHealthCache:
