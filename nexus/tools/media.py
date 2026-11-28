@@ -1,5 +1,5 @@
 """
-nexus/tools/media.py
+nolthira/tools/media.py
 Multimodal output tools: image_generate and text_to_speech (TTS).
 """
 
@@ -41,7 +41,7 @@ def get_media_tools(root_dir: Path, api_key: str = "", api_base: str = "") -> Li
             return "Error: 'prompt' is required."
         base = (api_base or config.API_BASE).rstrip("/")
         key = api_key or config.API_KEY
-        img_model = model or os.getenv("NEXUS_IMAGE_MODEL", "dall-e-3")
+        img_model = model or os.getenv("NOLTHIRA_IMAGE_MODEL", "dall-e-3")
         url = f"{base}/images/generations"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
         payload = {"model": img_model, "prompt": prompt.strip(), "size": size, "n": 1}
@@ -78,7 +78,7 @@ def get_media_tools(root_dir: Path, api_key: str = "", api_base: str = "") -> Li
             return "Error: 'text' cannot be empty."
         base = (api_base or config.API_BASE).rstrip("/")
         key = api_key or config.API_KEY
-        tts_model = model or os.getenv("NEXUS_TTS_MODEL", "tts-1")
+        tts_model = model or os.getenv("NOLTHIRA_TTS_MODEL", "tts-1")
         out = _resolve_out(output_path, "speech", "mp3")
 
         # 1. Try OpenAI-compatible /audio/speech endpoint
