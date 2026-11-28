@@ -356,6 +356,62 @@ def _format_context_size(raw_val: Any) -> str:
     except Exception:
         return str(raw_val) if raw_val else "Auto"
 
+def parse_context_window_tokens(raw_val: Any) -> int:
+    """Convert explicit context-window metadata (e.g. 128k) into token counts."""
+    if isinstance(raw_val, bool) or raw_val is None:
+        return 0
+    if isinstance(raw_val, (int, float)):
+        return max(0, int(raw_val))
+    value = str(raw_val).strip().lower().replace(",", "")
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*([kmb])?(?:\s*tokens?)?", value)
+    if not match:
+        return 0
+    number = float(match.group(1))
+    multiplier = {"k": 1_000, "m": 1_000_000, "b": 1_000_000_000}.get(match.group(2), 1)
+    return max(0, int(number * multiplier))
+
+
+def extract_model_context_window(payload: Any, model_id: str) -> int:
+    """Read context size only from explicit metadata for the exact model ID."""
+    if isinstance(payload, list):
+        raw_models = payload
+    elif isinstance(payload, dict):
+        raw_models = payload.get("data") or payload.get("models") or []
+    else:
+        return 0
+    if not isinstance(raw_models, list):
+        return 0
+
+    target_id = str(model_id or "").strip().casefold()
+    if not target_id:
+        return 0
+
+    for model in raw_models:
+        if not isinstance(model, dict):
+            continue
+        listed_id = model.get("id") or model.get("name") or model.get("model")
+        if str(listed_id or "").strip().casefold() != target_id:
+            continue
+
+        capabilities = model.get("capabilities") if isinstance(model.get("capabilities"), dict) else {}
+        limits = model.get("limits") if isinstance(model.get("limits"), dict) else {}
+        candidates = (
+            model.get("context_length"),
+            model.get("context_window"),
+            model.get("contextWindow"),
+            model.get("max_context_length"),
+            capabilities.get("contextWindow"),
+            capabilities.get("context_window"),
+            limits.get("context_length"),
+            limits.get("context_window"),
+        )
+        for candidate in candidates:
+            parsed = parse_context_window_tokens(candidate)
+            if parsed:
+                return parsed
+        return 0
+    return 0
+
 def _detect_tags(model_id: str, raw_meta: Dict[str, Any]) -> str:
     mid = model_id.lower()
     tags = []
@@ -629,6 +685,46 @@ class ProviderManager:
             return PROVIDERS["custom"]
 
     @staticmethod
+    async def get_model_context_window(
+        model_id: str,
+        api_base: str,
+        api_key: str = "",
+        token_provider: Optional[Any] = None,
+    ) -> int:
+        """Fetch context metadata for the exact active model without running health probes."""
+        target_base = str(api_base or "").rstrip("/")
+        if not target_base or not model_id:
+            return 0
+
+        auth_key = str(api_key or "").strip()
+        if token_provider is not None:
+            try:
+                auth_key = str(await token_provider() or "").strip()
+            except Exception:
+                return 0
+
+        headers = {"Accept": "application/json"}
+        if auth_key:
+            headers["Authorization"] = f"Bearer {auth_key}"
+        if "openrouter.ai" in target_base:
+            headers["HTTP-Referer"] = "https://github.com/ItsMeMal/NolthiraAgent"
+
+        try:
+            async with httpx.AsyncClient(timeout=3.5, follow_redirects=True) as client:
+                response = await client.get(f"{target_base}/models", headers=headers)
+                if response.status_code in (401, 403) and auth_key and token_provider is None:
+                    response = await client.get(
+                        f"{target_base}/models",
+                        headers={"Accept": "application/json", "x-api-key": auth_key},
+                    )
+                if response.status_code != 200:
+                    return 0
+                return extract_model_context_window(response.json(), model_id)
+        except Exception:
+            # Metadata is optional; never block agent startup when a router omits /models.
+            return 0
+
+    @staticmethod
     async def get_models_with_health(
         provider: ProviderProfile,
         api_key: str = "",
@@ -730,7 +826,6 @@ class ProviderManager:
                                     m_dict.get("context_length")
                                     or (m_dict.get("capabilities") or {}).get("contextWindow")
                                     or m_dict.get("context_window")
-                                    or m_dict.get("max_tokens")
                                 )
                                 ctx_formatted = _format_context_size(ctx_raw)
                                 tag = _detect_tags(mid, m_dict)
