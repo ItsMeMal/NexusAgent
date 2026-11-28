@@ -184,6 +184,10 @@ class ToolsetManager:
             if current is None:
                 normalized["profiles"][builtin_name] = copy.deepcopy(builtin_profile)
                 continue
+            if builtin_name == "researcher":
+                # Credential mutation is never available to read-oriented roles,
+                # including installations with an existing v2 toolset config.
+                current["disabled_tools"] = sorted(set(current.get("disabled_tools", [])) | {"update_env"})
             if legacy_config:
                 if builtin_profile.get("extends") and not current.get("extends"):
                     current["extends"] = builtin_profile["extends"]
