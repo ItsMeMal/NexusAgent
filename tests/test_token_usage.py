@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock
 
-from nexus.core.llm import LLMClient, normalize_token_usage
+from nolthira.core.llm import LLMClient, normalize_token_usage
 
 
 class TokenUsageNormalizationTests(unittest.IsolatedAsyncioTestCase):
@@ -33,7 +33,7 @@ class TokenUsageNormalizationTests(unittest.IsolatedAsyncioTestCase):
         client._standard_completion = AsyncMock(return_value={
             "role": "assistant",
             "content": "done",
-            "_nexus_usage": {"prompt_tokens": 120, "completion_tokens": 35, "total_tokens": 155},
+            "_nolthira_usage": {"prompt_tokens": 120, "completion_tokens": 35, "total_tokens": 155},
         })
         result = await client.chat_completion(messages=[{"role": "user", "content": "hello"}])
         self.assertEqual(result["content"], "done")
