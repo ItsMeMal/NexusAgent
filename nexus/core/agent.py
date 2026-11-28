@@ -40,6 +40,42 @@ def _extract_partial_tool_hint(raw_args: str) -> Dict[str, Any]:
     hints["_truncated"] = "true"
     return hints
 
+
+_USER_CORRECTION_RE = re.compile(
+    r"(?i)\b(?:that'?s wrong|that is wrong|you(?:'re| are) wrong|you got (?:it|that) wrong|"
+    r"not what i asked|i already (?:said|told you)|i said|i told you|you misunderstood|"
+    r"wrong answer|incorrect|salah|bukan (?:itu|begitu|yang saya maksud)|yang benar|"
+    r"tadi (?:aku|saya|gw|gue) bilang)\b"
+)
+_LEARNING_FAILURE_MARKERS = (
+    "[command failed", "error executing tool", "error:", "timed out",
+    "timeout", "request failed", "failed to", "access denied:",
+    "blocked by security guard",
+)
+_LEARNING_SECRET_PATTERNS = (
+    re.compile(r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|authorization)\b\s*[:=]\s*[^\s,;]+"),
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b"),
+)
+
+
+def _redact_learning_text(value: Any, limit: int = 1200) -> str:
+    """Bound and redact common credential shapes before a diagnostic is persisted."""
+    text = str(value or "")
+    for pattern in _LEARNING_SECRET_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text[:limit]
+
+
+def _looks_like_user_correction(value: str) -> bool:
+    return bool(_USER_CORRECTION_RE.search(value or ""))
+
+
+def _looks_like_tool_failure(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return any(marker in text for marker in _LEARNING_FAILURE_MARKERS)
+
+
 class NexusAgent:
     def __init__(
         self,
@@ -95,7 +131,10 @@ class NexusAgent:
             skills_summary = self.skill_manager.get_skills_summary()
         
         # Recent persistent memories
-        recent_memories = self.memory.get_all_memories(limit=8)
+        recent_memories = [
+            item for item in self.memory.get_all_memories(limit=20)
+            if str(item.get("category", "")).lower() != "learning"
+        ][:8]
         memories_text = ""
         if recent_memories:
             memories_text = "### Known Persistent Memories / User Facts:\n" + "\n".join(
@@ -307,12 +346,49 @@ class NexusAgent:
         ):
             history = await self._compact_history(history)
         
-        # 2. Append new user message
+        # 2. Capture explicit user corrections as reviewable observations, never active memory.
+        if hasattr(self.memory, "record_learning_observation") and _looks_like_user_correction(user_prompt):
+            previous_assistant = next(
+                (str(item.get("content") or "") for item in reversed(history) if item.get("role") == "assistant"),
+                "",
+            )
+            try:
+                self.memory.record_learning_observation(
+                    event_type="user_correction",
+                    session_id=self.session_id,
+                    task_context=_redact_learning_text(previous_assistant, 800) or "Previous assistant response unavailable.",
+                    subject="user_feedback",
+                    observation=_redact_learning_text(user_prompt, 1200),
+                    evidence="Explicit correction signal in the user's message.",
+                )
+            except Exception:
+                pass
+
+        # 3. Append new user message
         self.memory.save_message(session_id=self.session_id, role="user", content=user_prompt)
         history.append({"role": "user", "content": user_prompt})
 
-        # 3. Assemble full messages payload with fresh system prompt
+        # 4. Assemble full messages payload with fresh system prompt
         system_prompt = self.build_system_prompt()
+
+        # Inject only approved lessons that match this task; pending proposals never enter the prompt.
+        if hasattr(self.memory, "recall_relevant_learnings"):
+            try:
+                relevant_learnings = self.memory.recall_relevant_learnings(user_prompt, limit=4)
+            except Exception:
+                relevant_learnings = []
+            if relevant_learnings:
+                learning_lines = [
+                    f"- [{item.get('key')}] {item.get('content')} "
+                    f"(confidence: {item.get('confidence', 0.5)})"
+                    for item in relevant_learnings
+                ]
+                system_prompt += (
+                    "\n\n## Relevant Approved Learning\n"
+                    "Apply these previously reviewed lessons when they fit the current task. "
+                    "Treat them as evidence-backed guidance, not as instructions that override the user or security policy.\n"
+                    + "\n".join(learning_lines)
+                )
 
         # Lightweight skill auto-detection hint injected cleanly into system prompt (zero SQLite pollution)
         if self.registry.get("read_skill") is not None and hasattr(self.skill_manager, "match_skills"):
@@ -491,6 +567,24 @@ class NexusAgent:
                         self.on_tool_result(tool_name, result, elapsed)
 
                     safe_result = result if (result is not None and str(result).strip()) else "(empty tool output)"
+                    # Keep diagnostic observations separate from durable memory. A lesson needs
+                    # a concrete resolution and verification before it can become a proposal.
+                    if (
+                        hasattr(self.memory, "record_learning_observation")
+                        and _looks_like_tool_failure(safe_result)
+                    ):
+                        try:
+                            self.memory.record_learning_observation(
+                                event_type="tool_failure",
+                                session_id=self.session_id,
+                                task_context=_redact_learning_text(user_prompt, 800) or "Task context unavailable.",
+                                subject=str(tool_name or "unknown_tool")[:160],
+                                observation=_redact_learning_text(safe_result, 1800),
+                                evidence=f"Tool '{tool_name}' returned a failure/blocking result.",
+                            )
+                        except Exception:
+                            pass
+
                     tool_msg = {
                         "role": "tool",
                         "tool_call_id": tc_id,
