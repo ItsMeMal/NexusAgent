@@ -182,8 +182,15 @@ class SkillManager:
 
     def get_skill(self, name: str) -> Optional[Skill]:
         """Search all directories for a skill by name (exact, then normalized fallback)."""
-        clean = (name or "").strip()
-        if not clean:
+        raw_name = (name or "").strip()
+        if not raw_name:
+            return None
+        # Skill identifiers are names, never paths. Prevent traversal through read_skill.
+        if raw_name.lower().endswith(".md"):
+            raw_name = raw_name[:-3]
+        try:
+            clean = self._normalize_skill_name(raw_name)
+        except ValueError:
             return None
         for directory in self.all_search_dirs():
             for candidate in [
@@ -392,8 +399,6 @@ class SkillManager:
         instructions = "\n".join(lines[body_start:]).strip()
         if len(instructions) < 40:
             issues.append("Instruction body is too short; add actionable steps and constraints.")
-        if not skill.writable:
-            issues.append("Skill is read-only; validation does not grant permission to modify it.")
         return {
             "valid": not issues,
             "name": skill.name,
