@@ -1,5 +1,6 @@
 import os
 import warnings
+import shutil
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -13,28 +14,92 @@ CODEBASE_DIR = Path(__file__).resolve().parent.parent
 # Current working directory where user invoked the command
 WORKSPACE_DIR = Path.cwd()
 
-# User home directory for global Nexus agent configuration, state, and memory:
-# Windows: C:\Users\<user>\.nexus
-# Linux: /home/<user>/.nexus (or /root/.nexus)
-# macOS: /Users/<user>/.nexus
-NEXUS_HOME = Path.home() / ".nexus"
+# Canonical user home for Nolthira settings, credentials, sessions, and memory.
+# Legacy ~/.nexus is migrated without overwriting files already present in ~/.nolthira.
+NOLTHIRA_HOME = Path.home() / ".nolthira"
+LEGACY_NEXUS_HOME = Path.home() / ".nexus"
+_PROTECTED_MERGE_DIRS = {"engine", "venv", ".git"}
+
+
+def _path_exists(path: Path) -> bool:
+    return path.exists() or path.is_symlink()
+
+
+def _merge_missing_home_entries(source: Path, destination: Path) -> int:
+    """Move missing entries only; preserve collisions in the legacy directory."""
+    moved = 0
+    destination.mkdir(parents=True, exist_ok=True)
+    for entry in list(source.iterdir()):
+        target = destination / entry.name
+        source_is_dir = entry.is_dir() and not entry.is_symlink()
+        if _path_exists(target):
+            target_is_dir = target.is_dir() and not target.is_symlink()
+            if source_is_dir and target_is_dir and entry.name.casefold() not in _PROTECTED_MERGE_DIRS:
+                moved += _merge_missing_home_entries(entry, target)
+            continue
+        try:
+            shutil.move(str(entry), str(target))
+            moved += 1
+        except OSError:
+            continue
+    try:
+        source.rmdir()
+    except OSError:
+        pass
+    return moved
+
+
+def migrate_legacy_home(legacy_home: Path, nolthira_home: Path) -> bool:
+    """Migrate ~/.nexus to ~/.nolthira without overwriting destination data."""
+    legacy_home = Path(legacy_home).expanduser()
+    nolthira_home = Path(nolthira_home).expanduser()
+    if legacy_home.is_symlink() or not legacy_home.is_dir():
+        return False
+    if nolthira_home.is_symlink():
+        raise OSError(f"Refusing to migrate into a symlinked home path: {nolthira_home}")
+    if _path_exists(nolthira_home):
+        if not nolthira_home.is_dir():
+            raise NotADirectoryError(f"Nolthira home path is not a directory: {nolthira_home}")
+        _merge_missing_home_entries(legacy_home, nolthira_home)
+        return True
+    try:
+        legacy_home.replace(nolthira_home)
+        return True
+    except OSError:
+        nolthira_home.mkdir(parents=True, exist_ok=True)
+        _merge_missing_home_entries(legacy_home, nolthira_home)
+        return True
+
+
 try:
-    NEXUS_HOME.mkdir(parents=True, exist_ok=True)
-except Exception:
-    pass
+    migrate_legacy_home(LEGACY_NEXUS_HOME, NOLTHIRA_HOME)
+    NOLTHIRA_HOME.mkdir(parents=True, exist_ok=True)
+    if LEGACY_NOLTHIRA_HOME.exists():
+        warnings.warn(
+            f"Some legacy files remain in {LEGACY_NEXUS_HOME}: conflicting files or existing "
+            "engine/venv directories were kept as backups and were not overwritten.",
+            UserWarning,
+            stacklevel=2,
+        )
+except OSError as exc:
+    warnings.warn(f"Could not fully migrate the legacy Nolthira home directory: {exc}", UserWarning)
+
+
+# Backward-compatible alias; its resolved path is now ~/.nolthira.
+NEXUS_HOME = NOLTHIRA_HOME
 
 # Determine primary .env file with priority:
 # 1. Local workspace .env (project-specific override)
-# 2. Global ~/.nexus/.env (persistent global user config)
+# 2. Global ~/.nolthira/.env (persistent global user config)
 # 3. Codebase .env (fallback)
 if (WORKSPACE_DIR / ".env").exists():
     ENV_PATH = WORKSPACE_DIR / ".env"
-elif (NEXUS_HOME / ".env").exists():
-    ENV_PATH = NEXUS_HOME / ".env"
+elif (NOLTHIRA_HOME / ".env").exists():
+    ENV_PATH = NOLTHIRA_HOME / ".env"
 elif (CODEBASE_DIR / ".env").exists():
     ENV_PATH = CODEBASE_DIR / ".env"
 else:
-    ENV_PATH = NEXUS_HOME / ".env"
+    ENV_PATH = NOLTHIRA_HOME / ".env"
 
 load_dotenv(ENV_PATH, override=True)
 
@@ -42,7 +107,8 @@ class Config:
     CODEBASE_DIR: Path = CODEBASE_DIR
     WORKSPACE_DIR: Path = WORKSPACE_DIR
     ROOT_DIR: Path = WORKSPACE_DIR  # Primary working directory for tools
-    NEXUS_HOME: Path = NEXUS_HOME
+    NOLTHIRA_HOME: Path = NOLTHIRA_HOME
+    NEXUS_HOME: Path = NOLTHIRA_HOME  # Backward-compatible attribute alias
     ENV_PATH: Path = ENV_PATH
 
     # Persona & Skills paths
@@ -50,8 +116,8 @@ class Config:
         WORKSPACE_DIR / "SOUL.md"
         if (WORKSPACE_DIR / "SOUL.md").exists()
         else (
-            NEXUS_HOME / "SOUL.md"
-            if (NEXUS_HOME / "SOUL.md").exists()
+            NOLTHIRA_HOME / "SOUL.md"
+            if (NOLTHIRA_HOME / "SOUL.md").exists()
             else CODEBASE_DIR / "SOUL.md"
         )
     )
@@ -62,8 +128,8 @@ class Config:
             WORKSPACE_DIR / ".skills"
             if (WORKSPACE_DIR / ".skills").exists()
             else (
-                NEXUS_HOME / "skills"
-                if (NEXUS_HOME / "skills").exists()
+                NOLTHIRA_HOME / "skills"
+                if (NOLTHIRA_HOME / "skills").exists()
                 else (
                     Path.home() / ".agents" / "skills"
                     if (Path.home() / ".agents" / "skills").exists()
@@ -88,14 +154,14 @@ class Config:
     TEMPERATURE: float = float(os.getenv("NEXUS_TEMPERATURE", "0.7"))
     MAX_STEPS: int = int(os.getenv("NEXUS_MAX_STEPS", "25"))
 
-    # Storage (Global persistent memory in ~/.nexus/nexus_memory.db by default)
+    # Storage (Global persistent memory in ~/.nolthira/nexus_memory.db by default)
     _default_db = (
-        NEXUS_HOME / "nexus_memory.db"
-        if NEXUS_HOME.exists()
+        NOLTHIRA_HOME / "nexus_memory.db"
+        if NOLTHIRA_HOME.exists()
         else CODEBASE_DIR / "nexus_memory.db"
     )
     MEMORY_DB_PATH: Path = Path(os.getenv("NEXUS_MEMORY_DB", str(_default_db)))
-    SCREENSHOTS_DIR: Path = NEXUS_HOME / "screenshots"
+    SCREENSHOTS_DIR: Path = NOLTHIRA_HOME / "screenshots"
     AUTO_APPROVE: bool = os.getenv("NEXUS_AUTO_APPROVE", "false").lower() in ("true", "1", "yes")
 
     # Execution Sandbox Backend (local | docker | ssh)
