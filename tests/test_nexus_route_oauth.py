@@ -4,13 +4,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-from nexus.providers.nexus_route_oauth import NexusRouteOAuth
+from nolthira.providers.NOLTHIRA_ROUTE_MODULE import NOLTHIRA_ROUTE_CLASS
 
 
-class NexusRouteOAuthTests(unittest.IsolatedAsyncioTestCase):
+class NOLTHIRA_ROUTE_CLASSTests(unittest.IsolatedAsyncioTestCase):
     async def test_refresh_rotates_and_persists_token_pair(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            oauth = NexusRouteOAuth(store_path=Path(temp_dir) / "oauth" / "route.json")
+            oauth = NOLTHIRA_ROUTE_CLASS(store_path=Path(temp_dir) / "oauth" / "route.json")
             oauth._save({
                 "access_token": "expired",
                 "refresh_token": "refresh-old",
@@ -30,7 +30,7 @@ class NexusRouteOAuthTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_session_requires_signin(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            oauth = NexusRouteOAuth(store_path=Path(temp_dir) / "missing.json")
+            oauth = NOLTHIRA_ROUTE_CLASS(store_path=Path(temp_dir) / "missing.json")
             with self.assertRaisesRegex(RuntimeError, "Use /provider"):
                 await oauth.get_access_token()
 
