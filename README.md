@@ -56,7 +56,7 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 ## ⚡ Quick One-Line Installation
 
-Install Nolthira globally into your existing home directory (`~/.nexus`). The existing path is retained so your current settings, sessions, OAuth login and memory remain available. The installer updates an existing engine checkout to the new GitHub remote before pulling updates:
+Install Nolthira globally into `~/.nolthira`. Existing data under `~/.nexus` is migrated automatically. If both directories exist, only missing files are moved; conflicting files and existing `engine` / `venv` directories remain in `~/.nolthira` as a backup rather than being overwritten.
 
 Canonical repository: [`ItsMeMal/NolthiraAgent`](https://github.com/ItsMeMal/NolthiraAgent).
 
@@ -71,9 +71,9 @@ curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install
 ```
 
 > **Home Directory Layout:**
-> - **Windows:** `C:\Users\<username>\.nexus\`
-> - **Linux:** `/home/<username>/.nexus/` (or `/root/.nexus/`)
-> - **macOS:** `/Users/<username>/.nexus/`
+> - **Windows:** `C:\Users\<username>\.nolthira\`
+> - **Linux:** `/home/<username>/.nolthira/` (or `/root/.nolthira/`)
+> - **macOS:** `/Users/<username>/.nolthira/`
 
 ---
 
@@ -109,7 +109,7 @@ For regional services, the provider wizard lets you override the default base UR
 ## 🚀 Quick Usage
 
 ### First-time setup
-Run `nolthira setup` (or `nolthira --setup`) for the built-in onboarding wizard. Choose **Mallss Nexus Route (Account Login)** to sign in with your existing gateway website account. Nolthira Agent uses OAuth Authorization Code + PKCE, stores refreshable tokens under `~/.nexus/oauth/`, and never writes your website password or OAuth token to the project `.env`.
+Run `nolthira setup` (or `nolthira --setup`) for the built-in onboarding wizard. Choose **Mallss Nexus Route (Account Login)** to sign in with your existing gateway website account. Nolthira Agent uses OAuth Authorization Code + PKCE, stores refreshable tokens under `~/.nolthira/oauth/`, and never writes your website password or OAuth token to the project `.env`.
 
 ### 1. Launch Directly from Any Terminal
 Open PowerShell or Command Prompt in any project folder:
@@ -165,7 +165,7 @@ Type `/` in the prompt for real-time autocomplete:
 ---
 ## 🧰 Configurable Toolsets & Subagent Runtime
 
-Nolthira stores toolset policy in `~/.nexus/toolsets.json`. The file is created atomically when a setting is changed. Profiles are applied to the live tool registry; disabled tools are unavailable to the model and are also rejected if called by name or alias.
+Nolthira stores toolset policy in `~/.nolthira/toolsets.json`. The file is created atomically when a setting is changed. Profiles are applied to the live tool registry; disabled tools are unavailable to the model and are also rejected if called by name or alias.
 
 Built-in profiles:
 
