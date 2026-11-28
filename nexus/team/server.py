@@ -1,5 +1,5 @@
 """
-nexus/team/server.py
+nolthira/team/server.py
 Always-on Nolthira AI Team Dashboard Server (FastAPI + WebSocket).
 
 Runs in background when Nolthira CLI starts (http://127.0.0.1:7891 by default).
@@ -32,7 +32,7 @@ from .manager import PRESET_TEAMS, TeamManager, TeamRun, auto_mode
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PORT = int(os.getenv("NEXUS_DASHBOARD_PORT", "7891"))
+DEFAULT_PORT = int(os.getenv("NOLTHIRA_DASHBOARD_PORT", "7891"))
 
 
 class DashboardState:
