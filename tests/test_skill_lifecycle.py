@@ -59,6 +59,8 @@ class SkillLifecycleTests(unittest.TestCase):
         self.assertIsNotNone(skill)
         self.assertFalse(skill.writable)
         self.assertEqual(skill.source, str(self.external.resolve()))
+        # Read-only is an authorization property, not a content validation failure.
+        self.assertTrue(self.manager.validate_skill("shared-debug")["valid"])
 
         with self.assertRaises(PermissionError):
             self.manager.update_skill(
@@ -69,6 +71,16 @@ class SkillLifecycleTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.manager.delete_skill("shared-debug")
         self.assertTrue(external_file.exists())
+
+    def test_skill_lookup_rejects_path_traversal(self):
+        outside = Path(self.tmp.name) / "outside.md"
+        outside.write_text(
+            "# Skill: outside\\nDescription: Outside file.\\n\\n"
+            "This content must not be reachable through a skill identifier lookup.\\n",
+            encoding="utf-8",
+        )
+        self.assertIsNone(self.manager.get_skill("../outside"))
+        self.assertIsNone(self.manager.get_skill(r"..\\outside"))
 
     def test_primary_source_wins_on_normalized_name_collision(self):
         self.primary.mkdir(parents=True)
