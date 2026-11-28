@@ -42,13 +42,14 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 * **Computer Use & GUI Automation**: `computer` (desktop screenshots with vision analysis, mouse click/move/drag, typing, hotkeys, scrolling, app launch)
 * **Filesystem & Code**: `read_file`, `write_file`, `patch_file`, `list_dir`, `search_files`
-* **Terminal**: `run_command` (guarded shell execution)
+* **Terminal**: `run_command` (guarded foreground/background execution), `process` (list/poll/log/wait/kill/write tracked background sessions)
 * **Vision**: `view_image` (multimodal image & diagram analysis)
 * **Web Intelligence**: `web_search`, `web_extract`
 * **Workspace Checkpoints & Recovery**: `create_checkpoint`, `list_checkpoints`, `inspect_checkpoint`, `restore_checkpoint` (safe overlay by default; exact rollback requires explicit confirmation)
 * **Governed Memory**: `store_memory`, `propose_memory`, `record_learning`, `recall_memory`, `list_all_memories`, `list_memory_proposals`, `review_memory_proposal`, `archive_memory`, `restore_memory`, `delete_memory`, `memory_history`, `session_search`
 * **Managed Skills**: `list_skills`, `read_skill`, `create_skill`, `update_skill`, `delete_skill`, `validate_skill`
 * **Background Automations**: `schedule_task`, `list_scheduled_tasks`, `cancel_scheduled_task`
+* **Session Task Planning**: `todo` (session-scoped add, update, complete, remove, and list)
 * **Multi-Agent Orchestration**: `delegate_task`
 
 ---
@@ -117,6 +118,7 @@ Type `/` in the prompt for real-time autocomplete:
 * `/memory observations` — Inspect captured tool failures and explicit corrections
 * `/memory review <id> approve|reject` — Explicitly approve or reject a proposal
 * `/memory dismiss <id> [reason]` — Dismiss an observation without promoting it
+* `/todo` — View the session task plan (`/todo add|start|block|complete|update|remove`)
 * `/cron` — View scheduled background jobs and automations
 * `/sessions` — List past conversation sessions stored in SQLite
 * `/new` — Start a fresh, clean context session
