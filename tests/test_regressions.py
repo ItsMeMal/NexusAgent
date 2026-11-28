@@ -7,17 +7,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from nexus.gateways.manager import GatewayManager
-from nexus.gateways.slack import SlackGateway, parse_slack_api_response
-from nexus.gateways.whatsapp import WhatsAppGateway
-from nexus.tools.filesystem import get_filesystem_tools
-from nexus.tools.base import ToolRegistry
-from nexus.tools.project import inspect_project, get_project_tools
+from nolthira.gateways.manager import GatewayManager
+from nolthira.gateways.slack import SlackGateway, parse_slack_api_response
+from nolthira.gateways.whatsapp import WhatsAppGateway
+from nolthira.tools.filesystem import get_filesystem_tools
+from nolthira.tools.base import ToolRegistry
+from nolthira.tools.project import inspect_project, get_project_tools
 
 
 class CodingEngineRegressionTests(unittest.IsolatedAsyncioTestCase):
     async def test_runtime_recovery_does_not_reintroduce_chunked_source_assembly(self):
-        agent_source = (Path(__file__).resolve().parents[1] / "nexus" / "core" / "agent.py").read_text(
+        agent_source = (Path(__file__).resolve().parents[1] / "nolthira" / "core" / "agent.py").read_text(
             encoding="utf-8"
         )
         self.assertNotIn("write_file` + `append_file` calls", agent_source)
