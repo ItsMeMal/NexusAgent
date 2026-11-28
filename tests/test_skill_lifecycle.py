@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nexus.skills import SkillManager
-from nexus.tools.skill_tools import get_skill_tools
+from nolthira.skills import SkillManager
+from nolthira.tools.skill_tools import get_skill_tools
 
 
 class SkillLifecycleTests(unittest.TestCase):
