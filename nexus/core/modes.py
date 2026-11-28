@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set
 
 @dataclass(frozen=True)
 class AgentMode:
-    """Behavioral operating mode for NexusAgent."""
+    """Behavioral operating mode for Nolthira Agent."""
     id: str
     label: str
     icon: str              # Crisp monospace-safe glyph (no wide emoji)
