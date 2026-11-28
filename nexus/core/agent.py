@@ -387,7 +387,7 @@ class NexusAgent:
                         had_trunc_error = False
                         messages.append({
                             "role": "user",
-                            "content": "Do NOT stop to report the truncated tool call. Immediately continue executing by splitting the file into smaller `write_file` + `append_file` calls (<=100 lines per call, 1-2 tool calls per step).",
+                            "content": "Recover from the truncated tool call with a smaller, valid operation. Every write_file call must contain one complete, syntactically valid file. If the implementation is too large, split it at real module or file boundaries and write each complete file separately. Never assemble source files, schemas, manifests, or configuration by appending partial chunks; use append_file only for genuinely append-only data.",
                         })
                         continue
                     if (
@@ -429,7 +429,7 @@ class NexusAgent:
                             target_hint = f" for '{args['path']}'" if args.get("path") else ""
                             arg_parse_err = (
                                 f"Error: Tool '{tool_name}'{target_hint} JSON arguments were invalid or truncated ({je}). "
-                                "Emit ONLY 1 `write_file` call (<= 80 lines) per turn and use `append_file` for remaining sections."
+                                "Retry with a valid, compact JSON object. Keep each write_file payload a complete, syntactically valid file. If it is too large, split the implementation at real module/file boundaries rather than splitting one file into arbitrary chunks. Never use append_file to assemble source files, schemas, manifests, or configuration."
                             )
                     else:
                         args = {}
