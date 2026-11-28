@@ -16,6 +16,15 @@ from nexus.tools.project import inspect_project, get_project_tools
 
 
 class CodingEngineRegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_runtime_recovery_does_not_reintroduce_chunked_source_assembly(self):
+        agent_source = (Path(__file__).resolve().parents[1] / "nexus" / "core" / "agent.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("write_file` + `append_file` calls", agent_source)
+        self.assertNotIn("<= 80 lines", agent_source)
+        self.assertNotIn("<=100 lines per call", agent_source)
+        self.assertIn("Never assemble source files", agent_source)
+
     async def test_project_inspection_finds_manifests_and_instructions_without_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
