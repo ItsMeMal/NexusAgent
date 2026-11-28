@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 #  ⚡ Nolthira Agent Orchestrator - Universal Linux & macOS Installer
-#  Usage: curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.sh | bash
+#  Usage: curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh | bash
 # ==============================================================================
 
 set -e
@@ -94,7 +94,7 @@ if [ -d "${ENGINE_DIR}/.git" ]; then
 else
     printf "${CYAN}  [..] Downloading Nolthira Agent Engine from GitHub...\n${NC}"
     rm -rf "${ENGINE_DIR}"
-    git clone https://github.com/ItsMeMal/NolthiraAgent.git "${ENGINE_DIR}" --quiet
+    git clone https://github.com/ItsMeMal/NexusAgent.git "${ENGINE_DIR}" --quiet
     cd "${ENGINE_DIR}" 2>/dev/null || true
     git sparse-checkout set nexus .skills pyproject.toml .env.example README.md 2>/dev/null || true
 fi

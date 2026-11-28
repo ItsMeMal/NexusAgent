@@ -56,16 +56,18 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 ## ⚡ Quick One-Line Installation
 
-Install Nolthira globally into your home directory (`~/.nexus`):
+Install Nolthira globally into your existing home directory (`~/.nexus`). The existing path is retained so your current settings, sessions, OAuth login and memory remain available:
+
+The GitHub repository URL below intentionally remains `ItsMeMal/NexusAgent` until the repository itself is renamed.
 
 ### Windows (PowerShell)
 ```powershell
-irm https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.ps1 | iex
 ```
 
 ### Linux & macOS (curl)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NolthiraAgent/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh | bash
 ```
 
 > **Home Directory Layout:**
@@ -107,7 +109,7 @@ For regional services, the provider wizard lets you override the default base UR
 ## 🚀 Quick Usage
 
 ### First-time setup
-Run `nolthira setup` (or `nolthira --setup`) for the built-in onboarding wizard. Choose **MALLSS_NEXUS_ROUTE (Account Login)** to sign in with your existing gateway website account. NolthiraAgent uses OAuth Authorization Code + PKCE, stores refreshable tokens under `~/.nexus/oauth/`, and never writes your website password or OAuth token to the project `.env`.
+Run `nolthira setup` (or `nolthira --setup`) for the built-in onboarding wizard. Choose **Mallss Nexus Route (Account Login)** to sign in with your existing gateway website account. Nolthira Agent uses OAuth Authorization Code + PKCE, stores refreshable tokens under `~/.nexus/oauth/`, and never writes your website password or OAuth token to the project `.env`.
 
 ### 1. Launch Directly from Any Terminal
 Open PowerShell or Command Prompt in any project folder:
@@ -142,7 +144,7 @@ Type `/` in the prompt for real-time autocomplete:
 * `/tools` — Inspect currently registered autonomous tools
 * `/status` — View agent system diagnostics and active telemetry
 * `/tokens` or `/usage` — View last-request input/output/total tokens, session totals, and known context headroom
-* `/auth logout` — Revoke the MALLSS_NEXUS_ROUTE OAuth connection
+* `/auth logout` — Revoke the Mallss Nexus Route OAuth connection
 * `/mcp` — Inspect connected Model Context Protocol (MCP) servers
 * `/plugins` — View loaded modular plugins from `plugins/`
 * `/security` — View security guardrails, command sandbox, and safety policy
