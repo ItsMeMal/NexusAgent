@@ -1,5 +1,5 @@
 """
-nexus/gateways/email_gw.py
+nolthira/gateways/email_gw.py
 IMAP + SMTP Email Gateway adapter built with Python stdlib (imaplib, smtplib, email).
 """
 
@@ -62,7 +62,7 @@ class EmailGateway(BaseGateway):
         if not self.is_configured() or not text or not chat_id:
             return False
         try:
-            await asyncio.to_thread(self._smtp_send_sync, chat_id, "Re: Nexus Agent", text)
+            await asyncio.to_thread(self._smtp_send_sync, chat_id, "Re: Nolthira Agent", text)
             return True
         except Exception as exc:
             self.last_error = str(exc)
