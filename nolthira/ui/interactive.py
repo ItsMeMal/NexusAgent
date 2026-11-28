@@ -844,7 +844,7 @@ async def interactive_gateway_setup(session: PromptSession, env_path: Path) -> O
             pid = (await session.prompt_async(f"  WHATSAPP_PHONE_NUMBER_ID [{os.getenv('WHATSAPP_PHONE_NUMBER_ID', '')}] ❯ ", is_password=False)).strip()
             if pid:
                 updates["WHATSAPP_PHONE_NUMBER_ID"] = pid
-            vtok = (await session.prompt_async(f"  WHATSAPP_VERIFY_TOKEN [{os.getenv('WHATSAPP_VERIFY_TOKEN', 'nexus_verify_token')}] ❯ ", is_password=False)).strip()
+            vtok = (await session.prompt_async(f"  WHATSAPP_VERIFY_TOKEN [{os.getenv('WHATSAPP_VERIFY_TOKEN', 'nolthira_verify_token')}] ❯ ", is_password=False)).strip()
             if vtok:
                 updates["WHATSAPP_VERIFY_TOKEN"] = vtok
         else:
