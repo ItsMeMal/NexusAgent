@@ -75,6 +75,34 @@ curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh
 
 ---
 
+## 🔌 Provider Catalog
+
+Nexus includes built-in profiles for hosted inference providers and local runtimes. The provider picker (`/provider`) now includes these additional OpenAI Chat Completions-compatible endpoints:
+
+| Provider | Default base URL | Credential variable |
+|---|---|---|
+| Cerebras | `https://api.cerebras.ai/v1` | `CEREBRAS_API_KEY` |
+| SambaNova Cloud | `https://api.sambanova.ai/v1` | `SAMBANOVA_API_KEY` |
+| DeepInfra | `https://api.deepinfra.com/v1/openai` | `DEEPINFRA_API_KEY` |
+| SiliconFlow | `https://api.siliconflow.com/v1` | `SILICONFLOW_API_KEY` |
+| Novita AI | `https://api.novita.ai/v3/openai` | `NOVITA_API_KEY` |
+| Nebius Token Factory | `https://api.tokenfactory.nebius.com/v1` | `NEBIUS_API_KEY` |
+| Hyperbolic | `https://api.hyperbolic.ai/inference/v1` | `HYPERBOLIC_API_KEY` |
+| NVIDIA NIM | `https://integrate.api.nvidia.com/v1` | `NVIDIA_API_KEY` |
+| Moonshot AI (Kimi) | `https://api.moonshot.ai/v1` | `MOONSHOT_API_KEY` |
+| Alibaba Cloud Model Studio | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | `DASHSCOPE_API_KEY` |
+| Z.ai (GLM) | `https://api.z.ai/api/paas/v4` | `ZAI_API_KEY` |
+| MiniMax | `https://api.minimax.io/v1` | `MINIMAX_API_KEY` |
+| BytePlus ModelArk | `https://ark.ap-southeast.bytepluses.com/api/v3` | `ARK_API_KEY` |
+| Hugging Face Inference Providers | `https://router.huggingface.co/v1` | `HF_TOKEN` |
+| Amazon Bedrock Mantle | `https://bedrock-mantle.us-east-1.api.aws/v1` | `AWS_BEDROCK_API_KEY` |
+
+The catalog discovers models from the selected provider's `/models` endpoint where available; it does not depend on a stale hard-coded model list. When connecting a provider, Nexus saves its provider-specific credential and also updates the active `OPENAI_API_KEY` / `OPENAI_API_BASE` values used by the current runtime. Existing provider-specific credentials are preferred when reconnecting.
+
+For regional services, the provider wizard lets you override the default base URL. This is important for Bedrock (the default profile is us-east-1) and Alibaba Model Studio (the default is the Singapore DashScope endpoint); use an endpoint and API key from the same region. Hugging Face model IDs may include a provider suffix such as `:novita` or a routing suffix such as `:fastest`.
+
+**Compatibility note:** these new profiles use the OpenAI Chat Completions request format consumed by the current `LLMClient`. This does not imply that every model supports tool calling, vision, or streaming. Those capabilities and model availability must be verified for the selected model. Native adapters for Azure AI Foundry and Google Vertex AI are not included yet because they require authentication flows beyond the current Bearer-token client.
+
 ## 🚀 Quick Usage
 
 ### 1. Launch Directly from Any Terminal
