@@ -7,7 +7,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-from nexus.cli import main
+from nolthira.cli import main
 
 if __name__ == "__main__":
     main()
