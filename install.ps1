@@ -103,7 +103,7 @@ if (Test-Path (Join-Path $engineDir ".git")) {
     if ($LASTEXITCODE -ne 0) {
         git remote add origin https://github.com/ItsMeMal/NolthiraAgent.git
     }
-    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt 2>$null
+    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt 2>$null
     if ($LASTEXITCODE -ne 0) { throw "Failed to configure sparse checkout." }
     git fetch origin main --quiet
     if ($LASTEXITCODE -ne 0) { throw "Failed to fetch NolthiraAgent from GitHub." }
@@ -117,7 +117,7 @@ if (Test-Path (Join-Path $engineDir ".git")) {
     }
     git clone https://github.com/ItsMeMal/NolthiraAgent.git $engineDir --quiet
     Push-Location $engineDir
-    git sparse-checkout set nexus .skills pyproject.toml .env.example README.md requirements.txt 2>$null
+    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt 2>$null
     Pop-Location
 }
 
