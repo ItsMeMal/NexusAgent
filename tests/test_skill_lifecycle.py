@@ -83,8 +83,8 @@ class SkillLifecycleTests(unittest.TestCase):
         self.assertIsNone(self.manager.get_skill(r"..\\outside"))
 
     def test_primary_source_wins_on_normalized_name_collision(self):
-        self.primary.mkdir(parents=True)
-        self.external.mkdir(parents=True)
+        self.primary.mkdir(parents=True, exist_ok=True)
+        self.external.mkdir(parents=True, exist_ok=True)
         (self.primary / "api-debug.md").write_text(
             "# Skill: api-debug\nDescription: Local version.\n\nLocal instructions with enough detail to validate.",
             encoding="utf-8",
