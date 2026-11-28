@@ -413,6 +413,8 @@ class BaseGateway(ABC):
                 soul_path=self.soul_path,
                 max_steps=self.max_steps,
                 session_id=session_id,
+                include_persistent_memory=False,
+                enable_learning_capture=False,
             )
             self.log("INFO", f"Handling message from {msg.username or msg.user_id} in chat {msg.chat_id}")
             task = asyncio.create_task(agent.run(text))
