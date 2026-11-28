@@ -71,9 +71,19 @@ def _default_config() -> Dict[str, Any]:
             "coder": {
                 "extends": "default",
                 "disabled_toolsets": ["gateway", "media"],
+                "disabled_tools": [
+                    "review_memory_proposal", "archive_memory", "restore_memory",
+                    "delete_memory", "delete_skill",
+                ],
             },
         },
-        "platform_profiles": {},
+        "platform_profiles": {
+            "telegram": "researcher",
+            "discord": "researcher",
+            "whatsapp": "researcher",
+            "slack": "researcher",
+            "email": "researcher",
+        },
         "role_profiles": {
             "leaf": "researcher",
             "researcher": "researcher",
