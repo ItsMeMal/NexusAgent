@@ -240,17 +240,15 @@ class MemoryGovernanceMixin:
         reviewer: str = "user",
         reason: str = "",
     ) -> bool:
-        """Atomically approve into active memory or reject without changing active facts."""
+        """Atomically approve into active memory or reject without mutating active facts."""
         choice = str(decision or "").strip().lower()
         if choice not in {"approve", "reject"}:
             raise ValueError("decision must be approve or reject.")
-        final_status = "approved" if choice == "approve" else "rejected"
-        review_reason = str(reason or "").strip()[:1000] or None
 
-        # Serialize concurrent reviewers. The proposal status and its approved memory
-        # mutation are committed together, so a double approval cannot partially apply.
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            # Serialize reviewers so a rejected proposal cannot race with an approval
+            # that has already written the candidate into active memory.
             cursor.execute("BEGIN IMMEDIATE")
             row = cursor.execute(
                 "SELECT * FROM memory_proposals WHERE id = ? AND status = 'pending'",
@@ -271,7 +269,7 @@ class MemoryGovernanceMixin:
                         cursor,
                         existing,
                         action="updated",
-                        changed_by=reviewer or "user",
+                        changed_by=reviewer,
                         reason=f"Approved learning proposal #{proposal_id}.",
                     )
                     cursor.execute(
@@ -300,13 +298,18 @@ class MemoryGovernanceMixin:
                         ),
                     )
 
+            final_status = "approved" if choice == "approve" else "rejected"
             cursor.execute(
                 """
                 UPDATE memory_proposals
                 SET status = ?, review_reason = ?, reviewed_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND status = 'pending'
                 """,
-                (final_status, review_reason, int(proposal_id)),
+                (
+                    final_status,
+                    str(reason or "").strip()[:1000] or None,
+                    int(proposal_id),
+                ),
             )
             return cursor.rowcount == 1
 
