@@ -37,6 +37,7 @@ SLASH_COMMANDS = [
     ("/upgrade", "Alias for /update", "System"),
     ("/skills", "View loaded dynamic skills & learned procedures", "Skills"),
     ("/memory", "Inspect persistent facts stored in SQLite FTS5", "Memory"),
+    ("/todo", "Track session-scoped task plans and coding progress (/todo add|start|block|complete|remove)", "Background"),
     ("/cron", "View scheduled background jobs and automations", "Background"),
     ("/sessions", "List past conversation sessions stored in SQLite", "Session"),
     ("/resume", "Browse and resume past conversation session (interactive arrow-key menu)", "Session"),
