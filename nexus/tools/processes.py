@@ -49,7 +49,15 @@ class ProcessManager:
         if session["process"].poll() is not None:
             thread = session.get("capture_thread")
             if thread and thread.is_alive():
-                thread.join(timeout=0.25)
+                thread.join(timeout=1.0)
+            if not thread or not thread.is_alive():
+                for stream_name in ("stdin", "stdout", "stderr"):
+                    stream = getattr(session["process"], stream_name, None)
+                    if stream is not None and not getattr(stream, "closed", True):
+                        try:
+                            stream.close()
+                        except OSError:
+                            pass
             if session.get("finished_at") is None:
                 session["finished_at"] = time.time()
 
