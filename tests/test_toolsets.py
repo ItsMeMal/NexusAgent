@@ -110,6 +110,26 @@ class ToolsetManagerTests(unittest.TestCase):
         self.assertIsNotNone(telegram_registry.get("write_file"))
         self.assertIsNotNone(telegram_registry.get("run_command"))
 
+    def test_older_toolset_files_migrate_to_restricted_gateway_defaults(self):
+        from nexus.toolsets import _default_config
+
+        legacy = _default_config()
+        legacy["profiles"].pop("gateway", None)
+        legacy["platform_profiles"] = {}
+        legacy["profiles"]["researcher"]["disabled_tools"] = [
+            "write_file", "append_file", "patch_file", "run_command",
+            "store_memory", "review_memory_proposal",
+        ]
+        self.path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        migrated = ToolsetManager(self.path)
+
+        self.assertEqual(migrated.profile_for_platform("telegram"), "gateway")
+        self.assertIn("memory", migrated.resolve_profile("gateway")["enabled_toolsets"])
+        self.assertNotIn("memory", migrated.resolve_profile("gateway")["enabled_toolsets"])
+        self.assertIn("record_learning", migrated.resolve_profile("researcher")["disabled_tools"])
+        self.assertIn("dismiss_learning_observation", migrated.resolve_profile("researcher")["disabled_tools"])
+
     def test_unknown_profiles_and_toolsets_are_rejected(self):
         with self.assertRaises(ToolsetConfigError):
             self.manager.resolve_profile("does-not-exist")
