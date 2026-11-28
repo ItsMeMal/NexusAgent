@@ -2,7 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nolthira.config import NOLTHIRA_HOME, NOLTHIRA_HOME, migrate_legacy_home
+from nolthira.config import (
+    NOLTHIRA_HOME,
+    migrate_legacy_env_file,
+    migrate_legacy_home,
+)
 
 
 class LegacyHomeMigrationTests(unittest.TestCase):
@@ -12,9 +16,13 @@ class LegacyHomeMigrationTests(unittest.TestCase):
             old, new = root / ".nexus", root / ".nolthira"
             (old / "oauth").mkdir(parents=True)
             (old / ".env").write_text("API_KEY=keep-me\n", encoding="utf-8")
-            (old / "oauth" / "tokens.json").write_text('{"refresh_token":"keep-me"}', encoding="utf-8")
+            (old / "oauth" / "tokens.json").write_text(
+                '{"refresh_token":"keep-me"}', encoding="utf-8"
+            )
             (old / "engine" / ".git").mkdir(parents=True)
-            (old / "engine" / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+            (old / "engine" / ".git" / "HEAD").write_text(
+                "ref: refs/heads/main\n", encoding="utf-8"
+            )
 
             self.assertTrue(migrate_legacy_home(old, new))
             self.assertFalse(old.exists())
@@ -62,9 +70,29 @@ class LegacyHomeMigrationTests(unittest.TestCase):
             self.assertEqual((new / "venv" / "bin" / "python").read_text(encoding="utf-8"), "new")
             self.assertEqual((old / "venv" / "bin" / "python").read_text(encoding="utf-8"), "old")
 
-    def test_nexus_home_compatibility_alias_points_to_new_path(self):
-        self.assertEqual(NOLTHIRA_HOME, NOLTHIRA_HOME)
+    def test_canonical_home_is_nolthira(self):
         self.assertEqual(NOLTHIRA_HOME.name, ".nolthira")
+
+    def test_legacy_env_keys_are_renamed_without_overwriting_new_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / ".env"
+            env_file.write_text(
+                "NEXUS_MODEL=legacy-model\n"
+                "NOLTHIRA_MODEL=current-model\n"
+                "NEXUS_TEMPERATURE=0.3\n"
+                "NEXUS_MEMORY_DB=nexus_memory.db\n"
+                "MALLSS_NEXUS_API_KEY=gateway-key\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(migrate_legacy_env_file(env_file))
+            updated = env_file.read_text(encoding="utf-8")
+            self.assertIn("NOLTHIRA_MODEL=current-model", updated)
+            self.assertIn("NOLTHIRA_TEMPERATURE=0.3", updated)
+            self.assertIn("NOLTHIRA_MEMORY_DB=nolthira_memory.db", updated)
+            self.assertNotIn("NEXUS_MODEL=", updated)
+            self.assertNotIn("NEXUS_TEMPERATURE=", updated)
+            self.assertIn("MALLSS_NEXUS_API_KEY=gateway-key", updated)
 
 
 if __name__ == "__main__":
