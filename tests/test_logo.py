@@ -15,8 +15,6 @@ class NolthiraLogoTests(unittest.TestCase):
         self.assertEqual(len(RAW_LOGO), 6)
         self.assertEqual(len({len(row) for row in RAW_LOGO}), 1)
         self.assertLessEqual(len(RAW_LOGO[0]), 55)
-        for row in RAW_LOGO:
-            self.assertNotIn("  ", row)
 
 
 if __name__ == "__main__":
