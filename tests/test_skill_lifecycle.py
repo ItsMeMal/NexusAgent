@@ -113,6 +113,24 @@ class SkillLifecycleTests(unittest.TestCase):
                 "This should never be written outside the primary skills directory.",
             )
 
+
+    def test_create_refuses_to_shadow_an_external_read_only_skill(self):
+        self.external.mkdir(parents=True)
+        external_file = self.external / "shared-skill.md"
+        external_file.write_text(
+            "# Skill: shared-skill\nDescription: A shared external skill.\n\n"
+            "Inspect the existing files, follow the task constraints, apply the procedure, and verify all results.\n",
+            encoding="utf-8",
+        )
+        with self.assertRaises(PermissionError):
+            self.manager.save_skill(
+                "shared-skill",
+                "Local shadow copy.",
+                "This would shadow a shared skill and must be rejected by the manager.",
+            )
+        self.assertFalse((self.primary / "shared-skill.md").exists())
+        self.assertTrue(external_file.exists())
+
     def test_tool_registry_exposes_the_full_local_skill_lifecycle(self):
         tools = {tool.name for tool in get_skill_tools(self.manager)}
         self.assertEqual(
