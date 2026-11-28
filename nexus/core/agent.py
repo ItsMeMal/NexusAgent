@@ -129,7 +129,7 @@ def _classify_command_result(result: Any, requested_timeout: Any) -> Dict[str, A
     return {"kind": kind, "timeout": timeout_value}
 
 
-class NexusAgent:
+class NolthiraAgent:
     def __init__(
         self,
         llm_client: LLMClient,
