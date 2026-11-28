@@ -1,4 +1,6 @@
+import os
 import shlex
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,7 +14,10 @@ from nolthira.tools.terminal import get_terminal_tools
 
 class BackgroundProcessManagerTests(unittest.IsolatedAsyncioTestCase):
     def make_command(self, script):
-        return f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
+        parts = [sys.executable, "-c", script]
+        if os.name == "nt":
+            return subprocess.list2cmdline(parts)
+        return shlex.join(parts)
 
     def test_start_wait_and_log_preserve_exit_status_and_output(self):
         with tempfile.TemporaryDirectory() as tmp:
