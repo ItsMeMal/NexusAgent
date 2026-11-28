@@ -119,3 +119,32 @@ Type `/` in the prompt for real-time autocomplete:
 * `/clear` — Clear terminal screen and show banner
 * `/help` — Display command palette
 * `exit` or `quit` — Exit Nexus Agent CLI and persist session state
+
+---
+## 🧰 Configurable Toolsets & Subagent Runtime
+
+Nexus stores toolset policy in `~/.nexus/toolsets.json`. The file is created atomically when a setting is changed. Profiles are applied to the live tool registry; disabled tools are unavailable to the model and are also rejected if called by name or alias.
+
+Built-in profiles:
+
+- `default` — all built-in capability groups and registered extensions.
+- `researcher` — read-oriented workspace, memory, skill, and web access; terminal execution, file mutation, memory writes, plugins, MCP, and other extension tools are blocked.
+- `analyst` — researcher profile with browser and vision capabilities enabled.
+- `coder` — file editing, project inspection, checkpoints, terminal, and development tools.
+
+CLI management:
+
+```text
+/toolsets
+/toolsets use coder
+/toolsets enable browser
+/toolsets disable computer
+/toolsets platform telegram researcher
+/toolsets role debugger coder
+```
+
+Platform profiles are independently selectable for Telegram, Discord, WhatsApp, Slack, and Email. Changing a platform profile requires restarting that gateway to rebuild its isolated registry. Subagent role mappings take effect on the next delegation.
+
+The subagent runtime supports role-scoped permissions, bounded execution time, step limits, and a global concurrency cap. Default limits are 3 concurrent workers, 600 seconds per worker, and 20 reasoning steps. These are configurable under the `limits` object in `toolsets.json`.
+
+Use `delegate_task` for a single focused worker. Use `delegate_tasks` for 2–8 independent workstreams that can safely run concurrently. Do not delegate overlapping file edits or tasks that depend on one another in the same batch. Explicitly requested toolsets can narrow a role's access, but cannot widen it.
