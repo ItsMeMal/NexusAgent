@@ -16,6 +16,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from ..config import NOLTHIRA_HOME
+
 DEFAULT_BASE_URL = "https://ai-router.mallss-nexus.sbs"
 CLIENT_ID = "nexusagent"
 SCOPE = "models:read inference"
@@ -41,7 +43,7 @@ class NexusRouteOAuth:
 
     def __init__(self, store_path: Optional[Path] = None, base_url: str = DEFAULT_BASE_URL):
         self.base_url = base_url.rstrip("/")
-        self.store_path = store_path or (Path.home() / ".nexus" / "oauth" / "mallss_nexus_route.json")
+        self.store_path = store_path or (NOLTHIRA_HOME / "oauth" / "mallss_nexus_route.json")
 
     def _load(self) -> Dict[str, Any]:
         try:
