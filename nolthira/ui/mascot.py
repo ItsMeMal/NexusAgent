@@ -26,7 +26,7 @@ def detect_graphics_protocol(override: Optional[str] = None) -> str:
     'pixel' (True-Color half-block RGB — universal fallback),
     or native graphics protocol 'kitty' | 'iterm2' | 'sixel' when explicitly enabled/supported.
     """
-    pref = (override or os.getenv("NEXUS_MASCOT_MODE", "auto")).strip().lower()
+    pref = (override or os.getenv("NOLTHIRA_MASCOT_MODE", "auto")).strip().lower()
     if pref in ("pixel", "kitty", "iterm2", "sixel"):
         return pref
 
@@ -38,7 +38,7 @@ def detect_graphics_protocol(override: Optional[str] = None) -> str:
         return "kitty"
     if term_prog in ("iterm.app", "wezterm") or os.getenv("WEZTERM_EXECUTABLE"):
         return "iterm2"
-    if os.getenv("NEXUS_ENABLE_SIXEL", "").lower() in ("1", "true", "yes"):
+    if os.getenv("NOLTHIRA_ENABLE_SIXEL", "").lower() in ("1", "true", "yes"):
         return "sixel"
     return "pixel"
 
