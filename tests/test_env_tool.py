@@ -88,6 +88,7 @@ class SafeEnvironmentUpdateTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(SecurityGuard.is_secret_file_access_command(node_write))
             self.assertTrue(SecurityGuard.is_secret_file_access_command(powershell_read))
             self.assertFalse(SecurityGuard.is_secret_file_access_command("dir /b /a .env*"))
+            self.assertFalse(SecurityGuard.is_secret_file_access_command("dir /b /a .env* > env-files.txt"))
             self.assertFalse(SecurityGuard.is_secret_file_access_command("npx prisma migrate deploy"))
 
             run_command = next(tool for tool in get_terminal_tools(root) if tool.name == "run_command")
