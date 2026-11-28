@@ -1,4 +1,5 @@
 import asyncio
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -149,6 +150,116 @@ class AgentRuntimeContinuationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(llm.calls), 2)
         self.assertIsNone(llm.calls[1]["tools"])
         self.assertEqual(memory.messages[-1]["content"], result)
+
+
+class FakeCommandRegistry:
+    def __init__(self, results):
+        self.results = list(results)
+        self.calls = []
+
+    def get(self, name):
+        return None
+
+    def to_openai_schemas(self):
+        return [{
+            "type": "function",
+            "function": {
+                "name": "run_command",
+                "description": "Run a shell command.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {"type": "string"},
+                        "timeout": {"type": "integer"},
+                    },
+                    "required": ["command"],
+                },
+            },
+        }]
+
+    async def execute_tool(self, name, arguments):
+        self.calls.append(dict(arguments))
+        return self.results.pop(0)
+
+
+def command_tool_call(call_id, command, timeout=120):
+    return {
+        "role": "assistant",
+        "content": "[calling tools]",
+        "tool_calls": [{
+            "id": call_id,
+            "type": "function",
+            "function": {
+                "name": "run_command",
+                "arguments": json.dumps({"command": command, "timeout": timeout}),
+            },
+        }],
+    }
+
+
+class AgentCommandRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    def make_agent(self, llm, registry, max_steps=8):
+        memory = FakeMemory()
+        agent = NexusAgent(
+            llm_client=llm,
+            memory=memory,
+            skill_manager=FakeSkills(),
+            registry=registry,
+            soul_path=Path(tempfile.gettempdir()) / "nexus-test-soul-does-not-exist.md",
+            max_steps=max_steps,
+            mode="auto",
+        )
+        return agent, memory
+
+    async def test_failed_command_cannot_bypass_loop_guard_by_changing_timeout(self):
+        deploy = "npx prisma migrate deploy"
+        status = "npx prisma migrate status"
+        llm = ScriptedLLM([
+            command_tool_call("cmd-1", deploy, timeout=300),
+            command_tool_call("cmd-2", deploy, timeout=300),
+            command_tool_call("cmd-3", deploy, timeout=180),
+            command_tool_call("cmd-4", status, timeout=60),
+            {"role": "assistant", "content": "Migration status was inspected; the failed deploy still needs its specific error repaired."},
+        ])
+        registry = FakeCommandRegistry([
+            "Exit Code: 0\nSTDOUT:\nInitial deployment completed.",
+            "[COMMAND FAILED: exit code 1]\nSTDERR:\nP3009: a previous migration failed.",
+            "Exit Code: 0\nSTDOUT:\nNo pending migrations.",
+        ])
+        agent, _ = self.make_agent(llm, registry)
+
+        result = await agent.run("Deploy database migrations and verify their status.")
+
+        self.assertIn("Migration status was inspected", result)
+        self.assertEqual(
+            [call["command"] for call in registry.calls],
+            [deploy, deploy, status],
+        )
+        guarded_turn = llm.calls[3]["messages"]
+        self.assertTrue(any(
+            "was NOT executed" in str(message.get("content", ""))
+            and "Changing only its timeout does not fix that failure" in str(message.get("content", ""))
+            for message in guarded_turn
+        ))
+
+    async def test_explicit_timeout_allows_one_retry_with_a_longer_timeout(self):
+        command = "npx prisma generate"
+        llm = ScriptedLLM([
+            command_tool_call("timeout-1", command, timeout=120),
+            command_tool_call("timeout-2", command, timeout=360),
+            {"role": "assistant", "content": "Prisma generation completed after one longer-timeout retry."},
+        ])
+        registry = FakeCommandRegistry([
+            "Error: Command timed out after 300 seconds (process tree terminated cleanly).",
+            "Exit Code: 0\nSTDOUT:\nPrisma Client generated.",
+        ])
+        agent, _ = self.make_agent(llm, registry)
+
+        result = await agent.run("Generate the Prisma client.")
+
+        self.assertIn("completed after one longer-timeout retry", result)
+        self.assertEqual(len(registry.calls), 2)
+        self.assertEqual(registry.calls[1]["timeout"], 360)
 
 
 if __name__ == "__main__":
