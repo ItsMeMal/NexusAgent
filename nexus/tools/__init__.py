@@ -62,7 +62,7 @@ def create_default_registry(
         _register_group(
             registry,
             "orchestration",
-            get_todo_tools(session_id_getter, config.NEXUS_HOME / "todos"),
+            get_todo_tools(session_id_getter, config.NOLTHIRA_HOME / "todos"),
         )
 
     if llm_client:
