@@ -124,20 +124,24 @@ class MemoryGovernanceTests(unittest.TestCase):
     def test_existing_sqlite_memory_database_is_migrated(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "legacy.db"
-            with sqlite3.connect(path) as conn:
-                conn.execute("""
-                    CREATE TABLE memories (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        category TEXT,
-                        key TEXT,
-                        content TEXT,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            conn = sqlite3.connect(path)
+            try:
+                with conn:
+                    conn.execute("""
+                        CREATE TABLE memories (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            category TEXT,
+                            key TEXT,
+                            content TEXT,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    conn.execute(
+                        "INSERT INTO memories(category, key, content) VALUES (?, ?, ?)",
+                        ("legacy", "old_fact", "Existing memory remains available."),
                     )
-                """)
-                conn.execute(
-                    "INSERT INTO memories(category, key, content) VALUES (?, ?, ?)",
-                    ("legacy", "old_fact", "Existing memory remains available."),
-                )
+            finally:
+                conn.close()
             migrated = SQLiteMemory(path)
             rows = migrated.get_all_memories()
             self.assertEqual(len(rows), 1)
