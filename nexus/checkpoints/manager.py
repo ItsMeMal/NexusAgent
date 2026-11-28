@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import stat
 import tempfile
 import threading
@@ -85,7 +84,7 @@ class CheckpointManager:
     @classmethod
     def _is_sensitive_file(cls, relative: PurePosixPath) -> bool:
         name = relative.name.casefold()
-        if name.startswith(".env"):
+        if name.startswith(".env") and name not in {".env.example", ".env.sample", ".env.template", ".env.dist"}:
             return True
         if name in cls.EXCLUDED_FILE_NAMES:
             return True
@@ -131,6 +130,7 @@ class CheckpointManager:
         destination = self.storage_root / f"{checkpoint_id}.zip"
 
         entries: List[Dict[str, Any]] = []
+        preserved_paths: List[str] = []
         total_bytes = 0
         skipped_limit = 0
 
@@ -142,16 +142,19 @@ class CheckpointManager:
                     for path, relative in self._iter_workspace_files():
                         if len(entries) >= self.MAX_FILES:
                             skipped_limit += 1
+                            preserved_paths.append(relative.as_posix())
                             continue
                         try:
                             before = path.stat()
                             if total_bytes + before.st_size > self.MAX_TOTAL_BYTES:
                                 skipped_limit += 1
+                                preserved_paths.append(relative.as_posix())
                                 continue
                             data = path.read_bytes()
                             after = path.stat()
                             if before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns:
                                 skipped_limit += 1
+                                preserved_paths.append(relative.as_posix())
                                 continue
                             digest = hashlib.sha256(data).hexdigest()
                             archive.writestr(relative.as_posix(), data)
@@ -165,6 +168,7 @@ class CheckpointManager:
                             total_bytes += len(data)
                         except (OSError, PermissionError):
                             skipped_limit += 1
+                            preserved_paths.append(relative.as_posix())
                     manifest = {
                         "format_version": 1,
                         "id": checkpoint_id,
@@ -174,6 +178,7 @@ class CheckpointManager:
                         "file_count": len(entries),
                         "total_bytes": total_bytes,
                         "skipped_count": skipped_limit,
+                        "preserved_paths": preserved_paths,
                         "files": entries,
                     }
                     archive.writestr(
@@ -217,6 +222,11 @@ class CheckpointManager:
         files = manifest.get("files")
         if not isinstance(files, list) or len(files) > self.MAX_FILES:
             raise CheckpointError("Checkpoint manifest contains an invalid file list.")
+        preserved = manifest.get("preserved_paths", [])
+        if not isinstance(preserved, list) or len(preserved) > self.MAX_FILES:
+            raise CheckpointError("Checkpoint manifest contains an invalid preserved-path list.")
+        for preserved_path in preserved:
+            self._safe_relative_path(str(preserved_path))
         return archive_path, manifest
 
     def list_checkpoints(self, limit: int = 20) -> List[Dict[str, Any]]:
@@ -292,6 +302,7 @@ class CheckpointManager:
         archive_path, manifest = self._read_manifest(checkpoint_id)
         restore_items = self._prepare_restore(archive_path, manifest)
         snapshot_paths = {str(target.relative_to(self.workspace).as_posix()) for target, _, _ in restore_items}
+        preserved_paths = set(manifest.get("preserved_paths", []))
 
         with self._lock:
             safety_checkpoint = self.create_checkpoint(label=f"pre-restore-{checkpoint_id}")
@@ -325,7 +336,7 @@ class CheckpointManager:
                 deleted = 0
                 if restore_mode == "exact":
                     for path, relative in list(self._iter_workspace_files()):
-                        if relative.as_posix() in snapshot_paths:
+                        if relative.as_posix() in snapshot_paths or relative.as_posix() in preserved_paths:
                             continue
                         try:
                             path.unlink()
