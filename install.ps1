@@ -103,7 +103,7 @@ if (Test-Path (Join-Path $engineDir ".git")) {
     if ($LASTEXITCODE -ne 0) {
         git remote add origin https://github.com/ItsMeMal/NolthiraAgent.git
     }
-    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt 2>$null
+    git sparse-checkout set --no-cone /nolthira/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt 2>$null
     if ($LASTEXITCODE -ne 0) { throw "Failed to configure sparse checkout." }
     git fetch origin main --quiet
     if ($LASTEXITCODE -ne 0) { throw "Failed to fetch NolthiraAgent from GitHub." }
@@ -117,7 +117,7 @@ if (Test-Path (Join-Path $engineDir ".git")) {
     }
     git clone https://github.com/ItsMeMal/NolthiraAgent.git $engineDir --quiet
     Push-Location $engineDir
-    git sparse-checkout set --no-cone /nexus/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt 2>$null
+    git sparse-checkout set --no-cone /nolthira/ /.skills/ /pyproject.toml /.env.example /README.md /requirements.txt 2>$null
     if ($LASTEXITCODE -ne 0) { throw "Failed to configure sparse checkout for a fresh installation." }
     Pop-Location
 }
@@ -156,8 +156,8 @@ if (-not (Test-Path $globalEnv)) {
         @"
 OPENAI_API_BASE=https://openrouter.ai/api/v1
 OPENAI_API_KEY=your_api_key_here
-NEXUS_MODEL=anthropic/claude-3.5-sonnet
-NEXUS_TEMPERATURE=0.7
+NOLTHIRA_MODEL=anthropic/claude-3.5-sonnet
+NOLTHIRA_TEMPERATURE=0.7
 "@ | Set-Content $globalEnv -Encoding UTF8
     }
     Write-Host "  [OK] Generated global config at $globalEnv" -ForegroundColor Green
@@ -169,17 +169,17 @@ $launcherPs1 = Join-Path $binDir "nolthira.ps1"
 
 @"
 @echo off
-"$venvPython" -m nexus.cli %*
+"$venvPython" -m nolthira.cli %*
 "@ | Set-Content $launcherCmd -Encoding ASCII
 
 @"
-& "$venvPython" -m nexus.cli @args
+& "$venvPython" -m nolthira.cli @args
 "@ | Set-Content $launcherPs1 -Encoding UTF8
 
-# Keep legacy commands working while users migrate to "nolthira".
-foreach ($legacyName in @("nexus", "nexuss")) {
-    Copy-Item $launcherCmd (Join-Path $binDir "${legacyName}.cmd") -Force
-    Copy-Item $launcherPs1 (Join-Path $binDir "${legacyName}.ps1") -Force
+# Remove aliases created by previous installer versions.
+foreach ($legacyName in @("nexus", "nexuss", "nexus-agent")) {
+    Remove-Item (Join-Path $binDir "${legacyName}.cmd") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $binDir "${legacyName}.ps1") -Force -ErrorAction SilentlyContinue
 }
 Write-Host "  [OK] Created CLI launcher in $binDir" -ForegroundColor Green
 
@@ -205,11 +205,20 @@ $standardDirs = @(
 foreach ($targetDir in $standardDirs) {
     if (Test-Path $targetDir) {
         try {
-            foreach ($commandName in @("nolthira", "nexus", "nexuss")) {
-                Copy-Item (Join-Path $binDir "${commandName}.cmd") (Join-Path $targetDir "${commandName}.cmd") -Force -ErrorAction SilentlyContinue
-                Copy-Item (Join-Path $binDir "${commandName}.ps1") (Join-Path $targetDir "${commandName}.ps1") -Force -ErrorAction SilentlyContinue
+            Copy-Item $launcherCmd (Join-Path $targetDir "nolthira.cmd") -Force
+            Copy-Item $launcherPs1 (Join-Path $targetDir "nolthira.ps1") -Force
+            foreach ($legacyName in @("nexus", "nexuss", "nexus-agent")) {
+                foreach ($extension in @("cmd", "ps1")) {
+                    $legacyPath = Join-Path $targetDir "${legacyName}.$extension"
+                    if (Test-Path $legacyPath) {
+                        $legacyContent = Get-Content -LiteralPath $legacyPath -Raw -ErrorAction SilentlyContinue
+                        if ($legacyContent -and ($legacyContent -match "nolthira\\.cli" -or $legacyContent -match "Nolthira")) {
+                            Remove-Item -LiteralPath $legacyPath -Force -ErrorAction SilentlyContinue
+                        }
+                    }
+                }
             }
-            Write-Host "  [OK] Linked 'nolthira' to $targetDir (legacy aliases retained)" -ForegroundColor Green
+            Write-Host "  [OK] Linked 'nolthira' to $targetDir " -ForegroundColor Green
             break
         } catch {}
     }
