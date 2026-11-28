@@ -1,7 +1,8 @@
-from typing import Callable, Dict, Any, List, Optional
+from typing import Callable, Dict, Any, List, Optional, Set
 from pydantic import BaseModel
 import inspect
 import json
+
 
 class Tool(BaseModel):
     name: str
@@ -36,20 +37,51 @@ class Tool(BaseModel):
 
 
 class ToolRegistry:
+    """Tool registry with optional runtime toolset and per-tool access policies."""
+
     def __init__(self):
         self._tools: Dict[str, Tool] = {}
+        self._toolsets: Dict[str, str] = {}
+        self._enabled_toolsets: Optional[Set[str]] = None
+        self._disabled_tools: Set[str] = set()
 
-    def register(self, tool: Tool):
+    def register(self, tool: Tool, toolset: str = "custom"):
         self._tools[tool.name] = tool
+        self._toolsets[tool.name] = (toolset or "custom").strip().lower()
 
-    def get(self, name: str) -> Optional[Tool]:
+    def set_toolset_policy(self, enabled_toolsets=None, disabled_tools=None) -> None:
+        """Restrict this registry to enabled toolsets and explicitly disabled tool names."""
+        self._enabled_toolsets = (
+            {str(name).strip().lower() for name in enabled_toolsets}
+            if enabled_toolsets is not None else None
+        )
+        self._disabled_tools = {
+            str(name).strip().lower() for name in (disabled_tools or [])
+        }
+
+    def clone(self):
+        """Copy registry metadata while reusing immutable Tool definitions/handlers."""
+        cloned = ToolRegistry()
+        for name, tool in self._tools.items():
+            cloned.register(tool, toolset=self._toolsets.get(name, "custom"))
+        cloned.set_toolset_policy(
+            enabled_toolsets=self._enabled_toolsets,
+            disabled_tools=self._disabled_tools,
+        )
+        return cloned
+
+    def _is_enabled(self, name: str) -> bool:
+        if name.lower() in self._disabled_tools:
+            return False
+        toolset = self._toolsets.get(name, "custom")
+        return self._enabled_toolsets is None or toolset in self._enabled_toolsets
+
+    def _resolve_unfiltered(self, name: str) -> Optional[Tool]:
         if not name:
             return None
-        # 1. Exact match
         if name in self._tools:
             return self._tools[name]
 
-        # 2. Common LLM alias dictionary
         aliases = {
             "websearch": "web_search",
             "search_web": "web_search",
@@ -88,27 +120,38 @@ class ToolRegistry:
             "cron": "schedule_task"
         }
         low = name.lower().strip()
-        if low in aliases and aliases[low] in self._tools:
-            return self._tools[aliases[low]]
+        target = aliases.get(low)
+        if target and target in self._tools:
+            return self._tools[target]
 
-        # 3. Normalized match (strip underscores, dashes, spaces)
         norm = low.replace("_", "").replace("-", "").replace(" ", "")
-        for t_name, tool in self._tools.items():
-            t_norm = t_name.lower().replace("_", "").replace("-", "").replace(" ", "")
-            if t_norm == norm:
+        for tool_name, tool in self._tools.items():
+            candidate = tool_name.lower().replace("_", "").replace("-", "").replace(" ", "")
+            if candidate == norm:
                 return tool
-
         return None
 
-    def get_all(self) -> List[Tool]:
-        return list(self._tools.values())
+    def get(self, name: str) -> Optional[Tool]:
+        tool = self._resolve_unfiltered(name)
+        if tool is None or not self._is_enabled(tool.name):
+            return None
+        return tool
+
+    def get_all(self, include_inactive: bool = False) -> List[Tool]:
+        if include_inactive:
+            return list(self._tools.values())
+        return [tool for name, tool in self._tools.items() if self._is_enabled(name)]
 
     def to_openai_schemas(self) -> List[Dict[str, Any]]:
-        return [tool.to_openai_schema() for tool in self._tools.values()]
+        return [tool.to_openai_schema() for tool in self.get_all()]
 
     async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> str:
         tool = self.get(name)
         if not tool:
+            # Distinguish disabled tools from unknown tools without leaking hidden schemas.
+            hidden = self._resolve_unfiltered(name)
+            if hidden:
+                return f"Access denied: Tool '{hidden.name}' is disabled by the active toolset profile."
             return f"Error: Tool '{name}' not found."
         try:
             res = await tool.execute(**arguments)
