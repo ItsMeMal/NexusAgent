@@ -1,23 +1,21 @@
 import os
-import warnings
+import re
 import shutil
+import warnings
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-# Suppress noisy runtime and resource warnings from third-party libraries and async runtimes
+# Keep third-party async/runtime warnings quiet in normal CLI usage.
 warnings.filterwarnings("ignore", category=ResourceWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-# Codebase root where Nolthira Agent engine is located
+# The package directory is the engine root (nolthira/ is one level below it).
 CODEBASE_DIR = Path(__file__).resolve().parent.parent
-
-# Current working directory where user invoked the command
 WORKSPACE_DIR = Path.cwd()
 
-# Canonical user home for Nolthira settings, credentials, sessions, and memory.
-# Legacy ~/.nexus is migrated without overwriting files already present in ~/.nolthira.
 NOLTHIRA_HOME = Path.home() / ".nolthira"
-LEGACY_NOLTHIRA_HOME = Path.home() / ".nexus"
+LEGACY_NEXUS_HOME = Path.home() / ".nexus"
 _PROTECTED_MERGE_DIRS = {"engine", "venv", ".git"}
 
 
@@ -26,21 +24,22 @@ def _path_exists(path: Path) -> bool:
 
 
 def _merge_missing_home_entries(source: Path, destination: Path) -> int:
-    """Move missing entries only; preserve collisions in the legacy directory."""
+    """Move missing entries only; preserve conflicts in the old directory."""
     moved = 0
     destination.mkdir(parents=True, exist_ok=True)
     for entry in list(source.iterdir()):
         target = destination / entry.name
-        source_is_dir = entry.is_dir() and not entry.is_symlink()
+        is_dir = entry.is_dir() and not entry.is_symlink()
         if _path_exists(target):
             target_is_dir = target.is_dir() and not target.is_symlink()
-            if source_is_dir and target_is_dir and entry.name.casefold() not in _PROTECTED_MERGE_DIRS:
+            if is_dir and target_is_dir and entry.name.casefold() not in _PROTECTED_MERGE_DIRS:
                 moved += _merge_missing_home_entries(entry, target)
             continue
         try:
             shutil.move(str(entry), str(target))
             moved += 1
         except OSError:
+            # Leave anything unmovable in the old home; never overwrite.
             continue
     try:
         source.rmdir()
@@ -50,18 +49,21 @@ def _merge_missing_home_entries(source: Path, destination: Path) -> int:
 
 
 def migrate_legacy_home(legacy_home: Path, nolthira_home: Path) -> bool:
-    """Migrate ~/.nexus to ~/.nolthira without overwriting destination data."""
+    """Move legacy ~/.nexus data into ~/.nolthira without overwriting new data."""
     legacy_home = Path(legacy_home).expanduser()
     nolthira_home = Path(nolthira_home).expanduser()
+
     if legacy_home.is_symlink() or not legacy_home.is_dir():
         return False
     if nolthira_home.is_symlink():
         raise OSError(f"Refusing to migrate into a symlinked home path: {nolthira_home}")
+
     if _path_exists(nolthira_home):
         if not nolthira_home.is_dir():
             raise NotADirectoryError(f"Nolthira home path is not a directory: {nolthira_home}")
         _merge_missing_home_entries(legacy_home, nolthira_home)
         return True
+
     try:
         legacy_home.replace(nolthira_home)
         return True
@@ -72,12 +74,12 @@ def migrate_legacy_home(legacy_home: Path, nolthira_home: Path) -> bool:
 
 
 try:
-    migrate_legacy_home(LEGACY_NOLTHIRA_HOME, NOLTHIRA_HOME)
+    migrate_legacy_home(LEGACY_NEXUS_HOME, NOLTHIRA_HOME)
     NOLTHIRA_HOME.mkdir(parents=True, exist_ok=True)
-    if LEGACY_NOLTHIRA_HOME.exists():
+    if LEGACY_NEXUS_HOME.exists():
         warnings.warn(
-            f"Some legacy files remain in {LEGACY_NOLTHIRA_HOME}: conflicting files or existing "
-            "engine/venv directories were kept as backups and were not overwritten.",
+            f"Some legacy files remain in {LEGACY_NEXUS_HOME}: conflicting files or "
+            "existing engine/venv directories were kept as backups and were not overwritten.",
             UserWarning,
             stacklevel=2,
         )
@@ -85,68 +87,87 @@ except OSError as exc:
     warnings.warn(f"Could not fully migrate the legacy Nolthira home directory: {exc}", UserWarning)
 
 
-# Backward-compatible alias; its resolved path is now ~/.nolthira.
-NOLTHIRA_HOME = NOLTHIRA_HOME
-
-# Determine primary .env file with priority:
-# 1. Local workspace .env (project-specific override)
-# 2. Global ~/.nolthira/.env (persistent global user config)
-# 3. Codebase .env (fallback)
-if (WORKSPACE_DIR / ".env").exists():
+# Prefer workspace .env, then global Nolthira .env, then engine fallback.
+if (WORKSPACE_DIR / ".env").is_file():
     ENV_PATH = WORKSPACE_DIR / ".env"
-elif (NOLTHIRA_HOME / ".env").exists():
+elif (NOLTHIRA_HOME / ".env").is_file():
     ENV_PATH = NOLTHIRA_HOME / ".env"
-elif (CODEBASE_DIR / ".env").exists():
+elif (CODEBASE_DIR / ".env").is_file():
     ENV_PATH = CODEBASE_DIR / ".env"
 else:
     ENV_PATH = NOLTHIRA_HOME / ".env"
 
-def _migrate_legacy_env_names(env_path: Path) -> None:
-    """Rename old NEXUS_* variables to NOLTHIRA_* without losing user values."""
+
+def migrate_legacy_env_file(env_path: Path) -> bool:
+    """Rename NEXUS_* keys in an existing dotenv file to NOLTHIRA_* safely."""
+    env_path = Path(env_path)
+    if not env_path.is_file():
+        return False
+
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    key_pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+    old_pattern = re.compile(r"^(\s*(?:export\s+)?)(NEXUS_[A-Z0-9_]+)(\s*=.*)$")
+    current_keys = {
+        match.group(1)
+        for line in lines
+        if (match := key_pattern.match(line))
+    }
+
+    migrated_lines = []
+    changed = False
+    for line in lines:
+        match = old_pattern.match(line)
+        if not match:
+            migrated_lines.append(line)
+            continue
+
+        old_key = match.group(2)
+        new_key = "NOLTHIRA_" + old_key[len("NEXUS_"):]
+        if new_key not in current_keys:
+            value_line = match.group(1) + new_key + match.group(3)
+            if old_key == "NEXUS_MEMORY_DB":
+                value_line = value_line.replace("=nexus_memory.db", "=nolthira_memory.db")
+            migrated_lines.append(value_line)
+            current_keys.add(new_key)
+        changed = True
+
+    if changed:
+        env_path.write_text("\n".join(migrated_lines) + "\n", encoding="utf-8")
+    return changed
+
+
+def migrate_legacy_process_env() -> None:
+    """Copy old process variables to new names; explicitly set new names win."""
     for key, value in list(os.environ.items()):
-        if key.startswith("NEXUS_") and not key.startswith("MALLSS_NEXUS_"):
+        if key.startswith("NEXUS_"):
             os.environ.setdefault("NOLTHIRA_" + key[len("NEXUS_"):], value)
 
-    if not env_path.is_file():
-        return
-    try:
-        lines = env_path.read_text(encoding="utf-8").splitlines()
-        current_keys = {
-            match.group(2)
-            for line in lines
-            if (match := __import__("re").match(r"^(\\s*(?:export\\s+)?)([A-Za-z_][A-Za-z0-9_]*)\\s*=", line))
-        }
-        migrated = []
-        changed = False
-        for line in lines:
-            match = __import__("re").match(r"^(\\s*(?:export\\s+)?)(NEXUS_[A-Z0-9_]+)(\\s*=.*)$", line)
-            if not match:
-                migrated.append(line)
-                continue
-            old_key = match.group(2)
-            new_key = "NOLTHIRA_" + old_key[len("NEXUS_"):]
-            if new_key not in current_keys:
-                migrated.append(match.group(1) + new_key + match.group(3))
-                current_keys.add(new_key)
-            changed = True
-        if changed:
-            env_path.write_text("\\n".join(migrated) + "\\n", encoding="utf-8")
-    except OSError as exc:
-        warnings.warn(f"Could not migrate legacy Nolthira environment names: {exc}", UserWarning)
 
+try:
+    migrate_legacy_env_file(ENV_PATH)
+except OSError as exc:
+    warnings.warn(f"Could not migrate legacy Nolthira environment names: {exc}", UserWarning)
 
-_migrate_legacy_env_names(ENV_PATH)
+migrate_legacy_process_env()
 load_dotenv(ENV_PATH, override=True)
+
+# Preserve the existing SQLite database contents while renaming its default file.
+_LEGACY_MEMORY_DB = NOLTHIRA_HOME / "nexus_memory.db"
+_CANONICAL_MEMORY_DB = NOLTHIRA_HOME / "nolthira_memory.db"
+if _LEGACY_MEMORY_DB.is_file() and not _CANONICAL_MEMORY_DB.exists():
+    try:
+        _LEGACY_MEMORY_DB.replace(_CANONICAL_MEMORY_DB)
+    except OSError as exc:
+        warnings.warn(f"Could not rename the legacy memory database: {exc}", UserWarning)
+
 
 class Config:
     CODEBASE_DIR: Path = CODEBASE_DIR
     WORKSPACE_DIR: Path = WORKSPACE_DIR
-    ROOT_DIR: Path = WORKSPACE_DIR  # Primary working directory for tools
+    ROOT_DIR: Path = WORKSPACE_DIR
     NOLTHIRA_HOME: Path = NOLTHIRA_HOME
-    NOLTHIRA_HOME: Path = NOLTHIRA_HOME  # Backward-compatible attribute alias
     ENV_PATH: Path = ENV_PATH
 
-    # Persona & Skills paths
     SOUL_PATH: Path = (
         WORKSPACE_DIR / "SOUL.md"
         if (WORKSPACE_DIR / "SOUL.md").exists()
@@ -174,16 +195,6 @@ class Config:
         )
     )
 
-    # Rename the existing memory database after the home-directory migration.
-_legacy_memory_db = NOLTHIRA_HOME / "nexus_memory.db"
-_current_memory_db = NOLTHIRA_HOME / "nolthira_memory.db"
-if _legacy_memory_db.is_file() and not _current_memory_db.exists():
-    try:
-        _legacy_memory_db.replace(_current_memory_db)
-    except OSError as exc:
-        warnings.warn(f"Could not rename the legacy memory database: {exc}", UserWarning)
-
-# API and Model (Prioritize workspace/env configurations)
     API_KEY: str = (
         os.getenv("NOLTHIRA_API_KEY")
         or os.getenv("MALLSS_NEXUS_API_KEY")
@@ -198,9 +209,8 @@ if _legacy_memory_db.is_file() and not _current_memory_db.exists():
     TEMPERATURE: float = float(os.getenv("NOLTHIRA_TEMPERATURE", "0.7"))
     MAX_STEPS: int = int(os.getenv("NOLTHIRA_MAX_STEPS", "25"))
 
-    # Storage (Global persistent memory in ~/.nolthira/nolthira_memory.db by default)
     _default_db = (
-        NOLTHIRA_HOME / "nolthira_memory.db"
+        _CANONICAL_MEMORY_DB
         if NOLTHIRA_HOME.exists()
         else CODEBASE_DIR / "nolthira_memory.db"
     )
@@ -208,14 +218,12 @@ if _legacy_memory_db.is_file() and not _current_memory_db.exists():
     SCREENSHOTS_DIR: Path = NOLTHIRA_HOME / "screenshots"
     AUTO_APPROVE: bool = os.getenv("NOLTHIRA_AUTO_APPROVE", "false").lower() in ("true", "1", "yes")
 
-    # Execution Sandbox Backend (local | docker | ssh)
     EXEC_BACKEND: str = os.getenv("NOLTHIRA_EXEC_BACKEND", "local").strip().lower()
     DOCKER_IMAGE: str = os.getenv("NOLTHIRA_DOCKER_IMAGE", "python:3.12-slim").strip()
     SSH_HOST: str = os.getenv("NOLTHIRA_SSH_HOST", "").strip()
     SSH_USER: str = os.getenv("NOLTHIRA_SSH_USER", "").strip()
     SSH_KEY_PATH: str = os.getenv("NOLTHIRA_SSH_KEY_PATH", "").strip()
 
-    # GitHub App integration
     GITHUB_APP_ID: str = os.getenv("GITHUB_APP_ID", "")
     GITHUB_INSTALLATION_ID: str = os.getenv("GITHUB_INSTALLATION_ID", "")
     GITHUB_APP_PRIVATE_KEY_PATH: str = os.getenv("GITHUB_APP_PRIVATE_KEY_PATH", "")
@@ -225,16 +233,17 @@ if _legacy_memory_db.is_file() and not _current_memory_db.exists():
 
     @property
     def github_app_configured(self) -> bool:
-        """True if the minimum GitHub App env vars are present."""
+        """True if the minimum GitHub App environment variables are present."""
         return bool(
             self.GITHUB_APP_ID
             and self.GITHUB_INSTALLATION_ID
             and (self.GITHUB_APP_PRIVATE_KEY_PATH or self.GITHUB_APP_PRIVATE_KEY)
         )
 
+
 try:
     Config.SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-except Exception:
+except OSError:
     pass
 
 config = Config()
