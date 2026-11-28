@@ -1,5 +1,5 @@
 """
-nexus/mcp/manager.py
+nolthira/mcp/manager.py
 
 Full MCP (Model Context Protocol) transport implementation supporting:
   1. Local stdio subprocesses (command + args + env)
@@ -12,7 +12,7 @@ Config file locations (searched in order):
   ~/.nolthira/mcp.json   — global Nolthira config
   ~/.nolthira/mcp_servers.json
   ~/.agents/mcp.json      — shared agents convention
-  ~/.config/nexus/mcp.json
+  ~/.config/nolthira/mcp.json
   <codebase>/.mcp.json
   <codebase>/mcp_servers.json
 """
@@ -34,7 +34,7 @@ import httpx
 from ..tools.base import Tool, ToolRegistry
 from ..config import config
 
-logger = logging.getLogger("nexus.mcp")
+logger = logging.getLogger("nolthira.mcp")
 
 _ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -195,7 +195,7 @@ class MCPSession:
             await self._rpc("initialize", {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "clientInfo": {"name": "nexus-agent", "version": "1.0.0"},
+                "clientInfo": {"name": "nolthira-agent", "version": "1.0.0"},
             }, timeout=20.0)
 
             init_notif = {"jsonrpc": "2.0", "method": "notifications/initialized"}
@@ -438,7 +438,7 @@ class MCPRemoteSession:
         init_params = {
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {}},
-            "clientInfo": {"name": "nexus-agent", "version": "1.0.0"},
+            "clientInfo": {"name": "nolthira-agent", "version": "1.0.0"},
         }
         try:
             if self._sse_mode:
@@ -531,7 +531,7 @@ class MCPManager:
             config.NOLTHIRA_HOME / "mcp.json",
             config.NOLTHIRA_HOME / "mcp_servers.json",
             home / ".agents" / "mcp.json",
-            home / ".config" / "nexus" / "mcp.json",
+            home / ".config" / "nolthira" / "mcp.json",
             self.codebase_dir / ".mcp.json",
             self.codebase_dir / "mcp_servers.json",
         ]
