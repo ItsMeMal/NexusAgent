@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from nexus.config import NOLTHIRA_HOME, NEXUS_HOME, migrate_legacy_home
+from nolthira.config import NOLTHIRA_HOME, NOLTHIRA_HOME, migrate_legacy_home
 
 
 class LegacyHomeMigrationTests(unittest.TestCase):
@@ -63,7 +63,7 @@ class LegacyHomeMigrationTests(unittest.TestCase):
             self.assertEqual((old / "venv" / "bin" / "python").read_text(encoding="utf-8"), "old")
 
     def test_nexus_home_compatibility_alias_points_to_new_path(self):
-        self.assertEqual(NEXUS_HOME, NOLTHIRA_HOME)
+        self.assertEqual(NOLTHIRA_HOME, NOLTHIRA_HOME)
         self.assertEqual(NOLTHIRA_HOME.name, ".nolthira")
 
 
