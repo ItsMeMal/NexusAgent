@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 warnings.filterwarnings("ignore", category=ResourceWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-# Codebase root where Nexus Agent engine is located
+# Codebase root where Nolthira Agent engine is located
 CODEBASE_DIR = Path(__file__).resolve().parent.parent
 
 # Current working directory where user invoked the command
@@ -17,7 +17,7 @@ WORKSPACE_DIR = Path.cwd()
 # Canonical user home for Nolthira settings, credentials, sessions, and memory.
 # Legacy ~/.nexus is migrated without overwriting files already present in ~/.nolthira.
 NOLTHIRA_HOME = Path.home() / ".nolthira"
-LEGACY_NEXUS_HOME = Path.home() / ".nexus"
+LEGACY_NOLTHIRA_HOME = Path.home() / ".nexus"
 _PROTECTED_MERGE_DIRS = {"engine", "venv", ".git"}
 
 
@@ -72,11 +72,11 @@ def migrate_legacy_home(legacy_home: Path, nolthira_home: Path) -> bool:
 
 
 try:
-    migrate_legacy_home(LEGACY_NEXUS_HOME, NOLTHIRA_HOME)
+    migrate_legacy_home(LEGACY_NOLTHIRA_HOME, NOLTHIRA_HOME)
     NOLTHIRA_HOME.mkdir(parents=True, exist_ok=True)
-    if LEGACY_NEXUS_HOME.exists():
+    if LEGACY_NOLTHIRA_HOME.exists():
         warnings.warn(
-            f"Some legacy files remain in {LEGACY_NEXUS_HOME}: conflicting files or existing "
+            f"Some legacy files remain in {LEGACY_NOLTHIRA_HOME}: conflicting files or existing "
             "engine/venv directories were kept as backups and were not overwritten.",
             UserWarning,
             stacklevel=2,
@@ -86,7 +86,7 @@ except OSError as exc:
 
 
 # Backward-compatible alias; its resolved path is now ~/.nolthira.
-NEXUS_HOME = NOLTHIRA_HOME
+NOLTHIRA_HOME = NOLTHIRA_HOME
 
 # Determine primary .env file with priority:
 # 1. Local workspace .env (project-specific override)
@@ -101,6 +101,41 @@ elif (CODEBASE_DIR / ".env").exists():
 else:
     ENV_PATH = NOLTHIRA_HOME / ".env"
 
+def _migrate_legacy_env_names(env_path: Path) -> None:
+    """Rename old NEXUS_* variables to NOLTHIRA_* without losing user values."""
+    for key, value in list(os.environ.items()):
+        if key.startswith("NEXUS_") and not key.startswith("MALLSS_NEXUS_"):
+            os.environ.setdefault("NOLTHIRA_" + key[len("NEXUS_"):], value)
+
+    if not env_path.is_file():
+        return
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+        current_keys = {
+            match.group(2)
+            for line in lines
+            if (match := __import__("re").match(r"^(\\s*(?:export\\s+)?)([A-Za-z_][A-Za-z0-9_]*)\\s*=", line))
+        }
+        migrated = []
+        changed = False
+        for line in lines:
+            match = __import__("re").match(r"^(\\s*(?:export\\s+)?)(NEXUS_[A-Z0-9_]+)(\\s*=.*)$", line)
+            if not match:
+                migrated.append(line)
+                continue
+            old_key = match.group(2)
+            new_key = "NOLTHIRA_" + old_key[len("NEXUS_"):]
+            if new_key not in current_keys:
+                migrated.append(match.group(1) + new_key + match.group(3))
+                current_keys.add(new_key)
+            changed = True
+        if changed:
+            env_path.write_text("\\n".join(migrated) + "\\n", encoding="utf-8")
+    except OSError as exc:
+        warnings.warn(f"Could not migrate legacy Nolthira environment names: {exc}", UserWarning)
+
+
+_migrate_legacy_env_names(ENV_PATH)
 load_dotenv(ENV_PATH, override=True)
 
 class Config:
@@ -108,7 +143,7 @@ class Config:
     WORKSPACE_DIR: Path = WORKSPACE_DIR
     ROOT_DIR: Path = WORKSPACE_DIR  # Primary working directory for tools
     NOLTHIRA_HOME: Path = NOLTHIRA_HOME
-    NEXUS_HOME: Path = NOLTHIRA_HOME  # Backward-compatible attribute alias
+    NOLTHIRA_HOME: Path = NOLTHIRA_HOME  # Backward-compatible attribute alias
     ENV_PATH: Path = ENV_PATH
 
     # Persona & Skills paths
@@ -122,8 +157,8 @@ class Config:
         )
     )
     SKILLS_DIR: Path = (
-        Path(os.getenv("NEXUS_SKILLS_DIR"))
-        if os.getenv("NEXUS_SKILLS_DIR")
+        Path(os.getenv("NOLTHIRA_SKILLS_DIR"))
+        if os.getenv("NOLTHIRA_SKILLS_DIR")
         else (
             WORKSPACE_DIR / ".skills"
             if (WORKSPACE_DIR / ".skills").exists()
@@ -139,37 +174,46 @@ class Config:
         )
     )
 
-    # API and Model (Prioritize workspace/env configurations)
+    # Rename the existing memory database after the home-directory migration.
+_legacy_memory_db = NOLTHIRA_HOME / "nexus_memory.db"
+_current_memory_db = NOLTHIRA_HOME / "nolthira_memory.db"
+if _legacy_memory_db.is_file() and not _current_memory_db.exists():
+    try:
+        _legacy_memory_db.replace(_current_memory_db)
+    except OSError as exc:
+        warnings.warn(f"Could not rename the legacy memory database: {exc}", UserWarning)
+
+# API and Model (Prioritize workspace/env configurations)
     API_KEY: str = (
-        os.getenv("NEXUS_API_KEY")
+        os.getenv("NOLTHIRA_API_KEY")
         or os.getenv("MALLSS_NEXUS_API_KEY")
         or os.getenv("OPENAI_API_KEY", "")
     )
     API_BASE: str = (
-        os.getenv("NEXUS_API_BASE")
+        os.getenv("NOLTHIRA_API_BASE")
         or os.getenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1")
     )
-    MODEL: str = os.getenv("NEXUS_MODEL", "anthropic/claude-3.5-sonnet")
-    AGENT_MODE: str = os.getenv("NEXUS_AGENT_MODE", "auto").strip().lower()
-    TEMPERATURE: float = float(os.getenv("NEXUS_TEMPERATURE", "0.7"))
-    MAX_STEPS: int = int(os.getenv("NEXUS_MAX_STEPS", "25"))
+    MODEL: str = os.getenv("NOLTHIRA_MODEL", "anthropic/claude-3.5-sonnet")
+    AGENT_MODE: str = os.getenv("NOLTHIRA_AGENT_MODE", "auto").strip().lower()
+    TEMPERATURE: float = float(os.getenv("NOLTHIRA_TEMPERATURE", "0.7"))
+    MAX_STEPS: int = int(os.getenv("NOLTHIRA_MAX_STEPS", "25"))
 
-    # Storage (Global persistent memory in ~/.nolthira/nexus_memory.db by default)
+    # Storage (Global persistent memory in ~/.nolthira/nolthira_memory.db by default)
     _default_db = (
-        NOLTHIRA_HOME / "nexus_memory.db"
+        NOLTHIRA_HOME / "nolthira_memory.db"
         if NOLTHIRA_HOME.exists()
-        else CODEBASE_DIR / "nexus_memory.db"
+        else CODEBASE_DIR / "nolthira_memory.db"
     )
-    MEMORY_DB_PATH: Path = Path(os.getenv("NEXUS_MEMORY_DB", str(_default_db)))
+    MEMORY_DB_PATH: Path = Path(os.getenv("NOLTHIRA_MEMORY_DB", str(_default_db)))
     SCREENSHOTS_DIR: Path = NOLTHIRA_HOME / "screenshots"
-    AUTO_APPROVE: bool = os.getenv("NEXUS_AUTO_APPROVE", "false").lower() in ("true", "1", "yes")
+    AUTO_APPROVE: bool = os.getenv("NOLTHIRA_AUTO_APPROVE", "false").lower() in ("true", "1", "yes")
 
     # Execution Sandbox Backend (local | docker | ssh)
-    EXEC_BACKEND: str = os.getenv("NEXUS_EXEC_BACKEND", "local").strip().lower()
-    DOCKER_IMAGE: str = os.getenv("NEXUS_DOCKER_IMAGE", "python:3.12-slim").strip()
-    SSH_HOST: str = os.getenv("NEXUS_SSH_HOST", "").strip()
-    SSH_USER: str = os.getenv("NEXUS_SSH_USER", "").strip()
-    SSH_KEY_PATH: str = os.getenv("NEXUS_SSH_KEY_PATH", "").strip()
+    EXEC_BACKEND: str = os.getenv("NOLTHIRA_EXEC_BACKEND", "local").strip().lower()
+    DOCKER_IMAGE: str = os.getenv("NOLTHIRA_DOCKER_IMAGE", "python:3.12-slim").strip()
+    SSH_HOST: str = os.getenv("NOLTHIRA_SSH_HOST", "").strip()
+    SSH_USER: str = os.getenv("NOLTHIRA_SSH_USER", "").strip()
+    SSH_KEY_PATH: str = os.getenv("NOLTHIRA_SSH_KEY_PATH", "").strip()
 
     # GitHub App integration
     GITHUB_APP_ID: str = os.getenv("GITHUB_APP_ID", "")
