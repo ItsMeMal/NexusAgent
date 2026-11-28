@@ -420,6 +420,7 @@ class NexusAgent:
             tools_schema = all_schemas
 
         final_response_text = ""
+        empty_response_retries = 0
         recent_call_signatures: List[str] = []
         pending_tc_ids: List[str] = []
         files_written = 0
@@ -475,12 +476,16 @@ class NexusAgent:
                 messages.append(normalized_msg)
 
                 clean_visible_content = _strip_calling_tools_marker(content)
-                if clean_visible_content:
+
+                # Content accompanying tool_calls is progress narration, not a completed
+                # assistant turn. Only a text-only assistant response can finish the task.
+                if clean_visible_content and not tool_calls:
                     final_response_text = clean_visible_content
-                    if self.on_thought and not self.on_token and not tool_calls:
+                    if self.on_thought and not self.on_token:
                         self.on_thought(clean_visible_content)
 
-                # If no tool calls, recover once if previous tool call truncated OR model pasted code in chat
+                # If the provider returns an empty assistant turn after tool execution,
+                # give it one bounded continuation opportunity instead of silently ending.
                 if not tool_calls:
                     if can_write_files and had_trunc_error and not trunc_nudge_sent:
                         trunc_nudge_sent = True
@@ -504,7 +509,22 @@ class NexusAgent:
                             "content": "You wrote code blocks in chat instead of saving files. Now call `write_file` to write the actual project files directly into the workspace.",
                         })
                         continue
+                    if not clean_visible_content:
+                        empty_response_retries += 1
+                        if empty_response_retries <= 1 and step + 1 < effective_max_steps:
+                            messages.append({
+                                "role": "user",
+                                "content": (
+                                    "Your previous assistant turn returned no final text and no tool calls. "
+                                    "Continue the existing task from the conversation and completed tool results. "
+                                    "Do not repeat successful operations. If the task is complete, provide a concise "
+                                    "final summary; otherwise continue with the next required action."
+                                ),
+                            })
+                            continue
                     break
+
+                empty_response_retries = 0
 
                 # Process each tool call
                 for tc in tool_calls:
@@ -609,13 +629,20 @@ class NexusAgent:
                         pending_tc_ids.remove(tc_id)
                     messages.append(tool_msg)
 
-            # Guarantee user never receives a silent blank output after tools/empty LLM turn
+            # A step budget may end immediately after a tool call. Never return an
+            # earlier progress sentence as though it were the final task result.
             if not (final_response_text or "").strip():
                 try:
                     synth_payload = sanitize_messages(
                         messages + [{
                             "role": "user",
-                            "content": "Provide your clear final response or execute summary directly now (do not call tools or return empty text).",
+                            "content": (
+                                "The execution loop has reached a point where it needs to close this turn. "
+                                "Using the actual tool results and conversation history, provide a clear status "
+                                "summary. State what was completed, what was verified, and what remains blocked or "
+                                "unfinished. Do not claim tests, builds, or edits succeeded unless the tool results "
+                                "prove that they did. Do not call tools in this response and do not return empty text."
+                            ),
                         }],
                         force_non_empty=True,
                     )
@@ -624,7 +651,7 @@ class NexusAgent:
                         tools=None,
                         on_token=self.on_token,
                     )
-                    synth_text = (synth_resp.get("content") or "").strip()
+                    synth_text = _strip_calling_tools_marker(synth_resp.get("content"))
                     if synth_text:
                         final_response_text = synth_text
                         self.memory.save_message(
@@ -634,8 +661,19 @@ class NexusAgent:
                         )
                         if self.on_thought and not self.on_token:
                             self.on_thought(synth_text)
-                except Exception:
-                    pass
+                except Exception as synth_error:
+                    final_response_text = (
+                        "The task turn ended without a model-generated final response. "
+                        f"Final-summary generation failed ({type(synth_error).__name__}: {synth_error}). "
+                        "The session history and completed tool results were preserved; resume the task to continue."
+                    )
+
+            if not (final_response_text or "").strip():
+                final_response_text = (
+                    "The model returned no final response after tool execution. "
+                    "The conversation and tool results were preserved, but task completion is unverified. "
+                    "Resume the session to continue."
+                )
         except asyncio.CancelledError:
             # Close out any unanswered tool calls so SQLite history remains schema-valid
             for pid in pending_tc_ids:
