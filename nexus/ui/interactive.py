@@ -12,7 +12,7 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
 from ..providers.manager import ProviderManager, ProviderProfile, ModelInfo, PROVIDERS
-from ..providers.nexus_route_oauth import NexusRouteOAuth
+from ..providers.NOLTHIRA_ROUTE_MODULE import NOLTHIRA_ROUTE_CLASS
 from ..core.modes import AGENT_MODES, MODE_ORDER, get_mode
 from ..config import config
 
@@ -57,7 +57,7 @@ SLASH_COMMANDS = [
     ("quit", "Exit Nolthira Agent CLI", "Utility"),
 ]
 
-class NexusCommandCompleter(Completer):
+class NolthiraCommandCompleter(Completer):
     """Real-time autocompletion menu when typing slash commands."""
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor.lstrip()
@@ -214,7 +214,7 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
 
     # Mallss Nexus Route is OAuth-first: no password or manual API key is requested.
     is_nexus_oauth = selected.id == "mallss_nexus_route"
-    oauth_client = NexusRouteOAuth() if is_nexus_oauth else None
+    oauth_client = NOLTHIRA_ROUTE_CLASS() if is_nexus_oauth else None
 
     # Base URL configuration. Region-aware providers expose an override because
     # account region and API-key region must match for several hosted services.
@@ -271,8 +271,8 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
     updates = {"OPENAI_API_BASE": target_base}
     if is_nexus_oauth:
         current_llm.token_provider = oauth_client.get_access_token
-        os.environ["NEXUS_AUTH_PROVIDER"] = "mallss_nexus_route"
-        updates["NEXUS_AUTH_PROVIDER"] = "mallss_nexus_route"
+        os.environ["NOLTHIRA_AUTH_PROVIDER"] = "mallss_nexus_route"
+        updates["NOLTHIRA_AUTH_PROVIDER"] = "mallss_nexus_route"
     else:
         current_llm.token_provider = None
         os.environ["OPENAI_API_KEY"] = target_key
@@ -559,10 +559,10 @@ async def interactive_select_model(
     # Update runtime config & LLM
     config.MODEL = selected_model_id
     current_llm.model = selected_model_id
-    os.environ["NEXUS_MODEL"] = selected_model_id
+    os.environ["NOLTHIRA_MODEL"] = selected_model_id
 
     # Persist to .env
-    ProviderManager.update_env_file({"NEXUS_MODEL": selected_model_id}, env_path)
+    ProviderManager.update_env_file({"NOLTHIRA_MODEL": selected_model_id}, env_path)
 
     console.print(f"\n  [dim cyan]⠋ Activating model '{selected_model_id}' on {provider.name}...[/dim cyan]")
     await asyncio.sleep(0.2)
@@ -1245,8 +1245,8 @@ async def interactive_select_mode(agent, env_path: Path, requested_mode: Optiona
 
     spec = agent.set_mode(chosen_id)
     config.AGENT_MODE = spec.id
-    os.environ["NEXUS_AGENT_MODE"] = spec.id
-    ProviderManager.update_env_file({"NEXUS_AGENT_MODE": spec.id}, env_path)
+    os.environ["NOLTHIRA_AGENT_MODE"] = spec.id
+    ProviderManager.update_env_file({"NOLTHIRA_AGENT_MODE": spec.id}, env_path)
 
     console.print(
         f"\n  [bold {spec.color}]{spec.icon} Agent Mode switched to {spec.label}[/bold {spec.color}] "
@@ -1274,23 +1274,23 @@ async def interactive_onboarding_setup(session: PromptSession, current_llm, agen
     cur_sb = getattr(config, "EXEC_BACKEND", "local")
     sb_ans = (await session.prompt_async(f"  Execution backend [local/docker/ssh] [{cur_sb}] ❯ ", is_password=False)).strip().lower()
     if sb_ans in ("local", "docker", "ssh"):
-        updates: Dict[str, str] = {"NEXUS_EXEC_BACKEND": sb_ans}
+        updates: Dict[str, str] = {"NOLTHIRA_EXEC_BACKEND": sb_ans}
         config.EXEC_BACKEND = sb_ans
-        os.environ["NEXUS_EXEC_BACKEND"] = sb_ans
+        os.environ["NOLTHIRA_EXEC_BACKEND"] = sb_ans
         if sb_ans == "docker":
             img = (await session.prompt_async(f"  Docker image [{config.DOCKER_IMAGE}] ❯ ", is_password=False)).strip()
             if img:
                 config.DOCKER_IMAGE = img
-                updates["NEXUS_DOCKER_IMAGE"] = img
+                updates["NOLTHIRA_DOCKER_IMAGE"] = img
         elif sb_ans == "ssh":
             host = (await session.prompt_async(f"  SSH host [{config.SSH_HOST}] ❯ ", is_password=False)).strip()
             user = (await session.prompt_async(f"  SSH user [{config.SSH_USER}] ❯ ", is_password=False)).strip()
             if host:
                 config.SSH_HOST = host
-                updates["NEXUS_SSH_HOST"] = host
+                updates["NOLTHIRA_SSH_HOST"] = host
             if user:
                 config.SSH_USER = user
-                updates["NEXUS_SSH_USER"] = user
+                updates["NOLTHIRA_SSH_USER"] = user
         ProviderManager.update_env_file(updates, env_path)
 
     console.print("\n  [bold #38bdf8]Step 4/4 · Messaging Gateways (Optional)[/bold #38bdf8]")
