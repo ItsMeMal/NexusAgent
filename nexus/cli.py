@@ -526,7 +526,7 @@ async def main_async():
                 elif cmd in ("/tokens", "/usage"):
                     from .ui.tui import render_token_usage
                     if llm.last_usage.get("source") == "unavailable":
-                        console.print("  [dim]No completed model request has usage data yet.\\n[/dim]")
+                        console.print("  [dim]No completed model request has usage data yet.\n[/dim]")
                     else:
                         render_token_usage(llm.last_usage)
                     continue
@@ -540,10 +540,10 @@ async def main_async():
                         if ProviderManager.detect_active_provider(config.API_BASE).id == "mallss_nexus_route":
                             config.API_KEY = ""
                             llm.api_key = ""
-                        console.print("  [bold #22c55e]✔ Mallss Nexus Route session revoked.[/bold #22c55e]\\n")
+                        console.print("  [bold #22c55e]✔ Mallss Nexus Route session revoked.[/bold #22c55e]\n")
                     else:
                         state = "connected" if route_oauth.has_session() else "not connected"
-                        console.print(f"  [dim]Mallss Nexus Route OAuth: {state}. Use /provider to sign in; /auth logout to revoke.\\n[/dim]")
+                        console.print(f"  [dim]Mallss Nexus Route OAuth: {state}. Use /provider to sign in; /auth logout to revoke.\n[/dim]")
                     continue
                 elif cmd in ("/status", "/info"):
                     active_prov = ProviderManager.detect_active_provider(config.API_BASE)

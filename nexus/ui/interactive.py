@@ -243,7 +243,7 @@ async def interactive_select_provider(session: PromptSession, current_llm, env_p
             oauth_tokens = await oauth_client.login()
             target_key = oauth_tokens["access_token"]
         except Exception as exc:
-            console.print(f"  [bold red]Account login failed:[/bold red] {exc}\\n")
+            console.print(f"  [bold red]Account login failed:[/bold red] {exc}\n")
             return
     else:
         target_key = (
@@ -472,7 +472,7 @@ async def interactive_select_model(
             current_llm.api_key = config.API_KEY
         except Exception as exc:
             console.print(f"  [bold yellow]⚠ Account session expired:[/bold yellow] {exc}")
-            console.print("  [dim]Use /provider to sign in again.\\n[/dim]")
+            console.print("  [dim]Use /provider to sign in again.\n[/dim]")
             return
 
     # Check if provider is connected and authenticated before listing models

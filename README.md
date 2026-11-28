@@ -42,7 +42,7 @@ An autonomous, persistent, universal, and self-improving AI Agent Orchestrator b
 
 * **Computer Use & GUI Automation**: `computer` (desktop screenshots with vision analysis, mouse click/move/drag, typing, hotkeys, scrolling, app launch)
 * **Filesystem & Code**: `read_file`, `write_file`, `patch_file`, `update_env` (targeted secret-safe dotenv key updates), `list_dir`, `search_files`
-* **Terminal**: `run_command` (guarded foreground/background execution), `process` (list/poll/log/wait/kill/write tracked background sessions)
+* **Terminal**: `run_command` (guarded foreground/background execution; workspace dotenv values are inherited by child processes), `process` (list/poll/log/wait/kill/write; repeated read-only polling/logging is supported)
 * **Vision**: `view_image` (multimodal image & diagram analysis)
 * **Web Intelligence**: `web_search`, `web_extract`
 * **Workspace Checkpoints & Recovery**: `create_checkpoint`, `list_checkpoints`, `inspect_checkpoint`, `restore_checkpoint` (safe overlay by default; exact rollback requires explicit confirmation)
@@ -79,8 +79,9 @@ curl -fsSL https://raw.githubusercontent.com/ItsMeMal/NexusAgent/main/install.sh
 
 Nexus includes built-in profiles for hosted inference providers and local runtimes. The provider picker (`/provider`) now includes these additional OpenAI Chat Completions-compatible endpoints:
 
-| Provider | Default base URL | Credential variable |
+| Provider | Default base URL | Authentication |
 |---|---|---|
+| Mallss Nexus Route | `https://ai-router.mallss-nexus.sbs/v1` | Browser OAuth login (no manual API key) |
 | Cerebras | `https://api.cerebras.ai/v1` | `CEREBRAS_API_KEY` |
 | SambaNova Cloud | `https://api.sambanova.ai/v1` | `SAMBANOVA_API_KEY` |
 | DeepInfra | `https://api.deepinfra.com/v1/openai` | `DEEPINFRA_API_KEY` |
@@ -104,6 +105,9 @@ For regional services, the provider wizard lets you override the default base UR
 **Compatibility note:** these new profiles use the OpenAI Chat Completions request format consumed by the current `LLMClient`. This does not imply that every model supports tool calling, vision, or streaming. Those capabilities and model availability must be verified for the selected model. Native adapters for Azure AI Foundry and Google Vertex AI are not included yet because they require authentication flows beyond the current Bearer-token client.
 
 ## 🚀 Quick Usage
+
+### First-time setup
+Run `nexus setup` (or `nexus --setup`) for the built-in onboarding wizard. Choose **Mallss Nexus Route (Account Login)** to sign in with your existing gateway website account. NexusAgent uses OAuth Authorization Code + PKCE, stores refreshable tokens under `~/.nexus/oauth/`, and never writes your website password or OAuth token to the project `.env`.
 
 ### 1. Launch Directly from Any Terminal
 Open PowerShell or Command Prompt in any project folder:
@@ -137,6 +141,8 @@ Type `/` in the prompt for real-time autocomplete:
 * `/computer` — Inspect GUI automation status, screen resolution, or capture screenshot (`/computer screenshot`)
 * `/tools` — Inspect currently registered autonomous tools
 * `/status` — View agent system diagnostics and active telemetry
+* `/tokens` or `/usage` — View last-request input/output/total tokens, session totals, and known context headroom
+* `/auth logout` — Revoke the Mallss Nexus Route OAuth connection
 * `/mcp` — Inspect connected Model Context Protocol (MCP) servers
 * `/plugins` — View loaded modular plugins from `plugins/`
 * `/security` — View security guardrails, command sandbox, and safety policy

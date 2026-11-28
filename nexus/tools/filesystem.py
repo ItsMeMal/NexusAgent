@@ -88,7 +88,7 @@ def get_filesystem_tools(root_dir: Path):
             start_idx = min(total_lines, max(0, start_line - 1))
             end_idx = min(total_lines, start_idx + line_count)
             if start_idx >= total_lines:
-                return f"File: {path} (Lines {total_lines + 1}-{total_lines} of {total_lines})\\n(No lines in requested range)"
+                return f"File: {path} (Lines {total_lines + 1}-{total_lines} of {total_lines})\n(No lines in requested range)"
 
             output = [f"File: {path} (Lines {start_idx + 1}-{end_idx} of {total_lines})"]
             for i in range(start_idx, end_idx):
