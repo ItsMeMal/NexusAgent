@@ -89,13 +89,13 @@ def _tool_call_signature(tool_name: str, arguments: Dict[str, Any]) -> str:
 
 
 _MUTATING_COMMAND_RE = re.compile(
-    r"\\b(?:npm|pnpm|yarn|bun)\\s+(?:install|add|remove|uninstall|update|rebuild|ci)\\b"
-    r"|\\b(?:npx\\s+)?prisma\\s+(?:generate|format|db\\s+push|migrate\\s+(?:deploy|dev|reset|resolve))\\b"
-    r"|\\bgit\\s+(?:checkout|switch|apply|merge|rebase|cherry-pick|pull|reset|restore)\\b"
-    r"|\\b(?:mkdir|md|touch|New-Item)\\b"
-    r"|\\b(?:Set-Content|Add-Content|Out-File|Copy-Item|Move-Item|Remove-Item)\\b"
-    r"|\\b(?:next\\s+build|npm\\s+run\\s+build|pnpm\\s+build|yarn\\s+build|bun\\s+run\\s+build)\\b"
-    r"|\\b(?:ruff|black|isort|prettier|eslint)\\b.*(?:--fix|--write)\\b",
+    r"\b(?:npm|pnpm|yarn|bun)\s+(?:install|add|remove|uninstall|update|rebuild|ci)\b"
+    r"|\b(?:npx\s+)?prisma\s+(?:generate|format|db\s+push|migrate\s+(?:deploy|dev|reset|resolve))\b"
+    r"|\bgit\s+(?:checkout|switch|apply|merge|rebase|cherry-pick|pull|reset|restore)\b"
+    r"|\b(?:mkdir|md|touch|New-Item)\b"
+    r"|\b(?:Set-Content|Add-Content|Out-File|Copy-Item|Move-Item|Remove-Item)\b"
+    r"|\b(?:next\s+build|npm\s+run\s+build|pnpm\s+build|yarn\s+build|bun\s+run\s+build)\b"
+    r"|\b(?:ruff|black|isort|prettier|eslint)\b.*(?:--fix|--write)\b",
     re.IGNORECASE,
 )
 
